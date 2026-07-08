@@ -1,0 +1,9 @@
+[MESSAGES CONTROL]
+disable=line-too-long,too-many-lines,broad-exception-caught,missing-class-docstring,missing-module-docstring,missing-function-docstring,not-callable,unused-argument,unused-variable,too-few-public-methods,too-many-arguments,too-many-locals,too-many-statements,invalid-name,import-error
+
+[TYPECHECK]
+ignored-modules=MetaTrader5
+
+[MASTER]
+init-hook='import sys; sys.path.append("src")'
+ignore=../data,../.git

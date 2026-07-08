@@ -1,0 +1,162 @@
+import flet as ft
+
+from utils.http_client import HttpClient
+
+
+class SelectForm:
+
+    def __init__(self, page: ft.Page, parent, field: dict, endpoint: str | None = None, custom_param: dict | None = None):
+        self.page = page
+        self.parent = parent
+        self.module = parent.module
+        self.screen = parent.screen
+        self.name = field.get("name", "")
+        self.label = field.get("label", "")
+        self.hint_text = field.get("hint_text", f"Please input {self.label}")
+        self.icon = field.get("icon")
+        self.autofocus = field.get("autofocus", False)
+        self.value_size = field.get("value_size", 16)
+        self.label_size = field.get("label_size", 14)
+        self.value_color = field.get("color", ft.Colors.ON_SURFACE)
+        self.label_color = field.get("color", ft.Colors.ON_SECONDARY_CONTAINER)
+        self.border_color = field.get("border_color", ft.Colors.ON_SURFACE)
+        self.leading_icon = None
+        self.filled = field.get("filled", False)
+        self.bgcolor = field.get("bgcolor", ft.Colors.SURFACE)
+        self.enable_filter = field.get("enable_filter", True)
+        self.editable = field.get("editable", True)
+        self.select = None
+        self.data: list = []
+        self.options: list = []
+        self.custom_param: dict | None = custom_param
+        self.endpoint = endpoint if endpoint is not None else f"C_{self.module}/call_{self.name}_select"
+        # depends_on: field name that this select depends on
+        # When the parent field changes, this select will refresh with new params
+        self.depends_on = field.get("depends_on", None)
+        # depends_param: the parameter name to send with the parent field's value
+        self.depends_param = field.get("depends_param", self.depends_on)
+
+    def build(self):
+        self.leading_icon = (
+            ft.Icon(
+                icon=self.icon,
+                color=self.value_color) if self.icon is not None else None
+        )
+        self.select = ft.Dropdown(
+            label=self.label,
+            hint_text=self.hint_text,
+            leading_icon=self.leading_icon,
+            border_radius=10,
+            border_color=self.border_color,
+            autofocus=self.autofocus,
+            text_size=self.value_size,
+            color=self.value_color,
+            label_style=ft.TextStyle(
+                size=self.label_size,
+                color=self.label_color,
+            ),
+            filled=self.filled,
+            bgcolor=self.bgcolor,
+            enable_filter=self.enable_filter,
+            editable=self.editable,
+            expand=True,
+        )
+        return self.select
+
+    def get_data(self, extra_params: dict = None):
+        client = HttpClient(self.page)
+        
+        params = self.custom_param.copy() if self.custom_param else {}
+        if hasattr(self.parent, 'record_id') and self.parent.record_id:
+            params['record_id'] = self.parent.record_id
+        
+        # Add extra params (e.g., from depends_on field)
+        if extra_params:
+            params.update(extra_params)
+        
+        response = client.get(self.endpoint, params if params else None)
+        if isinstance(response, dict) and "error" in response:
+            print(f"Error fetching data: {response.get('error')}")
+            return
+
+        if isinstance(response, list):
+            self.data = response
+
+    def rebuild(self, extra_params: dict = None):
+        # If this select depends on another field and no parent value provided yet,
+        # but only if check strict dependency (optional logic, for now we assume strict if params missing)
+        # Note: We now check if ALL required dependencies are present in extra_params if we want to be strict
+        # For simple cascading, we just check if extra_params is provided at all
+        
+        if self.depends_on and not extra_params:
+            self.data = []
+            if self.select:
+                self.select.options = []
+            return
+        
+        self.get_data(extra_params)
+
+        if not isinstance(self.select, ft.Dropdown):
+            return
+
+        if not isinstance(self.data, list):
+            return
+
+        self.options = []
+        for item in self.data:
+            option_value = item.get("value", "")
+            option_label = item.get("label", option_value)
+            self.options.append(ft.DropdownOption(
+                key=option_value, text=option_label))
+        self.select.options = self.options
+    
+    def refresh_with_values(self, form_values: dict):
+        """Refresh options using current form values"""
+        # Clear current value and options
+        if self.select:
+            self.select.value = None
+            self.select.options = []
+        
+        # If depends_on is set, check if the dependent value is present
+        # Support single string depends_on for now, or we can logic check
+        if self.depends_on:
+            # depends_on can be a single field or list of fields (future proofing)
+            deps = [self.depends_on] if isinstance(self.depends_on, str) else self.depends_on
+            
+            # Check if primary dependency is present in form_values
+            # and verify it has a value
+            missing_dep = False
+            for dep in deps:
+                if not form_values.get(dep):
+                    missing_dep = True
+                    break
+            
+            if missing_dep:
+                # Dependency missing or empty, clear options and return
+                self.data = []
+                if self.select:
+                    self._safe_update()
+                return
+
+        # Load options with full form values as params
+        # This allows backend to pick whatever params it needs
+        self.rebuild(form_values)
+
+        # Update the UI
+        if self.select:
+            self._safe_update()
+
+    def _safe_update(self):
+        """Update the select control if it's already mounted on the page.
+
+        refresh_with_values() can run during the initial Form.build() (e.g.
+        an edit screen pre-populating a cascading select), before the
+        control tree has been appended to page.views. Control.update()
+        raises RuntimeError in that case since Flet 0.85 - the eventual
+        page.update() once the view is mounted will render the values
+        already assigned above, so a failed early update is safe to skip.
+        """
+        try:
+            self.select.update()
+        except RuntimeError:
+            pass

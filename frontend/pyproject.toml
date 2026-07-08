@@ -1,0 +1,91 @@
+[project]
+name = "sfsis"
+version = "0.1.0"
+description = ""
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    { name = "Yohan Naftali", email = "yohan_naftali@ptsenopati.com" }
+]
+dependencies = [
+  # NOTE: must stay bare "flet", NOT "flet[all]" - the [all] extra pulls in
+  # flet-cli (needs watchdog>=4.0.0, no Android/iOS wheel exists) and
+  # flet-web/flet-desktop, none of which belong on a mobile device. This is
+  # what `flet build apk`/`ipa` actually bundles onto the target (read via
+  # [project.dependencies], see flet_cli/commands/build_base.py). The full
+  # `flet[all]==0.85.3` toolchain for local dev (flet run, flet build, etc.)
+  # is already declared separately below in [dependency-groups].dev - do not
+  # duplicate it here.
+  "flet==0.85.3",
+  "flet-datatable2>=0.1.0",
+  "requests>=2.31.0",
+  "websockets>=15.0",
+]
+
+[tool.flet]
+# org name in reverse domain name notation, e.g. "com.mycompany".
+# Combined with project.name to build bundle ID for iOS and Android apps
+org = "com.ptsenopati"
+
+# project display name that is used as an app title on Android and iOS home screens,
+# shown in window titles and about app dialogs on desktop.
+product = "SFSIS"
+
+# company name to display in about app dialogs
+company = "Senopati"
+
+# copyright text to display in about app dialogs
+copyright = "Copyright (C) 2025 by Senopati"
+
+[tool.flet.app]
+path = "src"
+
+[tool.flet.android]
+min_sdk_version = 33
+
+[dependency-groups]
+dev = [
+    "flet[all]==0.85.3",
+]
+
+[tool.poetry]
+package-mode = false
+
+[tool.poetry.group.dev.dependencies]
+flet = {extras = ["all"], version = "0.85.3"}
+
+[tool.ruff]
+# Target your exact Python version
+target-version = "py310"
+exclude = [
+    ".git",
+    "data",
+]
+src = ["src"]
+
+[tool.ruff.lint]
+# E, F are default rules (Errors and Pyflakes)
+# PL introduces Pylint-specific checks that actually work without choking on Flet
+select = ["E", "F", "PL"]
+
+# Replaces your [MESSAGES CONTROL] disable list
+ignore = [
+    "E501",    # line-too-long
+    "C901",    # too-many-statements / complex structure
+    "D101",    # missing-class-docstring
+    "D100",    # missing-module-docstring
+    "D103",    # missing-function-docstring
+    "ARG001",  # unused-argument
+    "F841",    # unused-variable
+    "N816",    # invalid-name (mixedCase variables, etc.)
+    "PLR0913", # too-many-arguments
+    "PLR0914", # too-many-locals
+    "PLR0915", # too-many-statements
+    "PLR0912", # too-many-branches
+    "BLE001",  # broad-exception-caught
+]
+
+# Replaces [TYPECHECK] ignored-modules=MetaTrader5
+# Ruff ignores dynamic attributes by default, but this stops it from flag-checking it
+[tool.ruff.lint.pep8-naming]
+ignore-names = ["MetaTrader5"]

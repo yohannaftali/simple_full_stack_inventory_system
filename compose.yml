@@ -1,0 +1,51 @@
+# Run on local development environment
+# podman compose -f compose.yml up -d
+
+services:
+  database:
+    container_name: sfsis-mariadb
+    build:
+      context: .
+      dockerfile: Dockerfile-mariadb
+    restart: always
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${MARIADB_DATABASE}
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./database:/var/lib/mysql
+      - ./logs/database:/var/log/mysql:rw
+  backend:
+    container_name: sfsis-backend
+    build:
+      context: .
+      dockerfile: Dockerfile-backend
+    restart: always
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      UVICORN_HOST: 0.0.0.0
+      UVICORN_PORT: ${UVICORN_PORT}
+      MARIADB_DATABASE: ${MARIADB_DATABASE}
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
+      DATABASE_HOST: database
+    ports:
+      - "${UVICORN_PORT}:${UVICORN_PORT}"
+    volumes:
+      - ./backend:/usr/src/app
+      - ./logs/backend:/usr/src/app/logs:rw
+    depends_on:
+      - database
+  frontend:
+    container_name: sfsis-frontend
+    build:
+      context: .
+      dockerfile: Dockerfile-frontend
+    restart: always
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./frontend:/usr/src/app
+      - ./logs/frontend:/usr/src/app/logs:rw
+    depends_on:
+      - backend

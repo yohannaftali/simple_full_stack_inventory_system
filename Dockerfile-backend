@@ -1,0 +1,12 @@
+FROM python:3.13-slim
+
+WORKDIR /usr/src/app
+
+COPY backend/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY backend/src ./src
+
+EXPOSE 5000
+
+CMD ["sh", "-c", "uvicorn src.main:app --host ${UVICORN_HOST:-0.0.0.0} --port ${UVICORN_PORT:-5000}"]
