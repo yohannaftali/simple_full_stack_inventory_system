@@ -162,10 +162,16 @@ class Table:
             return
 
         if isinstance(response, list):
-            # Extract pagination metadata from first row
-            first_row = response[0]
-            self.total_pages = first_row.get('db_total_page', 1)
-            self.total_rows = first_row.get('db_num_rows', len(response))
+            # Extract pagination metadata from first row, if any - an empty
+            # result set (a genuinely empty table, e.g. a freshly seeded
+            # module with zero records) is a valid response, not an error.
+            if response:
+                first_row = response[0]
+                self.total_pages = first_row.get('db_total_page', 1)
+                self.total_rows = first_row.get('db_num_rows', len(response))
+            else:
+                self.total_pages = 1
+                self.total_rows = 0
 
             self.data = response
             self.load(response, append=append)
