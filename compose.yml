@@ -6,7 +6,7 @@ services:
     container_name: sfsis-mariadb
     build:
       context: .
-      dockerfile: ./Dockerfile-mariadb
+      dockerfile: Dockerfile-mariadb
     restart: always
     environment:
       MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
@@ -20,7 +20,7 @@ services:
     container_name: sfsis-backend
     build:
       context: .
-      dockerfile: ./Dockerfile-backend
+      dockerfile: Dockerfile-backend
     restart: always
     environment:
       JWT_SECRET: ${JWT_SECRET}
@@ -42,7 +42,7 @@ services:
     container_name: sfsis-frontend
     build:
       context: .
-      dockerfile: ./Dockerfile-frontend
+      dockerfile: Dockerfile-frontend
     restart: always
     ports:
       - "8000:8000"
