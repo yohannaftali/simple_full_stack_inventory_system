@@ -232,6 +232,16 @@ Dependencies are pinned in `backend/requirements.txt` (no `pyproject.toml`).
   `admin1234#` — **change this password after first login**; the migration
   is idempotent, it no-ops if a user named `admin` already exists, and
   `downgrade()` removes exactly that seeded row).
+  `0006_seed_default_modules_and_permissions.py` seeds all 7 built-in
+  `modules` rows (`ap_module`, `ap_master_user`, `master_location`,
+  `master_material`, `stock_in`, `stock_out`, `stock_browse` — name/label/
+  icon/description/sort hardcoded in the migration) and grants every one of
+  them to the `admin` user from `0004`, so a fresh instance has working home
+  screen tiles and admin access out of the box, with no manual `podman exec`
+  seeding step required (that used to be how this was done — a real gap:
+  a fresh install had an empty `modules` table and no grants at all until
+  someone ran that by hand). Also idempotent (matches existing rows by
+  `name`/`(user_id, module_id)` before inserting) and reversible.
 - Because `src/` code imports as top-level packages (`from models.base import
   ...`, not `from src.models.base import ...`), `Dockerfile-backend` sets
   `ENV PYTHONPATH=/usr/src/app/src` and copies `alembic.ini` +
@@ -262,18 +272,21 @@ Dependencies are pinned in `backend/requirements.txt` (no `pyproject.toml`).
      `https://` server address still needs a real TLS listener behind it —
      point the Server Config page at `https://<host>:5443` (or
      `http://<host>:5000` if you don't need TLS).
-- **Bootstrap**: `alembic upgrade head` now seeds `admin`/`admin1234#` as an
-  active superuser, so first login needs no manual DB insert.
-  `require_module_access`'s superuser bypass means that account can log in
-  and immediately use `/modules/ap_module/index` and
-  `/modules/ap_master_user/index` (no `modules` row or grant needed yet,
-  since superusers skip the check) to create the `ap_module` and
-  `ap_master_user` module rows and grant itself (or other users) access —
-  which is what makes those tiles actually appear on `C_home/home` for
-  non-superusers, since that listing always reflects real grants.
+- **Bootstrap**: `alembic upgrade head` seeds `admin`/`admin1234#` as an
+  active superuser (`0004`) *and* all 7 built-in modules + grants every one
+  to that account (`0006`) — a fresh instance has working home screen tiles
+  and full admin access with zero manual steps. `require_module_access`'s
+  superuser bypass still matters for any *new* module you add by hand later
+  (e.g. via `/modules/ap_module/new`) — that account can use the module
+  admin/permission screens to create and grant it to itself or others before
+  it has any grant of its own, same as it could before `0006` existed for
+  the whole starter set.
 - Full login → home (real granted modules) → TOTP-enroll → re-login-with-
   TOTP → permission-check → module CRUD → user CRUD → grant/revoke →
   cascade-delete flow is verified end-to-end with `TestClient` smoke tests.
+  The full bootstrap (`alembic upgrade head` from a genuinely empty
+  database → login → home tiles) has also been verified against a real,
+  disposable MariaDB + backend container pair (not just SQLite).
 
 ## Inventory Domain (stock in/out, moving-average costing)
 
