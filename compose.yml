@@ -44,8 +44,13 @@ services:
       context: .
       dockerfile: Dockerfile-frontend
     restart: always
+    environment:
+      FRONTEND_HOST: 0.0.0.0
+      FRONTEND_PORT: ${FRONTEND_PORT}
+      FRONTEND_PORT_SSL: ${FRONTEND_PORT_SSL}
     ports:
-      - "8000:8000"
+      - "${FRONTEND_PORT}:${FRONTEND_PORT}"
+      - "${FRONTEND_PORT_SSL}:${FRONTEND_PORT_SSL}"
     volumes:
       - ./frontend:/usr/src/app
       - ./logs/frontend:/usr/src/app/logs:rw

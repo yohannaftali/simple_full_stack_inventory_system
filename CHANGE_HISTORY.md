@@ -120,3 +120,43 @@
 - Then verified for real against the live containers: rebuilt nothing (bind-mounted, just restarted `sfsis-backend` — migration 0005 applied cleanly), seeded the 5 module rows + granted `admin` via the same repository code the app uses, verified all 5 icon names (`place`, `category`, `call_received`, `call_made`, `inventory`) resolve to real `ft.Icons` constants inside the actual frontend venv, then walked the real HTTP flow end-to-end: create location + material → receive 50 @ price 10 (MAP=10) → browse shows qty 50/value 500 → issue 20 → browse shows qty 30/value 300, stock-out item shows captured price 10/total_value 200. Also imported all 18 new frontend files inside the real Flet venv (stronger than syntax-checking — catches import-path mistakes) — all succeeded
 - Scope: backend, frontend
 - No GitHub issue filed (direct implementation, per user)
+
+## [2026-07-09] — fix(frontend): stock_in item table crash (`on_select_changed` typo)
+- User reported "Module Not Found" clicking into a receiving header, with a `ft.DataRow.__init__() got an unexpected keyword argument 'on_select_changed'` traceback from the app's own error screen (that screen's title is a generic "Module Not Found" for *any* build failure — misleading given the actual cause, unrelated to this fix)
+- `pages/modules/stock_in/item_table.py` used `on_select_changed`; the real Flet API is `on_select_change` (confirmed via `inspect.signature(ft.DataRow.__init__)` inside the actual frontend venv) — one-word fix
+- Traced the "Module Not Found" report itself first by grepping `sfsis-frontend` logs for the route and finding nothing logged — that turned out to be a stale-websocket red herring from a container restart earlier in the same session; the *next* report (with the actual traceback pasted) was the real bug
+- Scope: frontend
+
+## [2026-07-09] — fix(frontend): stock_in item edit form fetched the wrong endpoint
+- User asked "saat edit, ngga mengirim id?" (does it send the id on edit?) after item_edit fields came up empty on submit
+- Root cause: `Form`'s default GET endpoint is `C_{module}/get`, which for `stock_in` is the *header* endpoint (`{id, date, description}`) — but `item_edit.py` needs the *item* endpoint (`get_item`, returning `{id, material_name, location_name, qty_received, price_buy, remarks}`). The form was silently populating itself from a header record instead, leaving qty/price/remarks blank; confirmed via the frontend logs showing the exact wrong payload (`{'id': 2, 'date': '2026-07-09', 'description': 'test'}`) and the resulting empty `form data`
+- Fix: `item_edit.py` already fetched the item once (for `receiving_header_id`, needed to navigate back) — reused that instead of letting `Form` do a second, wrong fetch: `start_blank=True` + `self.form.load([item])`
+- Scope: frontend
+
+## [2026-07-09] — feat(infra): frontend HTTPS (socat TLS relay) + FRONTEND_PORT(_SSL) env vars + working default server URL
+- User added `FRONTEND_PORT=8000`/`FRONTEND_PORT_SSL=8443` to `.env`/`example.env` and asked to wire them in, plus set the default server address to `http://backend:5000`
+- `flet run --web` has no built-in TLS flags at all, so — unlike the backend, where Uvicorn does `--ssl-keyfile`/`--ssl-certfile` natively — added `frontend/entrypoint.sh`: generates a self-signed cert the same way `backend/entrypoint.sh` does (`frontend/certs/`, gitignored), starts `flet run --web` on `FRONTEND_PORT`, then puts a `socat OPENSSL-LISTEN` relay in front terminating TLS on `FRONTEND_PORT_SSL` and forwarding raw bytes to `FRONTEND_PORT` — works for Flet's WebSocket traffic since `socat` is L4, not HTTP-aware
+- `Dockerfile-frontend`: installs `openssl`+`socat`, copies `entrypoint.sh` to `/usr/local/bin/` (outside the bind-mounted `/usr/src/app`), exposes both ports, `CMD ["entrypoint.sh"]`
+- `compose.yml`: added `FRONTEND_HOST`/`FRONTEND_PORT`/`FRONTEND_PORT_SSL` env vars and both port mappings to the `frontend` service
+- `repository/server_url.py`: `DEFAULT_SERVER_URL` changed from the inert placeholder `https://localhost:8000` to `http://backend:5000` (a real, working address for the containerized deployment) — updated the explanatory comments there and in `main.py`'s `_boot_navigate` (this constant doubles as the "never configured" sentinel; making it a real address means the force-to-`/server_config` behavior now effectively only fires for other deployment targets, like a native desktop build, where it doesn't resolve)
+- Added `frontend/certs/` to `.gitignore`
+- Verified for real: rebuilt and recreated `sfsis-frontend`; confirmed both `flet` and the new `socat` process running inside the container; `http://localhost:8000` → 200, `https://localhost:8443` → 200 (self-signed, `curl -k`); confirmed `DEFAULT_SERVER_URL` live in the container is `http://backend:5000` and that address is actually reachable from inside `sfsis-frontend`
+- Scope: infra
+- No GitHub issue filed (direct implementation, per user)
+
+## [2026-07-09] — fix(frontend): table and form input/label not full width on web
+- User reported the shared `Table` component wasn't full width on web, and `InputForm`/`LabelForm` weren't full width like `SelectForm` already was
+- Root cause of the table sizing bug: `components/table/columns.py`'s `get_screen_width()` took the *minimum* of `page.width` and `page.window.width` — on web, `page.window.width` is unreliable (observed returning a stale `400` from earlier debug logs in this session) while `page.width` correctly reflects the real browser viewport (`1653` in those same logs), so the min-clamp threw away the correct value and every column-width calculation downstream used the wrong, much smaller screen width. Fixed to prefer `page.width` whenever available, falling back to `page.window.width` only if it isn't
+- `InputForm`/`LabelForm` (`components/form/input.py`, `label.py`): added `expand=True` to their `ft.TextField`, matching `SelectForm`'s `ft.Dropdown(..., expand=True)` — neither had it before, so they didn't stretch to fill their `ResponsiveRow` column the way selects already did
+- Verified: re-imported all three modified files inside the actual frontend venv (no import/syntax errors), confirmed the fixes are present in the running container's bind-mounted files after a restart
+- Scope: frontend
+- No GitHub issue filed (direct implementation, per user)
+
+## [2026-07-09] — feat(frontend): calendar-popup date picker field type, plus full-width fix
+- User asked for the date fields (previously plain text inputs with a "YYYY-MM-DD" hint) to get a real calendar popup, and for that field to be full width like the rest
+- Added `components/form/date.py` (`DateForm`): a read-only `ft.TextField` (tap to open, not typed) paired with an `ft.DatePicker` added to `page.overlay`; on selection, formats the picked date as `date.isoformat()` into the field and closes the picker; re-opening re-parses the field's current value back into the picker so it re-opens on the right date. Returns a plain `ft.TextField` (same as `InputForm`) rather than a custom composite control, specifically so `Form.serialize()`/`load()` need zero special-casing — a `"date"` field is treated exactly like an `"input"` field for value extraction once built
+- Wired a new `"date"` field type into `components/form/form.py::build_elements()` (constructs `DateForm`, needs `page`/`parent` like `SelectForm` does for its popup) and into `serialize()` (added `field_type == "date"` to the existing `is_input` check)
+- Switched the `date` field on all 4 stock_in/stock_out header forms (`new.py`/`edit.py` × 2) from `"type": "input"` (with a manual `hint_text: "YYYY-MM-DD"`) to `"type": "date"`
+- Verified with a fake-page harness inside the real frontend venv (not just imports): built the widget standalone and drove the full open → pick → close → reopen-shows-previous-value flow; then built a real `Form` with a `"date"` field and confirmed `build_elements()` produces a plain `ft.TextField` with `expand=True` and `serialize()` correctly extracts the picked ISO date string alongside a plain input field
+- Scope: frontend
+- No GitHub issue filed (direct implementation, per user)

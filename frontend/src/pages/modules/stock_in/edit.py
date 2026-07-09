@@ -22,7 +22,7 @@ class ModulePage:
             {
                 "name": "date", "label": "Date", "icon": ft.Icons.CALENDAR_MONTH,
                 "row": 1, "col": {"sm": 12, "md": 6},
-                "type": "input", "autofocus": True, "hint_text": "YYYY-MM-DD"
+                "type": "date", "autofocus": True
             },
             {
                 "name": "description", "label": "Description", "icon": ft.Icons.NOTES,

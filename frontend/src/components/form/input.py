@@ -46,5 +46,6 @@ class InputForm:
             max_lines=self.max_lines,
             filled=self.filled,
             bgcolor=self.bgcolor,
-            adaptive=True
+            adaptive=True,
+            expand=True,
         )

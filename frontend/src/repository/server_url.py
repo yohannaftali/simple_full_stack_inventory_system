@@ -6,7 +6,16 @@ import flet as ft
 
 from utils.storage_compat import unwrap_legacy_value
 
-DEFAULT_SERVER_URL = "https://localhost:8000"
+
+# Default backend address for the containerized deployment: "backend" is
+# the compose service's DNS name on the podman-compose network, reachable
+# from inside sfsis-frontend but NOT from a browser/native client outside
+# that network (there, use the published host port instead, e.g.
+# http://localhost:5000 or https://localhost:5443). Doubles as the
+# "never configured" sentinel in main.py's _boot_navigate - if you change
+# this to something that resolves for every deployment target, that
+# force-to-/server_config behavior effectively disables itself.
+DEFAULT_SERVER_URL = "http://backend:5000"
 
 
 class ServerURL:

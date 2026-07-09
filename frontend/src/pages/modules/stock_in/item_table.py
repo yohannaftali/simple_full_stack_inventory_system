@@ -36,7 +36,7 @@ class ItemTable:
                         ft.DataCell(ft.Text(str(item.get("price_buy", "")))),
                         ft.DataCell(ft.Text(item.get("remarks", ""))),
                     ],
-                    on_select_changed=self._make_on_click(item["id"]),
+                    on_select_change=self._make_on_click(item["id"]),
                 )
             )
 

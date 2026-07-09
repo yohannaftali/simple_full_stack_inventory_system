@@ -19,11 +19,16 @@ class ModulePage:
         self.screen = screen
         self.record_id = record_id
 
-        # Fetch the header id up front (separate from Form's own GET below)
-        # so callback_submit can navigate back to the right header afterward.
+        # Fetch the item ourselves - Form's default get endpoint is
+        # C_{module}/get (the *header* endpoint), not get_item, so it can't
+        # be used to populate this form. We also need receiving_header_id
+        # (not one of this form's fields) so callback_submit can navigate
+        # back to the right header afterward.
         client = HttpClient(self.page)
         item = client.get(f"C_{module}/get_item", {"id": record_id})
-        self.header_id = item.get("receiving_header_id") if isinstance(item, dict) else None
+        if not isinstance(item, dict) or "error" in item:
+            item = {}
+        self.header_id = item.get("receiving_header_id")
 
         self.fields = [
             {
@@ -61,8 +66,10 @@ class ModulePage:
             page=page,
             parent=self,
             name="edit",
-            fields=self.fields
+            fields=self.fields,
+            start_blank=True
         )
+        self.form.load([item])
 
         self.view = ModuleView(page, module, screen)
         self.view.header.set_title("Edit Item")

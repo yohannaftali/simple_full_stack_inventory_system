@@ -249,12 +249,15 @@ async def main(page: ft.Page):
             splash.show_reload_button(lambda e: page.run_task(_reload_library))
 
     async def _boot_navigate():
-        # A never-configured install has no real server to check against -
-        # server_url.get() falls back to DEFAULT_SERVER_URL (a placeholder,
-        # not an actual backend) when nothing is persisted. Force the user
-        # to set a real server URL first instead of throwing a connection
-        # error against the placeholder or letting them sit on a login
-        # screen that can never succeed.
+        # DEFAULT_SERVER_URL doubles as the "never configured" sentinel: a
+        # never-configured install has nothing persisted, so server_url.get()
+        # falls back to it. It's now the containerized deployment's real
+        # backend address (see repository/server_url.py), so this branch
+        # mainly matters for a genuinely fresh install of some *other*
+        # deployment target (native desktop, etc.) where DEFAULT_SERVER_URL
+        # doesn't resolve - force the user to set a real server URL first
+        # there, instead of throwing a connection error against it or
+        # letting them sit on a login screen that can never succeed.
         server_url = storage.server_url.get()
         if server_url == DEFAULT_SERVER_URL:
             # Could be a genuinely unconfigured install, or the #648

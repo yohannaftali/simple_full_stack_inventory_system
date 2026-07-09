@@ -3,6 +3,7 @@ import flet as ft
 from components.form.heading import HeadingForm
 from components.form.label import LabelForm
 from components.form.input import InputForm
+from components.form.date import DateForm
 from components.form.select import SelectForm
 from components.form.table import TableForm
 from components.form.list import ListForm
@@ -55,6 +56,7 @@ class Form:
         self.heading = {}
         self.label = {}
         self.input = {}
+        self.date = {}
         self.select = {}
         self.table = {}
         self.list = {}
@@ -208,6 +210,13 @@ class Form:
                     self.map_type[field_name] = "input"
                     self.input[field_name] = InputForm(field)
                     control = self.input[field_name].build()
+                elif field_type == "date":
+                    self.map_type[field_name] = "date"
+                    self.date[field_name] = DateForm(
+                        page=self.page,
+                        parent=self.parent,
+                        field=field)
+                    control = self.date[field_name].build()
                 elif field_type == "select":
                     self.map_type[field_name] = "select"
                     self.select[field_name] = SelectForm(
@@ -438,7 +447,11 @@ class Form:
                 continue
 
             is_key = field.get("key", False) or field_type == "key"
-            is_input = field.get("input", False) or field_type == "input"
+            is_input = (
+                field.get("input", False)
+                or field_type == "input"
+                or field_type == "date"
+            )
             is_select = field.get("select", False) or field_type == "select"
             is_table = field.get("table", False) or field_type == "table"
             is_list = field.get("list", False) or field_type == "list"

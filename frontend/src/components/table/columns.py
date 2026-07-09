@@ -141,33 +141,26 @@ class Columns:
             visible_idx += 1
 
     def get_screen_width(self) -> int:
-        page_width = None
-        window_width = 1200
+        # page.width is the actual rendered viewport width on web (and desktop);
+        # page.window.width applies to desktop OS windows and is unreliable on
+        # web - it was observed returning a small stale default (e.g. 400)
+        # while page.width correctly reported the real browser width (e.g.
+        # 1653), which made tables render far narrower than the page on web.
+        # Prefer page.width whenever it's available; only fall back to
+        # window.width (then a hardcoded default) if it isn't.
+        if hasattr(self.page, "width") and self.page.width:
+            print(f"page.width: {self.page.width}")
+            return self.page.width
+
         if (
             hasattr(self.page, "window")
             and hasattr(self.page.window, "width")
             and self.page.window.width
         ):
-            window_width = self.page.window.width
             print(f"page.window_width: {self.page.window.width}")
-        if hasattr(self.page, "width") and self.page.width:
-            page_width = self.page.width
-            print(f"page.width: {self.page.width}")
+            return self.page.window.width
 
-        if (
-            page_width is not None
-            and page_width > 0
-            and window_width is not None
-            and window_width > 0
-        ):
-            page_width = page_width if page_width < window_width else window_width
-
-        screen_width = (
-            page_width
-            if page_width is not None and page_width > 0
-            else window_width or 0
-        )
-        return screen_width
+        return 1200
 
     def get_usable_width(self, num_columns: int) -> int:
         """Calculate usable width for columns based on page/window size"""

@@ -34,9 +34,19 @@ locally via Podman:
   (endpoints referenced by the frontend follow a `C_<module>` naming
   convention, e.g. `C_home/home`, `C_{module}`).
 - **frontend** — a Flet desktop/web/mobile app (`Dockerfile-frontend`),
-  source in `./frontend/src`. Connects to the backend over HTTP using a
-  server address the user enters manually at runtime (see below) — there is
-  no baked-in backend URL.
+  source in `./frontend/src`, served as a web app on `FRONTEND_PORT` (8000,
+  plain HTTP) and `FRONTEND_PORT_SSL` (8443, self-signed HTTPS). Unlike the
+  backend, `flet run --web` has no built-in TLS support (no `--ssl-*`
+  flags), so `frontend/entrypoint.sh` generates the same kind of self-signed
+  cert as the backend (`frontend/certs/`, gitignored) and puts a `socat`
+  `OPENSSL-LISTEN` relay in front of the plain-HTTP `flet run` process —
+  terminates TLS on `FRONTEND_PORT_SSL`, forwards the raw bytes to
+  `FRONTEND_PORT`. Works for Flet's WebSocket UI-update traffic too, since
+  `socat` operates at the raw TCP level and doesn't need to understand HTTP.
+  Connects to the backend over HTTP using a server address the user can
+  enter manually at runtime (Server Config page), but the containerized
+  deployment now defaults to a working address out of the box — see
+  `DEFAULT_SERVER_URL` below.
 
 All three services are defined in `compose.yml` and run together with:
 
@@ -46,8 +56,8 @@ podman compose -f compose.yml up -d
 
 Environment variables (`MARIADB_ROOT_PASSWORD`, `MARIADB_DATABASE`,
 `JWT_SECRET`, `UVICORN_HOST`, `UVICORN_PORT`, `UVICORN_PORT_SSL`,
-`GITHUB_TOKEN`) are read from `.env` (see `example.env` for the template;
-`.env` itself must never be committed).
+`FRONTEND_PORT`, `FRONTEND_PORT_SSL`, `GITHUB_TOKEN`) are read from `.env`
+(see `example.env` for the template; `.env` itself must never be committed).
 
 ## Backend Architecture (FastAPI — `backend/src`)
 
@@ -441,13 +451,29 @@ managed via `pyproject.toml` (uv/Poetry).
   `table/` (shared grid/table + search/toolbar), `modal/` and `module/`
   (shared chrome for dynamically-loaded screens), plus page-level
   `loading_overlay.py` and `splash_screen.py`.
+  - `form/` field types, driven by each field dict's `"type"` (see
+    `components/form/form.py::build_elements()`): `input` (`InputForm`),
+    `label` (`LabelForm`, read-only), `select` (`SelectForm`, a `Dropdown`
+    that fetches its options from `C_{module}/call_{field_name}_select`),
+    `date` (`DateForm` — a read-only `TextField` + `ft.DatePicker` calendar
+    popup, tap to open, closes on selection; stores/round-trips a plain ISO
+    `"YYYY-MM-DD"` string, matching what the backend's `date` Form fields
+    already expect/return). `date` reuses `input`'s value-extraction path in
+    `serialize()` since `DateForm.build()` returns a plain `ft.TextField`,
+    same as `InputForm` — no separate serialize/load handling needed. All
+    interactive field types (`input`, `label`, `date`, `select`) set
+    `expand=True` on their control so they fill their `ResponsiveRow`
+    column on web — a fix applied after `input`/`label` were initially
+    missing it while `select` already had it.
 
 - **Repositories / state & persistence** (`src/repository/`): each repo
   wraps `page.data` (in-memory cache) plus an optional persistence `store`.
   - Persistent (loaded once at boot via `Storage.load_persistent()`):
     `server_url.py` (`ServerURL`, key `"server_url"`, default
-    `DEFAULT_SERVER_URL = "https://localhost:8000"`), `http_cookies.py`,
-    `user_session.py`, `theme_mode.py`.
+    `DEFAULT_SERVER_URL = "http://backend:5000"` — the compose network
+    address, so the containerized frontend works out of the box without a
+    manual Server Config step; see the container networking gotcha below),
+    `http_cookies.py`, `user_session.py`, `theme_mode.py`.
   - Non-persistent (in-memory, cleared on route change): `client_data.py`,
     `module_history.py`, `home_search.py`, `table_search.py`.
   - `storage.py` (`Storage`) is the facade aggregating all repos. Backend
@@ -479,6 +505,14 @@ managed via `pyproject.toml` (uv/Poetry).
     `http://localhost:5000` / `https://localhost:5443` only work for a
     client connecting from the Windows host directly (e.g. a native desktop
     Flet build, or `curl` from the host) — those aren't equivalent addresses.
+    `DEFAULT_SERVER_URL` is now `http://backend:5000` specifically so a
+    fresh containerized frontend gets this right automatically, without
+    anyone having to rediscover the gotcha above via the Server Config page.
+    Note this doubles as the "never configured, force `/server_config`"
+    sentinel in `main.py`'s `_boot_navigate` (see the comment there) — it's
+    a real working address for *this* deployment target now, not a pure
+    placeholder, so that force-to-config behavior effectively only fires for
+    other deployment targets (native desktop, etc.) where it doesn't resolve.
 
 - **Module loading** (`src/utils/module_loader.py`): `ModuleLoader(page,
   target)` (`target` is `"modules"` or `"modals"`) preloads every screen
