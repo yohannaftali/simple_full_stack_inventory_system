@@ -24,6 +24,11 @@ class ModulePage:
                 "type": "date", "autofocus": True
             },
             {
+                "name": "department_id", "label": "Department", "icon": ft.Icons.APARTMENT,
+                "row": 1, "col": {"sm": 12, "md": 6},
+                "type": "select"
+            },
+            {
                 "name": "description", "label": "Description", "icon": ft.Icons.NOTES,
                 "row": 2,
                 "type": "input"

@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from core.config import DATABASE_URL  # noqa: E402
 from models.base import Base  # noqa: E402
 from models import (  # noqa: E402,F401
+    department,
     inventory_value,
     location,
     material,
@@ -21,6 +22,7 @@ from models import (  # noqa: E402,F401
     stock,
     stock_out_header,
     stock_out_item,
+    supplier,
     user,
     user_module_permission,
 )

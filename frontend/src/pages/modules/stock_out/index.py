@@ -24,6 +24,10 @@ class ModulePage:
             {
                 "name": "description", "label": "Description",
                 "type": "label"
+            },
+            {
+                "name": "department_name", "label": "Department",
+                "type": "label"
             }
         ]
 

@@ -2,7 +2,6 @@ import flet as ft
 
 from components.module.view import ModuleView
 from components.form.form import Form
-from pages.modules.stock_out.item_table import ItemTable
 
 
 class ModulePage:
@@ -17,21 +16,16 @@ class ModulePage:
         self.fields = [
             {
                 "name": "id", "type": "hidden",
-                "key": True,
+                "key": True
             },
             {
-                "name": "date", "label": "Date", "icon": ft.Icons.CALENDAR_MONTH,
+                "name": "code", "label": "Code", "icon": ft.Icons.QR_CODE,
                 "row": 1, "col": {"sm": 12, "md": 6},
-                "type": "date", "autofocus": True
+                "type": "input", "autofocus": True
             },
             {
-                "name": "department_id", "label": "Department", "icon": ft.Icons.APARTMENT,
+                "name": "name", "label": "Name", "icon": ft.Icons.LABEL,
                 "row": 1, "col": {"sm": 12, "md": 6},
-                "type": "select"
-            },
-            {
-                "name": "description", "label": "Description", "icon": ft.Icons.NOTES,
-                "row": 2,
                 "type": "input"
             }
         ]
@@ -39,13 +33,13 @@ class ModulePage:
         self.form = Form(
             page=page,
             parent=self,
-            name="edit",
-            fields=self.fields
+            name="new",
+            fields=self.fields,
+            start_blank=True
         )
-        self.item_table = ItemTable(page, module, record_id)
 
         self.view = ModuleView(page, module, screen)
-        self.view.header.set_title("Edit Stock Out")
+        self.view.header.set_title("New Supplier")
 
         self.view.toolbar.add_submit_button(callback=self.callback_submit)
 
@@ -53,11 +47,7 @@ class ModulePage:
         return self.view.build(self.body())
 
     def body(self):
-        return ft.Column(
-            controls=[self.form.build(), self.item_table.build()],
-            expand=True,
-            scroll=ft.ScrollMode.AUTO,
-        )
+        return self.form.build()
 
     def callback_submit(self, e):
         self.form.submit()

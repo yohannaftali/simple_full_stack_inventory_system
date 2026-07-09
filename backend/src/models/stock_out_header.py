@@ -1,8 +1,9 @@
 """Stock out header ORM model — groups a stock-out transaction (date + description)."""
 
 from datetime import date, datetime
+from typing import Optional
 
-from sqlalchemy import Date, DateTime, String
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -17,6 +18,9 @@ class StockOutHeaderModel(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     date: Mapped[date] = mapped_column(Date, nullable=False)
     description: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    department_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("departments.id"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
     )

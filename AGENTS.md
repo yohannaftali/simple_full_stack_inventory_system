@@ -91,7 +91,9 @@ Dependencies are pinned in `backend/requirements.txt` (no `pyproject.toml`).
   `SessionLocal` session factory. Each table gets its own module:
   - `user.py` → `UserModel` (`users` table: `id`, `username`, `password`,
     `email`, `is_active`, `is_superuser`, `totp_secret` [empty string = 2FA
-    not enrolled], `created_at`, `updated_at`).
+    not enrolled], `department_id` [nullable FK to `departments.id` — not
+    every account (e.g. `admin`/IT) belongs to a department], `created_at`,
+    `updated_at`).
   - `module.py` → `ModuleModel` (`modules` table, adopted from the legacy PHP
     `ap_module` table: `id`, `name` [unique, matches a folder under
     `frontend/src/pages/modules/`], `label`, `sort`, `sort_mobile`,
@@ -232,7 +234,7 @@ Dependencies are pinned in `backend/requirements.txt` (no `pyproject.toml`).
   `admin1234#` — **change this password after first login**; the migration
   is idempotent, it no-ops if a user named `admin` already exists, and
   `downgrade()` removes exactly that seeded row).
-  `0006_seed_default_modules_and_permissions.py` seeds all 7 built-in
+  `0006_seed_default_modules_and_permissions.py` seeds the 7 built-in
   `modules` rows (`ap_module`, `ap_master_user`, `master_location`,
   `master_material`, `stock_in`, `stock_out`, `stock_browse` — name/label/
   icon/description/sort hardcoded in the migration) and grants every one of
@@ -242,6 +244,25 @@ Dependencies are pinned in `backend/requirements.txt` (no `pyproject.toml`).
   a fresh install had an empty `modules` table and no grants at all until
   someone ran that by hand). Also idempotent (matches existing rows by
   `name`/`(user_id, module_id)` before inserting) and reversible.
+  `0007_create_suppliers_table.py` creates the `suppliers` table and adds
+  `materials.supplier_id` (nullable FK). `0008_seed_master_supplier_module.py`
+  seeds the `master_supplier` module row and its `admin` grant, same
+  idempotent/reversible pattern as `0006` (kept as a separate migration
+  rather than appended to `0006`'s `DEFAULT_MODULES` list, since `0006`
+  already shipped/ran against real databases — extending it after the fact
+  wouldn't backfill instances that already applied it).
+  `0009_create_departments_table.py` creates `departments` and adds
+  `users.department_id` + `stock_out_headers.department_id` (both nullable
+  FKs, via `op.batch_alter_table` — plain `op.create_foreign_key` after
+  `add_column` isn't supported on SQLite, which this repo's migrations are
+  verified against before hitting real MariaDB; `batch_alter_table` works on
+  both dialects). `0010_seed_master_department_module.py` seeds the
+  `master_department` module + `admin` grant, same pattern as `0008`. **Every
+  new module needs its own seed migration** (module row + `admin` grant) —
+  this is the established convention, not optional; skipping it is exactly
+  the gap `0006` was created to fix (see that entry above).
+  `0011_seed_usage_report_module.py` seeds the `usage_report` module (no
+  schema change — it's read-only, aggregating existing tables), same pattern.
 - Because `src/` code imports as top-level packages (`from models.base import
   ...`, not `from src.models.base import ...`), `Dockerfile-backend` sets
   `ENV PYTHONPATH=/usr/src/app/src` and copies `alembic.ini` +
@@ -273,14 +294,15 @@ Dependencies are pinned in `backend/requirements.txt` (no `pyproject.toml`).
      point the Server Config page at `https://<host>:5443` (or
      `http://<host>:5000` if you don't need TLS).
 - **Bootstrap**: `alembic upgrade head` seeds `admin`/`admin1234#` as an
-  active superuser (`0004`) *and* all 7 built-in modules + grants every one
-  to that account (`0006`) — a fresh instance has working home screen tiles
-  and full admin access with zero manual steps. `require_module_access`'s
-  superuser bypass still matters for any *new* module you add by hand later
-  (e.g. via `/modules/ap_module/new`) — that account can use the module
-  admin/permission screens to create and grant it to itself or others before
-  it has any grant of its own, same as it could before `0006` existed for
-  the whole starter set.
+  active superuser (`0004`) *and* the built-in modules + grants every one
+  to that account (`0006` for the original 7, `0008` for `master_supplier`)
+  — a fresh instance has working home screen tiles and full admin access
+  with zero manual steps. `require_module_access`'s superuser bypass still
+  matters for any *new* module you add by hand later (e.g. via
+  `/modules/ap_module/new`) — that account can use the module admin/
+  permission screens to create and grant it to itself or others before it
+  has any grant of its own, same as it could before `0006`/`0008` existed
+  for the starter set.
 - Full login → home (real granted modules) → TOTP-enroll → re-login-with-
   TOTP → permission-check → module CRUD → user CRUD → grant/revoke →
   cascade-delete flow is verified end-to-end with `TestClient` smoke tests.
@@ -290,10 +312,22 @@ Dependencies are pinned in `backend/requirements.txt` (no `pyproject.toml`).
 
 ## Inventory Domain (stock in/out, moving-average costing)
 
-Master data: `locations` (`LocationModel`: `code`, `name`) and `materials`
-(`MaterialModel`: `material_code`, `material_name`), managed via the
-`master_location`/`master_material` admin modules (plain CRUD, same shape as
-`ap_module`).
+Master data: `locations` (`LocationModel`: `code`, `name`), `suppliers`
+(`SupplierModel`: `code`, `name`), `departments` (`DepartmentModel`: `code`,
+`name` — who consumes inventory, for usage reporting), and `materials`
+(`MaterialModel`: `material_code`, `material_name`, `supplier_id` — nullable
+FK to `suppliers.id`, since materials created before the supplier link has
+no supplier to point to), managed via the `master_location`/
+`master_supplier`/`master_department`/`master_material` admin modules
+(plain CRUD, same shape as `ap_module`). `master_material`'s new/edit form
+renders `supplier_id` as a `select` field
+(`GET C_master_material/call_supplier_id_select`), and its list/get
+responses include a denormalized `supplier_name` for display — the same
+pattern as `stock_in`/`stock_out`'s `material_id`/`location_id` selects,
+just on master data instead of a transactional item. `UserModel` also has
+an optional `department_id` (see Backend Architecture above) so a user can
+represent one department's requester, separately from stock-out headers
+each declaring their own department.
 
 Transactional tables, all in `backend/src/models/`:
 - `receiving_headers` / `receiving_items` (stock in): a header is just
@@ -309,9 +343,14 @@ Transactional tables, all in `backend/src/models/`:
 - `inventory_values`: one row per material (`material_id` unique),
   `qty` (total on hand across all locations) + `average_price` (MAP).
 - `stock_out_headers` / `stock_out_items` (stock out): header is `date` +
-  `description`; each item is `material_id` + `location_id` + `qty_out` +
-  the **captured** `price` (that material's MAP at the moment of issue) +
-  `total_value` (`qty_out * price`) + `remarks`.
+  `description` + `department_id` (nullable FK to `departments.id` — nullable
+  at the schema level only for headers created before this column existed;
+  `routers/stock_out.py::submit` rejects a blank `department_id` on every
+  new create/update, so every transaction going forward is attributed to
+  exactly one department, which is what makes a "consumption by department"
+  usage report possible); each item is `material_id` + `location_id` +
+  `qty_out` + the **captured** `price` (that material's MAP at the moment of
+  issue) + `total_value` (`qty_out * price`) + `remarks`.
 
 All business logic lives in `backend/src/services/inventory_service.py`,
 which — unlike every other service/repository in this codebase — manages its
@@ -355,26 +394,48 @@ everywhere else; only item writes route through the service).
 
 Routers (all under `backend/src/routers/`, each gated by
 `require_module_access("<module_name>")`):
-- `master_location.py` / `master_material.py`: standard list/get/submit/delete.
+- `master_location.py` / `master_supplier.py` / `master_department.py` /
+  `master_material.py`: standard list/get/submit/delete (`master_material.py`
+  additionally exposes `call_supplier_id_select`).
 - `stock_browse.py`: read-only, `GET C_stock_browse/get_detail` — current
   on-hand qty per (material, location) with qty > 0, joined with that
   material's MAP for `average_price`/`value`. Not lot-level; aggregates
   across whichever `stocks` rows share a material+location.
+- `usage_report.py`: read-only, `GET C_usage_report/get_detail` — total
+  qty issued + total cost per (department, material), summed across every
+  `stock_out_items` row joined back through its header's `department_id`.
+  Backed by `repository/usage_report_repository.py::UsageReportRepository`
+  (a dedicated cross-table aggregate repository, same pattern as
+  `stock_repository.py` for `stock_browse` — not bolted onto
+  `stock_out_repository.py`, which owns header CRUD + item reads, not
+  reporting). `total_cost` sums each item's already-captured `total_value`
+  (the MAP at time of issue), so the report reflects historical cost, not
+  today's MAP.
 - `stock_in.py` / `stock_out.py`: header list/get/submit (same shape as
-  master data), plus a **separate item sub-flow** — `get_items` (list by
-  header), `submit_item` (create, and for stock_in only, update), and (for
-  stock_in) `get_item` (single, for the edit form) — because a receiving/
-  issuing item is edited on its own screen, not as part of one combined
-  header+items submission (see Frontend Architecture below for why). Each
-  also exposes `call_material_id_select`/`call_location_id_select` for the
-  item form's dropdowns.
+  master data — `stock_out.py`'s header additionally requires a non-blank
+  `department_id` on submit, and its list/get responses include a
+  denormalized `department_name`), plus a **separate item sub-flow** —
+  `get_items` (list by header), `submit_item` (create, and for stock_in only,
+  update), and (for stock_in) `get_item` (single, for the edit form) —
+  because a receiving/issuing item is edited on its own screen, not as part
+  of one combined header+items submission (see Frontend Architecture below
+  for why). Each also exposes `call_material_id_select`/
+  `call_location_id_select` for the item form's dropdowns; `stock_out.py`
+  additionally exposes `call_department_id_select` for its header form.
 
-**Frontend module structure** (`frontend/src/pages/modules/`): `master_location`
-and `master_material` are plain `{index,new,edit}.py` CRUD, identical in
-shape to `ap_module`. `stock_browse` is `index.py` only (no `new`/`edit` —
-and deliberately no field marked `"key": True` in its `Table` config, since
-`Rows.py` unconditionally wires a `"key"` field to row-tap-navigates-to-
-`edit/<id>`, and there is no edit screen to navigate to).
+**Frontend module structure** (`frontend/src/pages/modules/`): `master_location`,
+`master_supplier`, `master_department`, and `master_material` are plain
+`{index,new,edit}.py` CRUD, identical in shape to `ap_module`
+(`master_material`'s `new`/`edit` additionally carry a `supplier_id` select
+field, `index` a read-only `supplier_name` label). `ap_master_user`'s
+`new`/`edit` similarly carry a `department_id` select field (optional —
+blank is valid) and `index` a read-only `department_name` label;
+`stock_out`'s `new`/`edit` carry a required `department_id` select on the
+header form and `index` a read-only `department_name` label. `stock_browse`
+and `usage_report` are `index.py` only (no `new`/`edit` — and deliberately
+no field marked `"key": True` in their `Table` config, since `Rows.py`
+unconditionally wires a `"key"` field to row-tap-navigates-to-`edit/<id>`,
+and neither has an edit screen to navigate to).
 
 `stock_in`/`stock_out` needed a **header/item master-detail pattern that
 doesn't exist elsewhere in this codebase**. Two roads not taken, and why:

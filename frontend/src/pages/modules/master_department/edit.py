@@ -2,7 +2,6 @@ import flet as ft
 
 from components.module.view import ModuleView
 from components.form.form import Form
-from pages.modules.ap_master_user.permission_checklist import PermissionChecklist
 from utils.http_client import HttpClient
 
 
@@ -10,15 +9,6 @@ class ModulePage:
     """Module screen class"""
 
     def __init__(self, page: ft.Page, module: str, screen=str, record_id: str | int = None):
-        """
-        Initialize Module Page
-
-        Args:
-            page: The Flet page
-            module: string
-            screen: string
-            record_id: string | int
-        """
         self.page = page
         self.module = module
         self.screen = screen
@@ -30,34 +20,14 @@ class ModulePage:
                 "key": True,
             },
             {
-                "name": "username", "label": "Username", "icon": ft.Icons.PERSON,
+                "name": "code", "label": "Code", "icon": ft.Icons.QR_CODE,
                 "row": 1, "col": {"sm": 12, "md": 6},
                 "type": "input", "autofocus": True
             },
             {
-                "name": "email", "label": "Email", "icon": ft.Icons.EMAIL,
+                "name": "name", "label": "Name", "icon": ft.Icons.LABEL,
                 "row": 1, "col": {"sm": 12, "md": 6},
                 "type": "input"
-            },
-            {
-                "name": "password", "label": "Password (leave blank to keep)", "icon": ft.Icons.LOCK,
-                "row": 2, "col": {"sm": 12, "md": 6},
-                "type": "input"
-            },
-            {
-                "name": "is_active", "label": "Active", "icon": ft.Icons.CHECK_CIRCLE,
-                "row": 2, "col": {"sm": 12, "md": 6},
-                "type": "select"
-            },
-            {
-                "name": "is_superuser", "label": "Superuser", "icon": ft.Icons.ADMIN_PANEL_SETTINGS,
-                "row": 3, "col": {"sm": 12, "md": 6},
-                "type": "select"
-            },
-            {
-                "name": "department_id", "label": "Department", "icon": ft.Icons.APARTMENT,
-                "row": 3, "col": {"sm": 12, "md": 6},
-                "type": "select"
             }
         ]
 
@@ -67,12 +37,9 @@ class ModulePage:
             name="edit",
             fields=self.fields
         )
-        self.permission_checklist = (
-            PermissionChecklist(page, record_id) if record_id else None
-        )
 
         self.view = ModuleView(page, module, screen)
-        self.view.header.set_title("Edit User")
+        self.view.header.set_title("Edit Department")
 
         self.view.toolbar.add_submit_button(callback=self.callback_submit)
         self.view.toolbar.add_button(
@@ -85,14 +52,10 @@ class ModulePage:
         )
 
     def build(self):
-        """Build and return the module screen page UI"""
         return self.view.build(self.body())
 
     def body(self):
-        controls = [self.form.build()]
-        if self.permission_checklist is not None:
-            controls.append(self.permission_checklist.build())
-        return ft.Column(controls=controls, expand=True, scroll=ft.ScrollMode.AUTO)
+        return self.form.build()
 
     def callback_submit(self, e):
         self.form.submit()
@@ -105,5 +68,5 @@ class ModulePage:
             self.view.show_error(response["error"])
             return
 
-        self.view.show_success("User deleted successfully")
+        self.view.show_success("Department deleted successfully")
         self.page.run_task(self.page.push_route, f"/modules/{self.module}/index")

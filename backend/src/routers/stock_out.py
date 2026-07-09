@@ -4,9 +4,14 @@ Same header/item-subscreen structure as `stock_in.py`, except items are
 create-only (no `submit_item` update path, no `get_item`) — see
 `services.inventory_service` for why editing an issue isn't supported.
 
-- GET  C_stock_out/get_detail -> paginated stock out headers.
-- GET  C_stock_out/get?id=<id> -> single header {id, date, description}.
-- POST C_stock_out/submit (form: id, date, description) -> upsert header.
+- GET  C_stock_out/get_detail -> paginated stock out headers, including
+  department_id/department_name (each transaction is issued to exactly one
+  department, for usage reporting).
+- GET  C_stock_out/get?id=<id> -> single header {id, date, description,
+  department_id, department_name}.
+- POST C_stock_out/submit (form: id, date, description, department_id) ->
+  upsert header. `department_id` is required — every stock-out transaction
+  must be attributed to a department.
 - GET  C_stock_out/get_items?header_id=<id> -> that header's items, joined
   with material_code/name and location_code/name, plus the captured price
   and total_value.
@@ -14,8 +19,9 @@ create-only (no `submit_item` update path, no `get_item`) — see
   location_id, qty_out, remarks) -> services.inventory_service.
   create_stock_out_item; {"error": "..."} (still HTTP 200) if there isn't
   enough stock at that location.
-- GET  C_stock_out/call_material_id_select, call_location_id_select ->
-  options for the item form's `select` fields.
+- GET  C_stock_out/call_material_id_select, call_location_id_select,
+  call_department_id_select -> options for the header/item forms' `select`
+  fields.
 
 Gated by `require_module_access("stock_out")`.
 """
@@ -27,6 +33,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, Form, Query
 
 from models.user import UserModel
+from repository.department_repository import DepartmentRepository
 from repository.location_repository import LocationRepository
 from repository.material_repository import MaterialRepository
 from repository.stock_out_repository import StockOutRepository
@@ -38,8 +45,24 @@ router = APIRouter(prefix="/C_stock_out", tags=["stock-out"])
 _stock_out_repository = StockOutRepository()
 _material_repository = MaterialRepository()
 _location_repository = LocationRepository()
+_department_repository = DepartmentRepository()
 
 _require_access = require_module_access("stock_out")
+
+
+def _serialize_header(header) -> dict:
+    department = (
+        _department_repository.get_department_by_id(header.department_id)
+        if header.department_id
+        else None
+    )
+    return {
+        "id": header.id,
+        "date": header.date.isoformat(),
+        "description": header.description,
+        "department_id": str(header.department_id) if header.department_id else "",
+        "department_name": department.name if department else "",
+    }
 
 
 @router.get("/get_detail")
@@ -58,15 +81,10 @@ def get_detail(
 
     result = []
     for header in rows:
-        result.append(
-            {
-                "id": header.id,
-                "date": header.date.isoformat(),
-                "description": header.description,
-                "db_total_page": total_pages,
-                "db_num_rows": total,
-            }
-        )
+        row = _serialize_header(header)
+        row["db_total_page"] = total_pages
+        row["db_num_rows"] = total
+        result.append(row)
     return result
 
 
@@ -75,7 +93,7 @@ def get(id: int, user: UserModel = Depends(_require_access)) -> dict:  # noqa: A
     header = _stock_out_repository.get_header_by_id(id)
     if header is None:
         return {"error": "Stock out header not found"}
-    return {"id": header.id, "date": header.date.isoformat(), "description": header.description}
+    return _serialize_header(header)
 
 
 @router.post("/submit")
@@ -83,17 +101,24 @@ def submit(
     id: str = Form(""),  # noqa: A002
     date: date_type = Form(...),
     description: str = Form(""),
+    department_id: str = Form(""),
     user: UserModel = Depends(_require_access),
 ) -> dict:
+    if not department_id:
+        return {"error": "Department is required"}
+    department_id_value = int(department_id)
+
     if id:
         updated = _stock_out_repository.update_header(
-            int(id), date=date, description=description
+            int(id), date=date, description=description, department_id=department_id_value
         )
         if not updated:
             return {"error": "Stock out header not found"}
         return {"message": "Stock out header updated successfully"}
 
-    _stock_out_repository.create_header(date=date, description=description)
+    _stock_out_repository.create_header(
+        date=date, description=description, department_id=department_id_value
+    )
     return {"message": "Stock out header created successfully"}
 
 
@@ -161,4 +186,12 @@ def call_location_id_select(user: UserModel = Depends(_require_access)) -> list:
     return [
         {"value": str(loc.id), "label": f"{loc.code} - {loc.name}"}
         for loc in _location_repository.get_all_locations()
+    ]
+
+
+@router.get("/call_department_id_select")
+def call_department_id_select(user: UserModel = Depends(_require_access)) -> list:
+    return [
+        {"value": str(d.id), "label": f"{d.code} - {d.name}"}
+        for d in _department_repository.get_all_departments()
     ]

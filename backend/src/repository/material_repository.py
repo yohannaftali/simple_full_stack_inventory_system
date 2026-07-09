@@ -48,15 +48,27 @@ class MaterialRepository:
             )
             return rows, total
 
-    def create_material(self, material_code: str, material_name: str) -> MaterialModel:
+    def create_material(
+        self, material_code: str, material_name: str, supplier_id: Optional[int] = None
+    ) -> MaterialModel:
         with SessionLocal() as session:
-            material = MaterialModel(material_code=material_code, material_name=material_name)
+            material = MaterialModel(
+                material_code=material_code,
+                material_name=material_name,
+                supplier_id=supplier_id,
+            )
             session.add(material)
             session.commit()
             session.refresh(material)
             return material
 
-    def update_material(self, material_id: int, material_code: str, material_name: str) -> bool:
+    def update_material(
+        self,
+        material_id: int,
+        material_code: str,
+        material_name: str,
+        supplier_id: Optional[int] = None,
+    ) -> bool:
         with SessionLocal() as session:
             material = (
                 session.query(MaterialModel).filter(MaterialModel.id == material_id).first()
@@ -66,6 +78,7 @@ class MaterialRepository:
 
             material.material_code = material_code
             material.material_name = material_name
+            material.supplier_id = supplier_id
             session.commit()
             return True
 

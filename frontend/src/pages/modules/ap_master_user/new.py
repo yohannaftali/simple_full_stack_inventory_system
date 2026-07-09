@@ -51,6 +51,11 @@ class ModulePage:
                 "name": "is_superuser", "label": "Superuser", "icon": ft.Icons.ADMIN_PANEL_SETTINGS,
                 "row": 3, "col": {"sm": 12, "md": 6},
                 "type": "select"
+            },
+            {
+                "name": "department_id", "label": "Department", "icon": ft.Icons.APARTMENT,
+                "row": 3, "col": {"sm": 12, "md": 6},
+                "type": "select"
             }
         ]
 

@@ -9,8 +9,12 @@ Contract (see components/table/table.py, components/form/form.py, components/for
 - GET  C_ap_master_user/call_is_active_select,
   GET  C_ap_master_user/call_is_superuser_select -> static Yes/No options.
 - POST C_ap_master_user/submit (form: id, username, email, password, is_active,
-  is_superuser) -> upsert. `password` is required to create, optional on
-  update (blank = keep existing); always bcrypt-hashed before storing.
+  is_superuser, department_id) -> upsert. `password` is required to create,
+  optional on update (blank = keep existing); always bcrypt-hashed before
+  storing. `department_id` is optional (nullable — not every user belongs to
+  a department, e.g. admin/IT accounts).
+- GET  C_ap_master_user/call_department_id_select -> options for the
+  `department_id` select field.
 - POST C_ap_master_user/delete (form: id) -> also deletes the user's
   module-permission grants first.
 - GET  C_ap_master_user/get_all_modules -> every module (for the permission
@@ -28,6 +32,7 @@ from fastapi import APIRouter, Depends, Form, Query
 
 from core.security import hash_password
 from models.user import UserModel
+from repository.department_repository import DepartmentRepository
 from repository.module_repository import ModuleRepository
 from repository.user_module_permission_repository import UserModulePermissionRepository
 from repository.user_repository import UserRepository
@@ -37,6 +42,7 @@ router = APIRouter(prefix="/C_ap_master_user", tags=["user-admin"])
 _user_repository = UserRepository()
 _module_repository = ModuleRepository()
 _permission_repository = UserModulePermissionRepository()
+_department_repository = DepartmentRepository()
 
 _require_access = require_module_access("ap_master_user")
 
@@ -47,12 +53,19 @@ _YES_NO_OPTIONS = [
 
 
 def _serialize_user(user: UserModel) -> dict:
+    department = (
+        _department_repository.get_department_by_id(user.department_id)
+        if user.department_id
+        else None
+    )
     return {
         "id": user.id,
         "username": user.username,
         "email": user.email,
         "is_active": "true" if user.is_active else "false",
         "is_superuser": "true" if user.is_superuser else "false",
+        "department_id": str(user.department_id) if user.department_id else "",
+        "department_name": department.name if department else "",
     }
 
 
@@ -103,6 +116,14 @@ def call_is_superuser_select(user: UserModel = Depends(_require_access)) -> list
     return _YES_NO_OPTIONS
 
 
+@router.get("/call_department_id_select")
+def call_department_id_select(user: UserModel = Depends(_require_access)) -> list:
+    return [
+        {"value": str(d.id), "label": f"{d.code} - {d.name}"}
+        for d in _department_repository.get_all_departments()
+    ]
+
+
 @router.post("/submit")
 def submit(
     id: str = Form(""),  # noqa: A002
@@ -111,11 +132,13 @@ def submit(
     password: str = Form(""),
     is_active: str = Form("true"),
     is_superuser: str = Form("false"),
+    department_id: str = Form(""),
     user: UserModel = Depends(_require_access),
 ) -> dict:
     """Create or update a user (blank/missing id = create)."""
     active = _parse_bool(is_active)
     superuser = _parse_bool(is_superuser)
+    department_id_value = int(department_id) if department_id else None
 
     if id:
         target_id = int(id)
@@ -129,6 +152,7 @@ def submit(
             is_active=active,
             is_superuser=superuser,
             password=hash_password(password) if password else None,
+            department_id=department_id_value,
         )
         if not updated:
             return {"error": "User not found"}
@@ -145,6 +169,7 @@ def submit(
         email=email,
         is_active=active,
         is_superuser=superuser,
+        department_id=department_id_value,
     )
     return {"message": "User created successfully"}
 

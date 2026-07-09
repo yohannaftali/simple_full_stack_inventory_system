@@ -1,8 +1,9 @@
 """Material ORM model (master data — what can be received/stocked/issued)."""
 
 from datetime import datetime
+from typing import Optional
 
-from sqlalchemy import DateTime, String
+from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -19,6 +20,9 @@ class MaterialModel(Base):
         String(50), unique=True, nullable=False, index=True
     )
     material_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    supplier_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("suppliers.id"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
     )

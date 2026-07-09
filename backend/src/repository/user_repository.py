@@ -43,6 +43,7 @@ class UserRepository:
         email: str,
         is_active: bool = True,
         is_superuser: bool = False,
+        department_id: Optional[int] = None,
     ) -> UserModel:
         """Create a new user."""
         with SessionLocal() as session:
@@ -52,6 +53,7 @@ class UserRepository:
                 email=email,
                 is_active=is_active,
                 is_superuser=is_superuser,
+                department_id=department_id,
             )
             session.add(user)
             session.commit()
@@ -166,6 +168,7 @@ class UserRepository:
         is_active: bool,
         is_superuser: bool,
         password: Optional[str] = None,
+        department_id: Optional[int] = None,
     ) -> bool:
         """Update a user's profile fields (admin CRUD path). Password only changes if given."""
         with SessionLocal() as session:
@@ -177,6 +180,7 @@ class UserRepository:
             user.email = email
             user.is_active = is_active
             user.is_superuser = is_superuser
+            user.department_id = department_id
             if password:
                 user.password = password
             session.commit()

@@ -42,15 +42,21 @@ class StockOutRepository:
             )
             return rows, total
 
-    def create_header(self, date, description: str) -> StockOutHeaderModel:
+    def create_header(
+        self, date, description: str, department_id: Optional[int] = None
+    ) -> StockOutHeaderModel:
         with SessionLocal() as session:
-            header = StockOutHeaderModel(date=date, description=description)
+            header = StockOutHeaderModel(
+                date=date, description=description, department_id=department_id
+            )
             session.add(header)
             session.commit()
             session.refresh(header)
             return header
 
-    def update_header(self, header_id: int, date, description: str) -> bool:
+    def update_header(
+        self, header_id: int, date, description: str, department_id: Optional[int] = None
+    ) -> bool:
         with SessionLocal() as session:
             header = (
                 session.query(StockOutHeaderModel)
@@ -62,6 +68,7 @@ class StockOutRepository:
 
             header.date = date
             header.description = description
+            header.department_id = department_id
             session.commit()
             return True
 

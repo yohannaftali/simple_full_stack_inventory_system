@@ -40,6 +40,10 @@ class ModulePage:
             {
                 "name": "is_superuser", "label": "Superuser",
                 "type": "label"
+            },
+            {
+                "name": "department_name", "label": "Department",
+                "type": "label"
             }
         ]
 

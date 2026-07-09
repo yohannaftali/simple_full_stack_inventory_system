@@ -5,7 +5,7 @@ from components.table.table import Table
 
 
 class ModulePage:
-    """Module page class"""
+    """Read-only material usage/cost by department report."""
 
     def __init__(self, page: ft.Page, module: str, screen=str):
         self.page = page
@@ -14,19 +14,31 @@ class ModulePage:
 
         self.fields = [
             {
-                "name": "id",
-                "type": "hidden", "key": True, "serialize": False
+                "name": "department_id",
+                "type": "hidden", "serialize": False
             },
             {
-                "name": "material_code", "label": "Code",
+                "name": "department_code", "label": "Dept Code",
                 "type": "label"
             },
             {
-                "name": "material_name", "label": "Name",
+                "name": "department_name", "label": "Department",
                 "type": "label"
             },
             {
-                "name": "supplier_name", "label": "Supplier",
+                "name": "material_code", "label": "Material Code",
+                "type": "label"
+            },
+            {
+                "name": "material_name", "label": "Material",
+                "type": "label"
+            },
+            {
+                "name": "total_qty_out", "label": "Total Qty",
+                "type": "label"
+            },
+            {
+                "name": "total_cost", "label": "Total Cost",
                 "type": "label"
             }
         ]
@@ -40,13 +52,8 @@ class ModulePage:
             fields=self.fields
         )
 
-        self.table.toolbar.add_new_button(callback=self.callback_add_new)
-
     def build(self):
         return self.view.build(self.body(), padding=0)
 
     def body(self):
         return self.table.build()
-
-    def callback_add_new(self, e):
-        self.page.run_task(self.page.push_route, f"/modules/{self.module}/new")

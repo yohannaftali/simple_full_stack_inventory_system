@@ -28,6 +28,11 @@ class ModulePage:
                 "name": "material_name", "label": "Name", "icon": ft.Icons.LABEL,
                 "row": 1, "col": {"sm": 12, "md": 6},
                 "type": "input"
+            },
+            {
+                "name": "supplier_id", "label": "Supplier", "icon": ft.Icons.LOCAL_SHIPPING,
+                "row": 2, "col": {"sm": 12, "md": 6},
+                "type": "select"
             }
         ]
 
