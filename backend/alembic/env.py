@@ -11,7 +11,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from core.config import DATABASE_URL  # noqa: E402
 from models.base import Base  # noqa: E402
-from models import user  # noqa: E402,F401
+from models import (  # noqa: E402,F401
+    inventory_value,
+    location,
+    material,
+    module,
+    receiving_header,
+    receiving_item,
+    stock,
+    stock_out_header,
+    stock_out_item,
+    user,
+    user_module_permission,
+)
 
 config = context.config
 config.set_main_option("sqlalchemy.url", DATABASE_URL)

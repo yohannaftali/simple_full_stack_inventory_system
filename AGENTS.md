@@ -265,6 +265,129 @@ Dependencies are pinned in `backend/requirements.txt` (no `pyproject.toml`).
   TOTP → permission-check → module CRUD → user CRUD → grant/revoke →
   cascade-delete flow is verified end-to-end with `TestClient` smoke tests.
 
+## Inventory Domain (stock in/out, moving-average costing)
+
+Master data: `locations` (`LocationModel`: `code`, `name`) and `materials`
+(`MaterialModel`: `material_code`, `material_name`), managed via the
+`master_location`/`master_material` admin modules (plain CRUD, same shape as
+`ap_module`).
+
+Transactional tables, all in `backend/src/models/`:
+- `receiving_headers` / `receiving_items` (stock in): a header is just
+  `date` + `description`; each item is one `material_id` + `location_id` +
+  `price_buy` + `qty_received` + `remarks`. **`location_id` lives on the
+  item**, not the header — inferred, not explicitly specified, since the
+  `stocks` table needs a location per lot and nothing else supplies one.
+- `stocks`: one lot row per receiving item (`receiving_item_id` FK, plus
+  denormalized `material_id`/`location_id`/`qty`), unique on
+  `(receiving_item_id, material_id, location_id)`. Since one receiving item
+  always has exactly one material/location, this is effectively 1:1 with its
+  receiving item — a lot, not an aggregate.
+- `inventory_values`: one row per material (`material_id` unique),
+  `qty` (total on hand across all locations) + `average_price` (MAP).
+- `stock_out_headers` / `stock_out_items` (stock out): header is `date` +
+  `description`; each item is `material_id` + `location_id` + `qty_out` +
+  the **captured** `price` (that material's MAP at the moment of issue) +
+  `total_value` (`qty_out * price`) + `remarks`.
+
+All business logic lives in `backend/src/services/inventory_service.py`,
+which — unlike every other service/repository in this codebase — manages its
+own `SessionLocal()` transaction directly instead of going through
+single-table repository methods, because one "receive" or "issue" call must
+touch `receiving_items`/`stocks`/`inventory_values` (or `stock_out_items`)
+atomically. Repositories for these tables (`receiving_repository.py`,
+`stock_repository.py`, `stock_out_repository.py`) are read-only for the
+transactional parts (header CRUD is plain repository methods same as
+everywhere else; only item writes route through the service).
+
+- **Moving average price (MAP)**: receiving `new_qty` at `new_price` when the
+  material already has `qty`/`average_price` on hand recomputes as
+  `(qty*average_price + new_qty*new_price) / (qty+new_qty)`. Issuing stock
+  decreases `qty` but never touches `average_price` (standard moving-average
+  costing — cost only moves on receipt).
+- **Editing a receiving item** (qty/price/remarks only — material/location
+  are fixed once created, by design, to avoid a much harder "item moved to a
+  different material" MAP-reconciliation case): reverses the item's old
+  (qty, price) contribution from the running total, then applies the new
+  one. This is exact *as long as no stock-out for that material happened
+  between the original receipt and the edit* — the service doesn't replay
+  full transaction history, so editing an old receipt with intervening
+  issues only approximately corrects the average. Documented simplification
+  for a "simple" inventory system, not a bug.
+- **Stock out deduction is user-picks-location, then FIFO within it**: the
+  stock-out form has the user pick one location (confirmed over an
+  automatic-FIFO-across-locations alternative — simpler, matches how
+  receiving already assigns location explicitly). Given that location, the
+  service deducts oldest-lot-first (`StockModel` rows ordered by `id`
+  ascending, a proxy for receiving order) until the requested qty is
+  satisfied, raising `InsufficientStockError` up front (before mutating
+  anything) if the location's total is short.
+- **Stock out items are immutable** (create-only, no edit/delete) — cleanly
+  reversing a FIFO deduction that may have spanned multiple lots would need
+  a lot-allocation ledger, which is out of scope; to "undo" an issue today
+  you'd receive it back in.
+- Deleting a location/material that has any receiving/stock/issue history
+  fails with a friendly `{"error": "Cannot delete: ..."}` (catches the
+  FK `IntegrityError`) rather than a raw 500 or a silent cascade.
+
+Routers (all under `backend/src/routers/`, each gated by
+`require_module_access("<module_name>")`):
+- `master_location.py` / `master_material.py`: standard list/get/submit/delete.
+- `stock_browse.py`: read-only, `GET C_stock_browse/get_detail` — current
+  on-hand qty per (material, location) with qty > 0, joined with that
+  material's MAP for `average_price`/`value`. Not lot-level; aggregates
+  across whichever `stocks` rows share a material+location.
+- `stock_in.py` / `stock_out.py`: header list/get/submit (same shape as
+  master data), plus a **separate item sub-flow** — `get_items` (list by
+  header), `submit_item` (create, and for stock_in only, update), and (for
+  stock_in) `get_item` (single, for the edit form) — because a receiving/
+  issuing item is edited on its own screen, not as part of one combined
+  header+items submission (see Frontend Architecture below for why). Each
+  also exposes `call_material_id_select`/`call_location_id_select` for the
+  item form's dropdowns.
+
+**Frontend module structure** (`frontend/src/pages/modules/`): `master_location`
+and `master_material` are plain `{index,new,edit}.py` CRUD, identical in
+shape to `ap_module`. `stock_browse` is `index.py` only (no `new`/`edit` —
+and deliberately no field marked `"key": True` in its `Table` config, since
+`Rows.py` unconditionally wires a `"key"` field to row-tap-navigates-to-
+`edit/<id>`, and there is no edit screen to navigate to).
+
+`stock_in`/`stock_out` needed a **header/item master-detail pattern that
+doesn't exist elsewhere in this codebase**. Two roads not taken, and why:
+- `components/form/table.py` / `list.py` (the `Form` component's `"table"`/
+  `"list"` field types) look like the obvious fit, but they serialize their
+  rows as indexed fields (`items[0]`, `items[1]`, ...) submitted together
+  with the parent form in **one** POST — the spec here is "click + to add
+  one item via its own form," a separate transaction per item, not a bulk
+  combined save.
+- Reusing `components/table/table.py` (the plain list-table, as used by
+  every `index.py`) for the *item* sub-list doesn't work either:
+  `components/table/rows.py`'s row-tap handler is hardcoded to navigate to
+  `/modules/{module}/edit/{id}` — which is already the header's own edit
+  route. Using it for items would either collide with the header edit
+  screen or misinterpret an item id as a header id.
+
+  Solution: `stock_in/edit.py` and `stock_out/edit.py` embed a small custom
+  `ItemTable` widget (`pages/modules/stock_in/item_table.py`,
+  `pages/modules/stock_out/item_table.py` — plain `ft.DataTable`, not built
+  on the shared `Table` component) with its own "+" button and (stock_in
+  only) row-click, navigating to `item_new/<header_id>` and
+  `item_edit/<item_id>` respectively — screen names local to each module,
+  no collision. Those two screens don't use `Form.submit()` (which always
+  redirects to `/modules/{module}/index`); they call `self.form.serialize()`
+  themselves, POST via `HttpClient`, and redirect back to the header's
+  `edit/<header_id>` screen instead. `item_new` repurposes the route's
+  `record_id` slot to carry the *header* id (it only ever creates, so there's
+  no item id yet); `item_edit` does a small extra GET up front to learn its
+  item's `receiving_header_id` (needed to know where to navigate back to,
+  since the route only carries the item id).
+- Full stock-in → MAP calc across two receipts → edit-item MAP correction →
+  browse → stock-out (FIFO across 3 lots, partial-lot deduction, insufficient-
+  stock rejection, issue-from-empty-location rejection) → permission-gating
+  flow is verified end-to-end with `TestClient` smoke tests against SQLite,
+  plus a real walk against the live MariaDB container.
+
 ## Frontend Architecture (Flet — `frontend/src`)
 
 Stack: Python ≥3.10, Flet 0.85.3, `requests` for HTTP, `flet-datatable2`;
