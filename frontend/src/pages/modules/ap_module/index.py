@@ -26,19 +26,23 @@ class ModulePage:
                 "type": "hidden", "key": True, "serialize": False
             },
             {
-                "name": "username", "label": "Username",
+                "name": "name", "label": "Name",
                 "type": "label"
             },
             {
-                "name": "email", "label": "Email",
+                "name": "label", "label": "Label",
                 "type": "label"
             },
             {
-                "name": "is_active", "label": "Active",
+                "name": "sort", "label": "Sort",
                 "type": "label"
             },
             {
-                "name": "is_superuser", "label": "Superuser",
+                "name": "icon", "label": "Icon",
+                "type": "label"
+            },
+            {
+                "name": "description", "label": "Description",
                 "type": "label"
             }
         ]

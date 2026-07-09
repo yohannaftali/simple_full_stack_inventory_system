@@ -26,11 +26,13 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       UVICORN_HOST: 0.0.0.0
       UVICORN_PORT: ${UVICORN_PORT}
+      UVICORN_PORT_SSL: ${UVICORN_PORT_SSL}
       MARIADB_DATABASE: ${MARIADB_DATABASE}
       MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
       DATABASE_HOST: database
     ports:
       - "${UVICORN_PORT}:${UVICORN_PORT}"
+      - "${UVICORN_PORT_SSL}:${UVICORN_PORT_SSL}"
     volumes:
       - ./backend:/usr/src/app
       - ./logs/backend:/usr/src/app/logs:rw
