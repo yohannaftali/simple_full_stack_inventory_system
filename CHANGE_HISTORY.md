@@ -99,3 +99,11 @@
 - No code changed — this is a configuration/usage issue: the Server Config address must be `http://backend:5000` or `https://backend:5443` when using the containerized frontend web app. Documented the distinction in AGENTS.md (`localhost` only works for a client on the Windows host itself, e.g. native desktop Flet or `curl` from the host — not the containerized frontend)
 - Scope: docs
 - No GitHub issue filed (direct implementation, per user)
+
+## [2026-07-09] — fix(backend): add missing C_home/call_change_password endpoint (was 404)
+- User reported HTTP 404 submitting the Change Password modal; `frontend/src/pages/modals/password/index.py` posts to `C_home/call_change_password` (form: `c`, `n`, `f`), which had never been implemented — only `call_generate_totp`/`call_change_totp` existed under `C_home`
+- Added `POST C_home/call_change_password` to `backend/src/routers/home.py`: session-gated, verifies `n == f`, `c != n`, and `c` against the stored bcrypt hash via `core.security.verify_password`, then persists `hash_password(n)` via the existing `UserRepository.update_user_password`; returns `{"success"|"error": "..."}`, always HTTP 200 (same contract as `call_change_totp`)
+- Verified end-to-end in a throwaway venv: old password stops working after change, new password logs in, mismatched confirmation and wrong-current-password are rejected with `error`, unauthenticated request gets 401 (not 404) — all passed. Also verified live against the running `sfsis-backend` container (bind-mounted source, restarted to pick up the change — no rebuild needed) with a deliberately-same-password request, confirming HTTP 200 with a validation error instead of 404, without touching the real admin password
+- Noted in AGENTS.md: the `shift` and `token` modals call three more `C_home/call_*` endpoints that don't exist yet either (`call_shift_id_select`, `call_change_shift`, `call_change_token`) — same fix pattern applies if/when those come up
+- Scope: backend
+- No GitHub issue filed (direct implementation, per user)

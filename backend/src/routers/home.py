@@ -13,10 +13,16 @@ Contract:
   and persists `secret` as the user's totp_secret, or {"error": "..."} if the
   code doesn't match (still HTTP 200 either way — the frontend branches on
   the JSON body, not the status code, for this endpoint).
+- POST C_home/call_change_password (form data: c=current, n=new, f=new
+  confirmation) -> {"success": "..."} and persists the new (bcrypt-hashed)
+  password, or {"error": "..."} if the confirmation doesn't match, the new
+  password equals the current one, or the current password is wrong. Always
+  HTTP 200 — same body-not-status-code contract as call_change_totp.
 """
 
 from fastapi import APIRouter, Depends, Form
 
+from core.security import hash_password, verify_password
 from core.totp import generate_secret, verify as verify_totp
 from models.user import UserModel
 from repository.user_module_permission_repository import UserModulePermissionRepository
@@ -61,3 +67,24 @@ def call_change_totp(
 
     _user_repository.update_user_totp_secret(user.username, secret)
     return {"success": "TOTP enabled successfully"}
+
+
+@router.post("/call_change_password")
+def call_change_password(
+    c: str = Form(...),
+    n: str = Form(...),
+    f: str = Form(...),
+    user: UserModel = Depends(get_current_user),
+) -> dict:
+    """Verify the current password, then persist the new one (bcrypt-hashed)."""
+    if n != f:
+        return {"error": "New password confirmation does not match"}
+
+    if c == n:
+        return {"error": "New password must be different from the current password"}
+
+    if not verify_password(c, user.password):
+        return {"error": "Current password is incorrect"}
+
+    _user_repository.update_user_password(user.username, hash_password(n))
+    return {"success": "Password changed successfully"}

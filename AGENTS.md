@@ -158,6 +158,18 @@ Dependencies are pinned in `backend/requirements.txt` (no `pyproject.toml`).
       `UserRepository.update_user_totp_secret`, returning `{"success": "..."}`;
       otherwise `{"error": "..."}`. Always HTTP `200` — this endpoint's caller
       branches on the JSON body, not the status code.
+    - `POST C_home/call_change_password` (form: `c`=current, `n`=new,
+      `f`=new confirmation) → verifies `n == f`, `c != n`, and `c` against
+      the stored bcrypt hash, then persists `hash_password(n)`;
+      `{"success": "..."}` or `{"error": "..."}`. Always HTTP `200`, same
+      body-not-status-code contract as `call_change_totp`.
+    - The `shift` and `token` modals (`pages/modals/shift`,
+      `pages/modals/token`) call `C_home/call_shift_id_select`,
+      `C_home/call_change_shift`, `C_home/call_change_token` — **none of
+      these exist yet**; they'll 404 exactly like `call_change_password`
+      did before it was added here. Same fix pattern if/when needed: read
+      the modal's `client.get`/`client.post` calls for the exact endpoint
+      path and form-field names, then add a matching route to `home.py`.
 
   `module.py` → no prefix, one dynamic route: `GET C_{module_name}` →
   `{"secure": {"access": bool}}` (matches `ClientData.has_permission()`).
