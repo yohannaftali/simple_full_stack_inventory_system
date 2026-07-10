@@ -7,8 +7,7 @@ atomically — not something a plain single-table repository method should do.
 
 from typing import Optional
 
-from sqlalchemy import func, or_
-
+from core.table_query import Pagination, apply_keyword_filter, paginate
 from models.base import SessionLocal
 from models.receiving_header import ReceivingHeaderModel
 from models.receiving_item import ReceivingItemModel
@@ -26,20 +25,15 @@ class ReceivingRepository:
             )
 
     def list_headers(
-        self, keyword: str = "", limit: int = 20, offset: int = 0
-    ) -> tuple[list[ReceivingHeaderModel], int]:
+        self, keyword: str = "", limit: int = 20, page: int = 1, offset: int = 0
+    ) -> tuple[list[ReceivingHeaderModel], Pagination]:
         with SessionLocal() as session:
             query = session.query(ReceivingHeaderModel)
-            if keyword:
-                query = query.filter(ReceivingHeaderModel.description.like(f"%{keyword}%"))
-            total = query.with_entities(func.count(ReceivingHeaderModel.id)).scalar() or 0
-            rows = (
-                query.order_by(ReceivingHeaderModel.date.desc(), ReceivingHeaderModel.id.desc())
-                .offset(offset)
-                .limit(limit)
-                .all()
+            query = apply_keyword_filter(query, [ReceivingHeaderModel.description], keyword)
+            query = query.order_by(
+                ReceivingHeaderModel.date.desc(), ReceivingHeaderModel.id.desc()
             )
-            return rows, total
+            return paginate(query, limit=limit, page=page, offset=offset)
 
     def create_header(self, date, description: str) -> ReceivingHeaderModel:
         with SessionLocal() as session:

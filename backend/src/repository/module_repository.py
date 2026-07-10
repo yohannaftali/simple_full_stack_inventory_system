@@ -2,8 +2,7 @@
 
 from typing import Optional
 
-from sqlalchemy import func, or_
-
+from core.table_query import Pagination, apply_keyword_filter, paginate
 from models.base import SessionLocal
 from models.module import ModuleModel
 
@@ -29,19 +28,16 @@ class ModuleRepository:
             )
 
     def list_modules(
-        self, keyword: str = "", limit: int = 20, offset: int = 0
-    ) -> tuple[list[ModuleModel], int]:
-        """List modules matching an optional keyword, paginated. Returns (rows, total_count)."""
+        self, keyword: str = "", limit: int = 20, page: int = 1, offset: int = 0
+    ) -> tuple[list[ModuleModel], Pagination]:
+        """List modules matching an optional keyword, paginated."""
         with SessionLocal() as session:
             query = session.query(ModuleModel)
-            if keyword:
-                like = f"%{keyword}%"
-                query = query.filter(
-                    or_(ModuleModel.name.like(like), ModuleModel.label.like(like))
-                )
-            total = query.with_entities(func.count(ModuleModel.id)).scalar() or 0
-            rows = query.order_by(ModuleModel.sort).offset(offset).limit(limit).all()
-            return rows, total
+            query = apply_keyword_filter(
+                query, [ModuleModel.name, ModuleModel.label], keyword
+            )
+            query = query.order_by(ModuleModel.sort)
+            return paginate(query, limit=limit, page=page, offset=offset)
 
     def create_module(
         self,

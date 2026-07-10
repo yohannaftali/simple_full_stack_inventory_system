@@ -24,12 +24,12 @@ screen (material/location are then read-only — see inventory_service).
 Gated by `require_module_access("stock_in")`.
 """
 
-import math
 from datetime import date as date_type
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Form, Query
 
+from core.table_query import attach_pagination
 from models.user import UserModel
 from repository.location_repository import LocationRepository
 from repository.material_repository import MaterialRepository
@@ -53,24 +53,14 @@ def get_detail(
     offset: int = Query(0),
     user: UserModel = Depends(_require_access),
 ) -> list:
-    effective_offset = offset if offset else max(page - 1, 0) * limit
-    rows, total = _receiving_repository.list_headers(
-        keyword=keyword, limit=limit, offset=effective_offset
+    rows, pagination = _receiving_repository.list_headers(
+        keyword=keyword, limit=limit, page=page, offset=offset
     )
-    total_pages = max(math.ceil(total / limit), 1) if limit else 1
-
-    result = []
-    for header in rows:
-        result.append(
-            {
-                "id": header.id,
-                "date": header.date.isoformat(),
-                "description": header.description,
-                "db_total_page": total_pages,
-                "db_num_rows": total,
-            }
-        )
-    return result
+    result = [
+        {"id": header.id, "date": header.date.isoformat(), "description": header.description}
+        for header in rows
+    ]
+    return attach_pagination(result, pagination)
 
 
 @router.get("/get")

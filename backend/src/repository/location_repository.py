@@ -2,8 +2,7 @@
 
 from typing import Optional
 
-from sqlalchemy import func, or_
-
+from core.table_query import Pagination, apply_keyword_filter, paginate
 from models.base import SessionLocal
 from models.location import LocationModel
 
@@ -24,18 +23,15 @@ class LocationRepository:
             return session.query(LocationModel).order_by(LocationModel.code).all()
 
     def list_locations(
-        self, keyword: str = "", limit: int = 20, offset: int = 0
-    ) -> tuple[list[LocationModel], int]:
+        self, keyword: str = "", limit: int = 20, page: int = 1, offset: int = 0
+    ) -> tuple[list[LocationModel], Pagination]:
         with SessionLocal() as session:
             query = session.query(LocationModel)
-            if keyword:
-                like = f"%{keyword}%"
-                query = query.filter(
-                    or_(LocationModel.code.like(like), LocationModel.name.like(like))
-                )
-            total = query.with_entities(func.count(LocationModel.id)).scalar() or 0
-            rows = query.order_by(LocationModel.code).offset(offset).limit(limit).all()
-            return rows, total
+            query = apply_keyword_filter(
+                query, [LocationModel.code, LocationModel.name], keyword
+            )
+            query = query.order_by(LocationModel.code)
+            return paginate(query, limit=limit, page=page, offset=offset)
 
     def create_location(self, code: str, name: str) -> LocationModel:
         with SessionLocal() as session:

@@ -1,8 +1,9 @@
 """User repository for data access operations."""
 
 from typing import Optional, Tuple
-from sqlalchemy import Row, func, or_
+from sqlalchemy import Row
 
+from core.table_query import Pagination, apply_keyword_filter, paginate
 from models.base import SessionLocal
 from models.user import UserModel
 
@@ -146,19 +147,16 @@ class UserRepository:
             return session.query(UserModel).filter(UserModel.id == user_id).first()
 
     def list_users(
-        self, keyword: str = "", limit: int = 20, offset: int = 0
-    ) -> tuple[list[UserModel], int]:
-        """List users matching an optional keyword, paginated. Returns (rows, total_count)."""
+        self, keyword: str = "", limit: int = 20, page: int = 1, offset: int = 0
+    ) -> tuple[list[UserModel], Pagination]:
+        """List users matching an optional keyword, paginated."""
         with SessionLocal() as session:
             query = session.query(UserModel)
-            if keyword:
-                like = f"%{keyword}%"
-                query = query.filter(
-                    or_(UserModel.username.like(like), UserModel.email.like(like))
-                )
-            total = query.with_entities(func.count(UserModel.id)).scalar() or 0
-            rows = query.order_by(UserModel.username).offset(offset).limit(limit).all()
-            return rows, total
+            query = apply_keyword_filter(
+                query, [UserModel.username, UserModel.email], keyword
+            )
+            query = query.order_by(UserModel.username)
+            return paginate(query, limit=limit, page=page, offset=offset)
 
     def update_user_by_id(
         self,

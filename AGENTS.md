@@ -86,7 +86,9 @@ Dependencies are pinned in `backend/requirements.txt` (no `pyproject.toml`).
   digits, 30s step, ±1 step drift): `generate_secret`, `get_totp_uri`,
   `verify`. QR *image* rendering was not ported — the frontend builds the
   `otpauth://` URI and renders the QR itself, so the backend only ever
-  hands out the raw secret.
+  hands out the raw secret. `table_query.py` is a Python port of the
+  pagination/keyword-filter half of a legacy PHP library (`L_database`) —
+  see "Table list/pagination convention" below.
 - **`src/models/`**: `base.py` defines the SQLAlchemy `Base`, `engine`, and
   `SessionLocal` session factory. Each table gets its own module:
   - `user.py` → `UserModel` (`users` table: `id`, `username`, `password`,
@@ -112,14 +114,16 @@ Dependencies are pinned in `backend/requirements.txt` (no `pyproject.toml`).
   `SessionLocal` for CRUD. Each method opens its own `with SessionLocal()`
   block (no shared/long-lived session).
   - `user_repository.py` → `UserRepository`: the original CRUD set plus
-    `get_user_by_id`, `list_users(keyword, limit, offset)` (paginated,
-    matches/searches `username`/`email`), `update_user_by_id` (password only
-    changes if a non-empty one is passed), `delete_user_by_id`, and
-    `check_user_exists(..., exclude_id=None)` (the `exclude_id` param lets an
-    update check uniqueness against everyone *else*).
+    `get_user_by_id`, `list_users(keyword, limit, page, offset)` (paginated,
+    matches/searches `username`/`email` — see pagination convention below),
+    `update_user_by_id` (password only changes if a non-empty one is
+    passed), `delete_user_by_id`, and `check_user_exists(...,
+    exclude_id=None)` (the `exclude_id` param lets an update check
+    uniqueness against everyone *else*).
   - `module_repository.py` → `ModuleRepository`: `get_module_by_name`,
     `get_module_by_id`, `get_all_modules`, `list_modules(keyword, limit,
-    offset)` (paginated), `create_module`, `update_module`, `delete_module`.
+    page, offset)` (paginated), `create_module`, `update_module`,
+    `delete_module`.
   - `user_module_permission_repository.py` → `UserModulePermissionRepository`:
     `has_access`, `get_modules_for_user`, `grant_access`, `revoke_access`,
     `get_module_ids_for_user`, `set_modules_for_user` (replaces a user's
@@ -127,6 +131,34 @@ Dependencies are pinned in `backend/requirements.txt` (no `pyproject.toml`).
     `delete_permissions_for_module` / `delete_permissions_for_user` (call
     before deleting a module/user — the FKs have no `ON DELETE CASCADE`, so
     routers must clear grants first or the delete raises a FK violation).
+
+  **Table list/pagination convention**: every paginated `list_*` repository
+  method (`list_modules`, `list_users`, `list_locations`, `list_suppliers`,
+  `list_departments`, `list_materials`, `list_headers` in
+  `receiving_repository.py`/`stock_out_repository.py`, `list_stock_summary`,
+  `list_usage_by_department`) and its corresponding router's `get_detail`
+  endpoint (`GET C_{module}/get_detail?table-keyword-filter=&limit=&page=&offset=`)
+  **must** use `backend/src/core/table_query.py` instead of hand-rolling
+  keyword-filtering/pagination — a Python port of the pagination/filtering
+  half of a legacy PHP library called `L_database`
+  (`apply_keyword_filter`/`paginate`/`attach_pagination`, replacing
+  `filter_table_keyword`/`return_rows_limited`). Shape:
+  - Repository method signature: `list_x(keyword="", limit=20, page=1,
+    offset=0) -> tuple[list[...], Pagination]`. Body: build the base
+    `session.query(...)`, call `apply_keyword_filter(query, [columns...],
+    keyword)` for an OR-LIKE search across those columns, `.order_by(...)`,
+    then `return paginate(query, limit=limit, page=page, offset=offset)`.
+    `paginate` uses `query.count()` (not a manual `func.count(col)`), so it
+    works the same for a plain query and a grouped/aggregate one (see
+    `stock_repository.py`/`usage_report_repository.py`).
+  - Router's `get_detail`: call the repository method, serialize each row to
+    a dict, then `return attach_pagination(result, pagination)` —
+    `attach_pagination` writes `db_num_rows`/`db_offset`/`db_limit`/
+    `db_page`/`db_total_page` onto `result[0]` only (never every row),
+    matching what `L_database::return_rows_limited` did in PHP and what
+    `components/table/table.py::get_data()` on the frontend actually reads
+    (`response[0]`). Do **not** manually compute `math.ceil(total/limit)` or
+    an "effective offset" in a router — that belongs in `table_query.py`.
 - **`src/services/`**: business logic that composes repositories +
   `core/`. `auth_service.py`:
   - `authenticate(username, password, totp)` checks the user is active,

@@ -2,8 +2,7 @@
 
 from typing import Optional
 
-from sqlalchemy import func, or_
-
+from core.table_query import Pagination, apply_keyword_filter, paginate
 from models.base import SessionLocal
 from models.supplier import SupplierModel
 
@@ -24,18 +23,15 @@ class SupplierRepository:
             return session.query(SupplierModel).order_by(SupplierModel.code).all()
 
     def list_suppliers(
-        self, keyword: str = "", limit: int = 20, offset: int = 0
-    ) -> tuple[list[SupplierModel], int]:
+        self, keyword: str = "", limit: int = 20, page: int = 1, offset: int = 0
+    ) -> tuple[list[SupplierModel], Pagination]:
         with SessionLocal() as session:
             query = session.query(SupplierModel)
-            if keyword:
-                like = f"%{keyword}%"
-                query = query.filter(
-                    or_(SupplierModel.code.like(like), SupplierModel.name.like(like))
-                )
-            total = query.with_entities(func.count(SupplierModel.id)).scalar() or 0
-            rows = query.order_by(SupplierModel.code).offset(offset).limit(limit).all()
-            return rows, total
+            query = apply_keyword_filter(
+                query, [SupplierModel.code, SupplierModel.name], keyword
+            )
+            query = query.order_by(SupplierModel.code)
+            return paginate(query, limit=limit, page=page, offset=offset)
 
     def create_supplier(self, code: str, name: str) -> SupplierModel:
         with SessionLocal() as session:

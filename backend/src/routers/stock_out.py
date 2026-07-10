@@ -26,12 +26,12 @@ create-only (no `submit_item` update path, no `get_item`) — see
 Gated by `require_module_access("stock_out")`.
 """
 
-import math
 from datetime import date as date_type
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Form, Query
 
+from core.table_query import attach_pagination
 from models.user import UserModel
 from repository.department_repository import DepartmentRepository
 from repository.location_repository import LocationRepository
@@ -73,19 +73,10 @@ def get_detail(
     offset: int = Query(0),
     user: UserModel = Depends(_require_access),
 ) -> list:
-    effective_offset = offset if offset else max(page - 1, 0) * limit
-    rows, total = _stock_out_repository.list_headers(
-        keyword=keyword, limit=limit, offset=effective_offset
+    rows, pagination = _stock_out_repository.list_headers(
+        keyword=keyword, limit=limit, page=page, offset=offset
     )
-    total_pages = max(math.ceil(total / limit), 1) if limit else 1
-
-    result = []
-    for header in rows:
-        row = _serialize_header(header)
-        row["db_total_page"] = total_pages
-        row["db_num_rows"] = total
-        result.append(row)
-    return result
+    return attach_pagination([_serialize_header(header) for header in rows], pagination)
 
 
 @router.get("/get")

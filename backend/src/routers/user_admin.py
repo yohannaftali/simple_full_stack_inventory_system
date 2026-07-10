@@ -26,11 +26,10 @@ Contract (see components/table/table.py, components/form/form.py, components/for
 All routes require `ap_master_user` access (or superuser) via `require_module_access`.
 """
 
-import math
-
 from fastapi import APIRouter, Depends, Form, Query
 
 from core.security import hash_password
+from core.table_query import attach_pagination
 from models.user import UserModel
 from repository.department_repository import DepartmentRepository
 from repository.module_repository import ModuleRepository
@@ -82,19 +81,10 @@ def get_detail(
     user: UserModel = Depends(_require_access),
 ) -> list:
     """Paginated user list for the admin list screen."""
-    effective_offset = offset if offset else max(page - 1, 0) * limit
-    rows, total = _user_repository.list_users(
-        keyword=keyword, limit=limit, offset=effective_offset
+    rows, pagination = _user_repository.list_users(
+        keyword=keyword, limit=limit, page=page, offset=offset
     )
-    total_pages = max(math.ceil(total / limit), 1) if limit else 1
-
-    result = []
-    for row_user in rows:
-        row = _serialize_user(row_user)
-        row["db_total_page"] = total_pages
-        row["db_num_rows"] = total
-        result.append(row)
-    return result
+    return attach_pagination([_serialize_user(row_user) for row_user in rows], pagination)
 
 
 @router.get("/get")

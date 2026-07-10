@@ -7,8 +7,9 @@ query, kept in its own repository rather than bolted onto
 aggregate reporting).
 """
 
-from sqlalchemy import func, or_
+from sqlalchemy import func
 
+from core.table_query import Pagination, apply_keyword_filter, paginate
 from models.base import SessionLocal
 from models.department import DepartmentModel
 from models.material import MaterialModel
@@ -20,8 +21,8 @@ class UsageReportRepository:
     """Repository class for the department x material usage/cost report."""
 
     def list_usage_by_department(
-        self, keyword: str = "", limit: int = 20, offset: int = 0
-    ) -> tuple[list[dict], int]:
+        self, keyword: str = "", limit: int = 20, page: int = 1, offset: int = 0
+    ) -> tuple[list[dict], Pagination]:
         """Total qty issued + total cost per (department, material), summed
         across every stock-out item ever issued under that department."""
         with SessionLocal() as session:
@@ -44,24 +45,18 @@ class UsageReportRepository:
                 .join(MaterialModel, MaterialModel.id == StockOutItemModel.material_id)
                 .group_by(DepartmentModel.id, MaterialModel.id)
             )
-            if keyword:
-                like = f"%{keyword}%"
-                query = query.filter(
-                    or_(
-                        DepartmentModel.code.like(like),
-                        DepartmentModel.name.like(like),
-                        MaterialModel.material_code.like(like),
-                        MaterialModel.material_name.like(like),
-                    )
-                )
-
-            total = query.count()
-            rows = (
-                query.order_by(DepartmentModel.code, MaterialModel.material_code)
-                .offset(offset)
-                .limit(limit)
-                .all()
+            query = apply_keyword_filter(
+                query,
+                [
+                    DepartmentModel.code,
+                    DepartmentModel.name,
+                    MaterialModel.material_code,
+                    MaterialModel.material_name,
+                ],
+                keyword,
             )
+            query = query.order_by(DepartmentModel.code, MaterialModel.material_code)
+            rows, pagination = paginate(query, limit=limit, page=page, offset=offset)
 
             return [
                 {
@@ -75,4 +70,4 @@ class UsageReportRepository:
                     "total_cost": row.total_cost,
                 }
                 for row in rows
-            ], total
+            ], pagination

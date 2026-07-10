@@ -4,11 +4,10 @@ Same list/get/submit/delete contract as `module_admin.py` — see that file's
 docstring for the shape. Gated by `require_module_access("master_supplier")`.
 """
 
-import math
-
 from fastapi import APIRouter, Depends, Form, Query
 from sqlalchemy.exc import IntegrityError
 
+from core.table_query import attach_pagination
 from models.supplier import SupplierModel
 from models.user import UserModel
 from repository.supplier_repository import SupplierRepository
@@ -32,19 +31,10 @@ def get_detail(
     offset: int = Query(0),
     user: UserModel = Depends(_require_access),
 ) -> list:
-    effective_offset = offset if offset else max(page - 1, 0) * limit
-    rows, total = _supplier_repository.list_suppliers(
-        keyword=keyword, limit=limit, offset=effective_offset
+    rows, pagination = _supplier_repository.list_suppliers(
+        keyword=keyword, limit=limit, page=page, offset=offset
     )
-    total_pages = max(math.ceil(total / limit), 1) if limit else 1
-
-    result = []
-    for supplier in rows:
-        row = _serialize(supplier)
-        row["db_total_page"] = total_pages
-        row["db_num_rows"] = total
-        result.append(row)
-    return result
+    return attach_pagination([_serialize(supplier) for supplier in rows], pagination)
 
 
 @router.get("/get")

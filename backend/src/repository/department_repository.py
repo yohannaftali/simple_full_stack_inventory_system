@@ -2,8 +2,7 @@
 
 from typing import Optional
 
-from sqlalchemy import func, or_
-
+from core.table_query import Pagination, apply_keyword_filter, paginate
 from models.base import SessionLocal
 from models.department import DepartmentModel
 
@@ -28,18 +27,15 @@ class DepartmentRepository:
             return session.query(DepartmentModel).order_by(DepartmentModel.code).all()
 
     def list_departments(
-        self, keyword: str = "", limit: int = 20, offset: int = 0
-    ) -> tuple[list[DepartmentModel], int]:
+        self, keyword: str = "", limit: int = 20, page: int = 1, offset: int = 0
+    ) -> tuple[list[DepartmentModel], Pagination]:
         with SessionLocal() as session:
             query = session.query(DepartmentModel)
-            if keyword:
-                like = f"%{keyword}%"
-                query = query.filter(
-                    or_(DepartmentModel.code.like(like), DepartmentModel.name.like(like))
-                )
-            total = query.with_entities(func.count(DepartmentModel.id)).scalar() or 0
-            rows = query.order_by(DepartmentModel.code).offset(offset).limit(limit).all()
-            return rows, total
+            query = apply_keyword_filter(
+                query, [DepartmentModel.code, DepartmentModel.name], keyword
+            )
+            query = query.order_by(DepartmentModel.code)
+            return paginate(query, limit=limit, page=page, offset=offset)
 
     def create_department(self, code: str, name: str) -> DepartmentModel:
         with SessionLocal() as session:

@@ -11,10 +11,9 @@
 Gated by `require_module_access("usage_report")`.
 """
 
-import math
-
 from fastapi import APIRouter, Depends, Query
 
+from core.table_query import attach_pagination
 from models.user import UserModel
 from repository.usage_report_repository import UsageReportRepository
 from services.auth_service import require_module_access
@@ -33,16 +32,7 @@ def get_detail(
     offset: int = Query(0),
     user: UserModel = Depends(_require_access),
 ) -> list:
-    effective_offset = offset if offset else max(page - 1, 0) * limit
-    rows, total = _usage_report_repository.list_usage_by_department(
-        keyword=keyword, limit=limit, offset=effective_offset
+    rows, pagination = _usage_report_repository.list_usage_by_department(
+        keyword=keyword, limit=limit, page=page, offset=offset
     )
-    total_pages = max(math.ceil(total / limit), 1) if limit else 1
-
-    result = []
-    for row in rows:
-        entry = dict(row)
-        entry["db_total_page"] = total_pages
-        entry["db_num_rows"] = total
-        result.append(entry)
-    return result
+    return attach_pagination([dict(row) for row in rows], pagination)

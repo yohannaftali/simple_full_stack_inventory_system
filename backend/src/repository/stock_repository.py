@@ -4,8 +4,9 @@ Lot-level writes (upsert on receive, FIFO deduction on issue) are owned by
 `services.inventory_service`.
 """
 
-from sqlalchemy import func, or_
+from sqlalchemy import func
 
+from core.table_query import Pagination, apply_keyword_filter, paginate
 from models.base import SessionLocal
 from models.inventory_value import InventoryValueModel
 from models.location import LocationModel
@@ -17,8 +18,8 @@ class StockRepository:
     """Repository class for browsing current stock (material x location totals)."""
 
     def list_stock_summary(
-        self, keyword: str = "", limit: int = 20, offset: int = 0
-    ) -> tuple[list[dict], int]:
+        self, keyword: str = "", limit: int = 20, page: int = 1, offset: int = 0
+    ) -> tuple[list[dict], Pagination]:
         """Current on-hand qty per (material, location), qty > 0 only."""
         with SessionLocal() as session:
             query = (
@@ -36,24 +37,18 @@ class StockRepository:
                 .group_by(MaterialModel.id, LocationModel.id)
                 .having(func.sum(StockModel.qty) > 0)
             )
-            if keyword:
-                like = f"%{keyword}%"
-                query = query.filter(
-                    or_(
-                        MaterialModel.material_code.like(like),
-                        MaterialModel.material_name.like(like),
-                        LocationModel.code.like(like),
-                        LocationModel.name.like(like),
-                    )
-                )
-
-            total = query.count()
-            rows = (
-                query.order_by(MaterialModel.material_code, LocationModel.code)
-                .offset(offset)
-                .limit(limit)
-                .all()
+            query = apply_keyword_filter(
+                query,
+                [
+                    MaterialModel.material_code,
+                    MaterialModel.material_name,
+                    LocationModel.code,
+                    LocationModel.name,
+                ],
+                keyword,
             )
+            query = query.order_by(MaterialModel.material_code, LocationModel.code)
+            rows, pagination = paginate(query, limit=limit, page=page, offset=offset)
 
             material_ids = {row.material_id for row in rows}
             prices: dict[int, tuple] = {}
@@ -81,4 +76,4 @@ class StockRepository:
                         "value": row.qty * average_price,
                     }
                 )
-            return summary, total
+            return summary, pagination

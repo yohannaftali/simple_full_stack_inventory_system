@@ -17,10 +17,9 @@ pagination metadata and will raise on a genuinely empty result set. That's an
 existing frontend behavior, not something this router works around.
 """
 
-import math
-
 from fastapi import APIRouter, Depends, Form, Query
 
+from core.table_query import attach_pagination
 from models.module import ModuleModel
 from models.user import UserModel
 from repository.module_repository import ModuleRepository
@@ -54,19 +53,10 @@ def get_detail(
     user: UserModel = Depends(_require_access),
 ) -> list:
     """Paginated module list for the admin list screen."""
-    effective_offset = offset if offset else max(page - 1, 0) * limit
-    rows, total = _module_repository.list_modules(
-        keyword=keyword, limit=limit, offset=effective_offset
+    rows, pagination = _module_repository.list_modules(
+        keyword=keyword, limit=limit, page=page, offset=offset
     )
-    total_pages = max(math.ceil(total / limit), 1) if limit else 1
-
-    result = []
-    for module in rows:
-        row = _serialize(module)
-        row["db_total_page"] = total_pages
-        row["db_num_rows"] = total
-        result.append(row)
-    return result
+    return attach_pagination([_serialize(module) for module in rows], pagination)
 
 
 @router.get("/get")

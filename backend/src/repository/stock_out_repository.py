@@ -8,8 +8,7 @@ atomically.
 
 from typing import Optional
 
-from sqlalchemy import func
-
+from core.table_query import Pagination, apply_keyword_filter, paginate
 from models.base import SessionLocal
 from models.stock_out_header import StockOutHeaderModel
 from models.stock_out_item import StockOutItemModel
@@ -27,20 +26,15 @@ class StockOutRepository:
             )
 
     def list_headers(
-        self, keyword: str = "", limit: int = 20, offset: int = 0
-    ) -> tuple[list[StockOutHeaderModel], int]:
+        self, keyword: str = "", limit: int = 20, page: int = 1, offset: int = 0
+    ) -> tuple[list[StockOutHeaderModel], Pagination]:
         with SessionLocal() as session:
             query = session.query(StockOutHeaderModel)
-            if keyword:
-                query = query.filter(StockOutHeaderModel.description.like(f"%{keyword}%"))
-            total = query.with_entities(func.count(StockOutHeaderModel.id)).scalar() or 0
-            rows = (
-                query.order_by(StockOutHeaderModel.date.desc(), StockOutHeaderModel.id.desc())
-                .offset(offset)
-                .limit(limit)
-                .all()
+            query = apply_keyword_filter(query, [StockOutHeaderModel.description], keyword)
+            query = query.order_by(
+                StockOutHeaderModel.date.desc(), StockOutHeaderModel.id.desc()
             )
-            return rows, total
+            return paginate(query, limit=limit, page=page, offset=offset)
 
     def create_header(
         self, date, description: str, department_id: Optional[int] = None

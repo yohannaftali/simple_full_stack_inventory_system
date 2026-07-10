@@ -2,8 +2,7 @@
 
 from typing import Optional
 
-from sqlalchemy import func, or_
-
+from core.table_query import Pagination, apply_keyword_filter, paginate
 from models.base import SessionLocal
 from models.material import MaterialModel
 
@@ -30,23 +29,15 @@ class MaterialRepository:
             return session.query(MaterialModel).order_by(MaterialModel.material_code).all()
 
     def list_materials(
-        self, keyword: str = "", limit: int = 20, offset: int = 0
-    ) -> tuple[list[MaterialModel], int]:
+        self, keyword: str = "", limit: int = 20, page: int = 1, offset: int = 0
+    ) -> tuple[list[MaterialModel], Pagination]:
         with SessionLocal() as session:
             query = session.query(MaterialModel)
-            if keyword:
-                like = f"%{keyword}%"
-                query = query.filter(
-                    or_(
-                        MaterialModel.material_code.like(like),
-                        MaterialModel.material_name.like(like),
-                    )
-                )
-            total = query.with_entities(func.count(MaterialModel.id)).scalar() or 0
-            rows = (
-                query.order_by(MaterialModel.material_code).offset(offset).limit(limit).all()
+            query = apply_keyword_filter(
+                query, [MaterialModel.material_code, MaterialModel.material_name], keyword
             )
-            return rows, total
+            query = query.order_by(MaterialModel.material_code)
+            return paginate(query, limit=limit, page=page, offset=offset)
 
     def create_material(
         self, material_code: str, material_name: str, supplier_id: Optional[int] = None
