@@ -14,10 +14,10 @@ if [ ! -f "$CERT_FILE" ] || [ ! -f "$KEY_FILE" ]; then
     -days 3650 -subj "/CN=localhost"
 fi
 
-alembic upgrade head
+uv run alembic upgrade head
 
-uvicorn src.main:app --host "${UVICORN_HOST:-0.0.0.0}" --port "${UVICORN_PORT:-5000}" &
-uvicorn src.main:app --host "${UVICORN_HOST:-0.0.0.0}" --port "${UVICORN_PORT_SSL:-5443}" \
+uv run uvicorn src.main:app --host "${UVICORN_HOST:-0.0.0.0}" --port "${UVICORN_PORT:-5000}" &
+uv run uvicorn src.main:app --host "${UVICORN_HOST:-0.0.0.0}" --port "${UVICORN_PORT_SSL:-5443}" \
   --ssl-keyfile "$KEY_FILE" --ssl-certfile "$CERT_FILE" &
 
 wait -n

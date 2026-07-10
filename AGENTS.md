@@ -65,7 +65,15 @@ Stack: Python 3.13, FastAPI + Uvicorn, SQLAlchemy 2.x ORM, Alembic for
 migrations, PyMySQL as the MariaDB driver, `bcrypt` for password hashing,
 Starlette `SessionMiddleware` (signed cookie, needs `itsdangerous`) for
 login sessions, `python-multipart` for form-encoded request bodies.
-Dependencies are pinned in `backend/requirements.txt` (no `pyproject.toml`).
+Dependencies are managed via `backend/pyproject.toml` + `backend/uv.lock`
+(uv — same tooling as the frontend, see Frontend Architecture below).
+`Dockerfile-backend` installs `uv` then runs `uv sync --locked --no-dev`;
+`entrypoint.sh` runs `alembic`/`uvicorn` via `uv run` rather than invoking
+them directly, so the venv is created/kept in sync with the lockfile even
+though `compose.yml` bind-mounts `./backend` over `/usr/src/app` in dev
+(same reasoning as the frontend's `uv run flet run` — see the frontend
+Dockerfile note). Regenerate the lockfile after editing dependencies with
+`cd backend && uv lock`.
 
 - **Entry point** (`src/main.py`): creates the `FastAPI` app, registers
   `SessionMiddleware` (`secret_key=JWT_SECRET`, `https_only=False` so the

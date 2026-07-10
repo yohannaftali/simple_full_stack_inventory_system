@@ -6,8 +6,10 @@ RUN apt-get update \
 
 WORKDIR /usr/src/app
 
-COPY backend/requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir uv
+
+COPY backend/pyproject.toml backend/uv.lock ./
+RUN uv sync --locked --no-dev
 
 COPY backend/src ./src
 COPY backend/alembic.ini ./alembic.ini

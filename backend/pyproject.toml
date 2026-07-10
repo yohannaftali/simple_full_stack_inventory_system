@@ -1,0 +1,18 @@
+[project]
+name = "sfsis-backend"
+version = "0.1.0"
+description = ""
+requires-python = ">=3.13"
+authors = [
+    { name = "Yohan Naftali", email = "yohan_naftali@ptsenopati.com" }
+]
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "sqlalchemy>=2.0",
+  "alembic>=1.13",
+  "pymysql>=1.1",
+  "bcrypt>=4.1",
+  "itsdangerous>=2.2",
+  "python-multipart>=0.0.9",
+]
