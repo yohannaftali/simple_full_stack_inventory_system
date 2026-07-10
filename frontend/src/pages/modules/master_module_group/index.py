@@ -8,14 +8,6 @@ class ModulePage:
     """Module page class"""
 
     def __init__(self, page: ft.Page, module: str, screen=str):
-        """
-        Initialize Module Page
-
-        Args:
-            page: The Flet page
-            module: string
-            screen: string
-        """
         self.page = page
         self.module = module
         self.screen = screen
@@ -30,23 +22,7 @@ class ModulePage:
                 "type": "label"
             },
             {
-                "name": "label", "label": "Label",
-                "type": "label"
-            },
-            {
                 "name": "sort", "label": "Sort",
-                "type": "label"
-            },
-            {
-                "name": "icon", "label": "Icon",
-                "type": "label"
-            },
-            {
-                "name": "description", "label": "Description",
-                "type": "label"
-            },
-            {
-                "name": "module_group_name", "label": "Group",
                 "type": "label"
             }
         ]
@@ -63,7 +39,6 @@ class ModulePage:
         self.table.toolbar.add_new_button(callback=self.callback_add_new)
 
     def build(self):
-        """Build and return the module screen page UI"""
         return self.view.build(self.body(), padding=0)
 
     def body(self):

@@ -5,9 +5,12 @@ Contract (see components/table/table.py and components/form/form.py):
   -> list of module dicts, each carrying `db_total_page`/`db_num_rows`
   pagination metadata (the list table).
 - GET  C_ap_module/get?id=<id> -> single module dict (the edit form).
-- POST C_ap_module/submit (form: id, name, label, sort, icon, description)
-  -> upsert (blank/missing id = create), {"message": "..."} or {"error": "..."}.
+- POST C_ap_module/submit (form: id, name, label, sort, icon, description,
+  module_group_id) -> upsert (blank/missing id = create), {"message": "..."}
+  or {"error": "..."}. `module_group_id` is optional (blank = ungrouped).
 - POST C_ap_module/delete (form: id) -> {"message": "..."} or {"error": "..."}.
+- GET  C_ap_module/call_module_group_id_select -> options for the new/edit
+  form's `module_group_id` select field, sourced from `master_module_group`.
 
 All routes require `ap_module` access (or superuser) via `require_module_access`.
 
@@ -22,6 +25,7 @@ from fastapi import APIRouter, Depends, Form, Query
 from core.table_query import attach_pagination
 from models.module import ModuleModel
 from models.user import UserModel
+from repository.module_group_repository import ModuleGroupRepository
 from repository.module_repository import ModuleRepository
 from repository.user_module_permission_repository import UserModulePermissionRepository
 from services.auth_service import require_module_access
@@ -29,11 +33,17 @@ from services.auth_service import require_module_access
 router = APIRouter(prefix="/C_ap_module", tags=["module-admin"])
 _module_repository = ModuleRepository()
 _permission_repository = UserModulePermissionRepository()
+_module_group_repository = ModuleGroupRepository()
 
 _require_access = require_module_access("ap_module")
 
 
 def _serialize(module: ModuleModel) -> dict:
+    group = (
+        _module_group_repository.get_group_by_id(module.module_group_id)
+        if module.module_group_id
+        else None
+    )
     return {
         "id": module.id,
         "name": module.name,
@@ -41,6 +51,8 @@ def _serialize(module: ModuleModel) -> dict:
         "sort": module.sort,
         "icon": module.icon,
         "description": module.description,
+        "module_group_id": str(module.module_group_id) if module.module_group_id else "",
+        "module_group_name": group.name if group else "",
     }
 
 
@@ -76,6 +88,7 @@ def submit(
     sort: str = Form("0"),
     icon: str = Form("chevron_right"),
     description: str = Form(""),
+    module_group_id: str = Form(""),
     user: UserModel = Depends(_require_access),
 ) -> dict:
     """Create or update a module (blank/missing id = create)."""
@@ -83,6 +96,8 @@ def submit(
         sort_value = int(sort) if sort else 0
     except ValueError:
         return {"error": "Sort must be a number"}
+
+    module_group_id_value = int(module_group_id) if module_group_id else None
 
     if id:
         updated = _module_repository.update_module(
@@ -92,6 +107,7 @@ def submit(
             sort=sort_value,
             icon=icon or "chevron_right",
             description=description,
+            module_group_id=module_group_id_value,
         )
         if not updated:
             return {"error": "Module not found"}
@@ -99,9 +115,17 @@ def submit(
 
     _module_repository.create_module(
         name=name, label=label, sort=sort_value, icon=icon or "chevron_right",
-        description=description,
+        description=description, module_group_id=module_group_id_value,
     )
     return {"message": "Module created successfully"}
+
+
+@router.get("/call_module_group_id_select")
+def call_module_group_id_select(user: UserModel = Depends(_require_access)) -> list:
+    return [
+        {"value": str(g.id), "label": g.name}
+        for g in _module_group_repository.get_all_groups()
+    ]
 
 
 @router.post("/delete")

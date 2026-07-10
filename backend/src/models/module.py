@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, SmallInteger, String
+from sqlalchemy import DateTime, ForeignKey, Integer, SmallInteger, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -21,8 +21,8 @@ class ModuleModel(Base):
     sort_mobile: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     description: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     module_type: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0, index=True)
-    module_group_id: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, index=True
+    module_group_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("module_groups.id"), nullable=True, index=True
     )
     icon: Mapped[str] = mapped_column(String(255), nullable=False, default="chevron_right")
     mdi: Mapped[str] = mapped_column(String(255), nullable=False, default="chevron_right")

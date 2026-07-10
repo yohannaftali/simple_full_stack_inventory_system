@@ -20,6 +20,8 @@ class InputForm:
         self.prefix_icon = None
         self.filled = field.get("filled", False)
         self.bgcolor = field.get("bgcolor", ft.Colors.TRANSPARENT)
+        self.password = field.get("password", False)
+        self.can_reveal_password = field.get("can_reveal_password", self.password)
 
     def build(self):
         self.prefix_icon = (
@@ -38,7 +40,7 @@ class InputForm:
             read_only=self.read_only,
             color=self.value_color,
             label_style=ft.TextStyle(
-                size=self.label_size, 
+                size=self.label_size,
                 color=self.label_color,
             ),
             multiline=self.multiline,
@@ -46,6 +48,8 @@ class InputForm:
             max_lines=self.max_lines,
             filled=self.filled,
             bgcolor=self.bgcolor,
+            password=self.password,
+            can_reveal_password=self.can_reveal_password,
             adaptive=True,
             expand=True,
         )

@@ -12,11 +12,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from core.config import DATABASE_URL  # noqa: E402
 from models.base import Base  # noqa: E402
 from models import (  # noqa: E402,F401
+    app_config,
     department,
     inventory_value,
     location,
+    mail_config,
     material,
     module,
+    module_group,
     receiving_header,
     receiving_item,
     stock,

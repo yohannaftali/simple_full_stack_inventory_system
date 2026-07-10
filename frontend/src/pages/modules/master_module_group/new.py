@@ -8,15 +8,6 @@ class ModulePage:
     """Module screen class"""
 
     def __init__(self, page: ft.Page, module: str, screen=str, record_id: str | int = None):
-        """
-        Initialize Module Page
-
-        Args:
-            page: The Flet page
-            module: string
-            screen: string
-            record_id: string | int
-        """
         self.page = page
         self.module = module
         self.screen = screen
@@ -29,33 +20,13 @@ class ModulePage:
             },
             {
                 "name": "name", "label": "Name", "icon": ft.Icons.LABEL,
-                "row": 1, "col": {"sm": 12, "md": 6},
+                "row": 1, "col": {"sm": 12, "md": 8},
                 "type": "input", "autofocus": True
             },
             {
-                "name": "label", "label": "Label", "icon": ft.Icons.TEXT_FIELDS,
-                "row": 1, "col": {"sm": 12, "md": 6},
-                "type": "input"
-            },
-            {
                 "name": "sort", "label": "Sort", "icon": ft.Icons.SORT,
-                "row": 2, "col": {"sm": 12, "md": 6},
+                "row": 1, "col": {"sm": 12, "md": 4},
                 "type": "input"
-            },
-            {
-                "name": "icon", "label": "Icon", "icon": ft.Icons.APPS,
-                "row": 2, "col": {"sm": 12, "md": 6},
-                "type": "input", "hint_text": "e.g. chevron_right"
-            },
-            {
-                "name": "description", "label": "Description", "icon": ft.Icons.NOTES,
-                "row": 3,
-                "type": "input"
-            },
-            {
-                "name": "module_group_id", "label": "Module Group", "icon": ft.Icons.CATEGORY,
-                "row": 4, "col": {"sm": 12, "md": 6},
-                "type": "select"
             }
         ]
 
@@ -68,12 +39,11 @@ class ModulePage:
         )
 
         self.view = ModuleView(page, module, screen)
-        self.view.header.set_title("New Module")
+        self.view.header.set_title("New Module Group")
 
         self.view.toolbar.add_submit_button(callback=self.callback_submit)
 
     def build(self):
-        """Build and return the module screen page UI"""
         return self.view.build(self.body())
 
     def body(self):

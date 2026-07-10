@@ -107,11 +107,32 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
   - `module.py` → `ModuleModel` (`modules` table, adopted from the legacy PHP
     `ap_module` table: `id`, `name` [unique, matches a folder under
     `frontend/src/pages/modules/`], `label`, `sort`, `sort_mobile`,
-    `description`, `module_type`, `module_group_id`, `icon`, `mdi`,
-    `created_at`, `updated_at`). `module_type`/`module_group_id`/`mdi` are
-    carried over from the PHP schema for parity but not yet consumed by any
-    backend logic or the frontend (which only reads `name`/`label`/`icon`/
-    `description`).
+    `description`, `module_type`, `module_group_id` [nullable FK to
+    `module_groups.id`], `icon`, `mdi`, `created_at`, `updated_at`).
+    `module_type`/`mdi` are carried over from the PHP schema for parity but
+    not yet consumed by any backend logic or the frontend (which only reads
+    `name`/`label`/`icon`/`description`/`module_group_id`).
+  - `module_group.py` → `ModuleGroupModel` (`module_groups` table: `id`,
+    `name` [unique], `sort`, `created_at`, `updated_at`) — categorizes home
+    tiles for display (e.g. "Inventory", "Master", "Application
+    Configuration"; see `0012_create_module_groups_table.py`). Purely a
+    grouping label today — the frontend home screen doesn't yet render
+    modules grouped by this field, it's only editable via the
+    `master_module_group` admin screen and assignable per-module via
+    `ap_module`'s `module_group_id` select.
+  - `app_config.py` → `AppConfigModel` (`app_configs` table: `id`,
+    `app_title` [default `"SFSIS"`], `footer` [default `""`], `created_at`,
+    `updated_at`) — a **singleton** row (exactly one, seeded by
+    `0016_create_app_config_table.py`) backing `home.py`'s `title`/`footer`
+    fields and the `master_config` admin screen.
+  - `mail_config.py` → `MailConfigModel` (`mail_configs` table: `id`,
+    `smtp_host`, `smtp_port` [default `587`], `smtp_username`,
+    `smtp_password`, `sender_name`, `sender_email`, `use_tls` [default
+    `True`], `created_at`, `updated_at`) — also a **singleton** row, but
+    unlike `app_configs` nothing seeds a default one (there's no sensible
+    default mail server); `mail_config_repository.get_config()` returns
+    `None` until the first save. Nothing sends mail using these settings
+    yet — this only stores them for whenever that's wired up.
   - `user_module_permission.py` → `UserModulePermissionModel`
     (`user_module_permissions` table, adopted from the legacy PHP `ap_auth`
     table: `id`, `module_id` FK, `user_id` FK, unique on
@@ -130,8 +151,18 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
     uniqueness against everyone *else*).
   - `module_repository.py` → `ModuleRepository`: `get_module_by_name`,
     `get_module_by_id`, `get_all_modules`, `list_modules(keyword, limit,
-    page, offset)` (paginated), `create_module`, `update_module`,
-    `delete_module`.
+    page, offset)` (paginated), `create_module`/`update_module` (both take
+    an optional `module_group_id`), `delete_module`.
+  - `module_group_repository.py` → `ModuleGroupRepository`: same
+    get/list/create/update/delete shape as `location_repository.py` etc. —
+    `get_group_by_id`, `get_group_by_name`, `get_all_groups`,
+    `list_groups(keyword, limit, page, offset)`, `create_group`,
+    `update_group`, `delete_group`.
+  - `app_config_repository.py` / `mail_config_repository.py` → singleton
+    repositories, a different shape from every other repository here: no
+    id-based CRUD, just `get_config()` (returns the one row, or `None` for
+    mail config before the first save) and `upsert_config(**fields)`
+    (updates the existing row if one exists, otherwise creates it).
   - `user_module_permission_repository.py` → `UserModulePermissionRepository`:
     `has_access`, `get_modules_for_user`, `grant_access`, `revoke_access`,
     `get_module_ids_for_user`, `set_modules_for_user` (replaces a user's
@@ -198,11 +229,13 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
 
   `home.py` → `C_home` prefix, all routes behind
   `Depends(auth_service.get_current_user)`:
-    - `GET C_home/home` → `{"username", "modules": [...], "title": "SFSIS",
-      "footer": ""}`. Each module dict is `{"name", "label", "module_icon",
+    - `GET C_home/home` → `{"username", "modules": [...], "title", "footer"}`.
+      Each module dict is `{"name", "label", "module_icon",
       "module_description"}` (field names match `components/home/module_card.py`)
       — only modules the user has an explicit `user_module_permissions` grant
-      for, ordered by `ModuleModel.sort`.
+      for, ordered by `ModuleModel.sort`. `title`/`footer` come from the
+      singleton `app_configs` row (`AppConfigRepository.get_config()`),
+      falling back to `"SFSIS"`/`""` if that row somehow doesn't exist.
     - `GET C_home/call_generate_totp` → `{"secret": "..."}`, a fresh candidate
       secret (not persisted yet).
     - `POST C_home/call_change_totp` (form: `secret`, `totp`) → verifies the
@@ -239,10 +272,31 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
     → paginated module list, each row carrying `db_total_page`/`db_num_rows`.
   - `GET C_ap_module/get?id=<id>` → single module record for the edit form.
   - `POST C_ap_module/submit` (form: `id`, `name`, `label`, `sort`, `icon`,
-    `description`) → upsert (blank/missing `id` = create); `{"message": "..."}`
-    or `{"error": "..."}`.
+    `description`, `module_group_id`) → upsert (blank/missing `id` = create);
+    `{"message": "..."}` or `{"error": "..."}`. `module_group_id` is optional
+    (blank = ungrouped).
   - `POST C_ap_module/delete` (form: `id`) → deletes the module's permission
     grants first, then the module.
+  - `GET C_ap_module/call_module_group_id_select` → options for the
+    `module_group_id` select field, sourced from `master_module_group`.
+
+  `module_group_admin.py` → `C_master_module_group` prefix (all routes
+  behind `require_module_access("master_module_group")`), the same
+  list/get/submit/delete shape as `master_location.py` for `module_groups`
+  rows (`id`, `name`, `sort`). Deleting a group that still has modules
+  pointing at it fails with a friendly `{"error": "..."}` (catches the FK
+  `IntegrityError`), same pattern as deleting a location/material with
+  transaction history.
+
+  `app_config.py` → `C_master_config` prefix (behind
+  `require_module_access("master_config")`) and `mail_config.py` →
+  `C_mail_config` prefix (behind `require_module_access("mail_config")`) are
+  both **singleton settings screens** — a different shape from every other
+  router here: just `GET .../get` (returns the one row, or sensible defaults
+  if it doesn't exist yet) and `POST .../submit` (always upserts that one
+  row) — no list, no per-record `id`, no delete. `mail_config.py` also
+  exposes `GET C_mail_config/call_use_tls_select` (static Yes/No options,
+  same pattern as `is_active`/`is_superuser` in `user_admin.py`).
 
   `user_admin.py` → `C_ap_master_user` prefix (all routes behind
   `require_module_access("ap_master_user")`), same list/get/submit/delete
@@ -303,6 +357,30 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
   the gap `0006` was created to fix (see that entry above).
   `0011_seed_usage_report_module.py` seeds the `usage_report` module (no
   schema change — it's read-only, aggregating existing tables), same pattern.
+  `0012_create_module_groups_table.py` creates `module_groups`, seeds the
+  3 default groups (`Inventory` sort 1, `Master` sort 9, `Application
+  Configuration` sort 10), and turns `modules.module_group_id` from a
+  loose non-FK integer (legacy PHP parity placeholder, default `0`) into a
+  real nullable FK to `module_groups.id` — clearing any existing `0` values
+  to `NULL` first, then adding the constraint via `batch_alter_table`
+  (SQLite-compatible, matching `0009`'s approach). `downgrade()` reverses
+  the FK back to a plain `NOT NULL DEFAULT 0` column before dropping the
+  table. `0013_assign_module_groups.py` is a data-only migration that
+  assigns every pre-existing module to its group by name (`stock_in`/
+  `stock_out`/`stock_browse`/`usage_report` → Inventory; `master_location`/
+  `master_material`/`master_department`/`master_supplier` → Master;
+  `ap_module`/`ap_master_user` → Application Configuration) — kept separate
+  from `0012` so the schema change and the data assignment are each
+  independently reviewable/revertable. `0014_seed_master_module_group_module.py`
+  seeds the `master_module_group` admin screen's own module row (Application
+  Configuration group) + `admin` grant, same pattern as `0008`/`0010`.
+  `0015_create_mail_config_table.py` creates the singleton `mail_configs`
+  table (no seeded row — there's no sensible default mail server) and seeds
+  the `mail_config` module + `admin` grant. `0016_create_app_config_table.py`
+  creates the singleton `app_configs` table, seeds its one default row
+  (`app_title="SFSIS"`, `footer=""` — so `home.py` behaves identically to
+  the old hardcoded values out of the box) and seeds the `master_config`
+  module + `admin` grant.
 - Because `src/` code imports as top-level packages (`from models.base import
   ...`, not `from src.models.base import ...`), `Dockerfile-backend` sets
   `ENV PYTHONPATH=/usr/src/app/src` and copies `alembic.ini` +
@@ -464,18 +542,32 @@ Routers (all under `backend/src/routers/`, each gated by
   additionally exposes `call_department_id_select` for its header form.
 
 **Frontend module structure** (`frontend/src/pages/modules/`): `master_location`,
-`master_supplier`, `master_department`, and `master_material` are plain
-`{index,new,edit}.py` CRUD, identical in shape to `ap_module`
-(`master_material`'s `new`/`edit` additionally carry a `supplier_id` select
-field, `index` a read-only `supplier_name` label). `ap_master_user`'s
-`new`/`edit` similarly carry a `department_id` select field (optional —
-blank is valid) and `index` a read-only `department_name` label;
-`stock_out`'s `new`/`edit` carry a required `department_id` select on the
-header form and `index` a read-only `department_name` label. `stock_browse`
-and `usage_report` are `index.py` only (no `new`/`edit` — and deliberately
-no field marked `"key": True` in their `Table` config, since `Rows.py`
-unconditionally wires a `"key"` field to row-tap-navigates-to-`edit/<id>`,
-and neither has an edit screen to navigate to).
+`master_supplier`, `master_department`, `master_material`, and
+`master_module_group` are plain `{index,new,edit}.py` CRUD, identical in
+shape to `ap_module` (`master_material`'s `new`/`edit` additionally carry a
+`supplier_id` select field, `index` a read-only `supplier_name` label).
+`ap_master_user`'s `new`/`edit` similarly carry a `department_id` select
+field (optional — blank is valid) and `index` a read-only `department_name`
+label; `stock_out`'s `new`/`edit` carry a required `department_id` select on
+the header form and `index` a read-only `department_name` label. `ap_module`
+itself also carries a `module_group_id` select on `new`/`edit` (optional —
+blank is valid) and a read-only `module_group_name` label on `index`.
+`stock_browse` and `usage_report` are `index.py` only (no `new`/`edit` — and
+deliberately no field marked `"key": True` in their `Table` config, since
+`Rows.py` unconditionally wires a `"key"` field to row-tap-navigates-to-
+`edit/<id>`, and neither has an edit screen to navigate to).
+
+`master_config` and `mail_config` are a **different, simpler shape**: a
+**singleton settings screen**, not list+CRUD. Each is just one
+`index.py` that builds a `Form` directly (not a `Table`) against the
+module's `get`/`submit` endpoints, with a submit button and no add/list/
+delete — there's exactly one row server-side, so there's no per-record
+navigation to support. `index.py` passes `custom_param={}` to `Form(...)`
+so it doesn't send a meaningless `id` query param when fetching the
+current settings. `mail_config`'s `smtp_password` field sets `"password":
+True` — this is the only user of `components/form/input.py`'s optional
+password-masking support (`password`/`can_reveal_password`, defaulting to
+off, added specifically for this field).
 
 `stock_in`/`stock_out` needed a **header/item master-detail pattern that
 doesn't exist elsewhere in this codebase**. Two roads not taken, and why:
