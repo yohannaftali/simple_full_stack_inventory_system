@@ -5,6 +5,7 @@ class Columns:
     def __init__(self, page: ft.Page, fields: list):
         self.page = page
         self.fields = fields
+        self.fields_by_name = {f.get("name"): f for f in fields if f.get("name") is not None}
         self.columns: list = []
         self.index = []
         self.widths: list[int] | None = None
@@ -30,7 +31,7 @@ class Columns:
 
             label = field.get("label")
             icon = field.get("icon")
-            is_numeric = field.get("is_numeric") or False
+            is_numeric = field.get("is_numeric") or field.get("format") == "number"
 
             text = ft.Text(label) if label is not None else None
 
@@ -112,7 +113,7 @@ class Columns:
 
             label = field.get("label")
             icon = field.get("icon")
-            is_numeric = field.get("is_numeric") or False
+            is_numeric = field.get("is_numeric") or field.get("format") == "number"
 
             text = ft.Text(label) if label is not None else None
 

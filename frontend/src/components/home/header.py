@@ -4,8 +4,8 @@ Header component for the home
 
 import flet as ft
 
-from repository.storage import Storage
 from components.home.user_menu import UserMenu
+from repository.storage import Storage
 
 
 class Header:
@@ -33,8 +33,9 @@ class Header:
         return ft.AppBar(
             title=ft.Text(
                 self.storage.client_data.get_title(),
-                color=ft.Colors.ON_PRIMARY),
-            bgcolor=ft.Colors.PRIMARY,
+                color=ft.Colors.ON_SURFACE,
+            ),
+            bgcolor=ft.Colors.SURFACE,
             actions=actions,
-            center_title=True
+            center_title=True,
         )

@@ -24,7 +24,7 @@ class ModalHeader:
         actions = [
             ft.IconButton(
                 icon=ft.Icons.CLOSE,
-                icon_color=ft.Colors.ON_SECONDARY,
+                icon_color=ft.Colors.ON_SURFACE,
                 tooltip="Close",
                 on_click=self.on_click,
             )
@@ -33,12 +33,15 @@ class ModalHeader:
         return ft.AppBar(
             title=ft.Text(
                 self.title,
-                color=ft.Colors.ON_SECONDARY,
+                color=ft.Colors.ON_SURFACE,
                 size=16
             ),
-            bgcolor=ft.Colors.SECONDARY,
+            bgcolor=ft.Colors.SURFACE,
             actions=actions,
-            center_title=True
+            center_title=True,
+            elevation=0,
+            elevation_on_scroll=0,
+            shadow_color=ft.Colors.SHADOW,
         )
 
     def set_title(self, title: str):

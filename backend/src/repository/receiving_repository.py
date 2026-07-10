@@ -66,11 +66,18 @@ class ReceivingRepository:
                 .first()
             )
 
-    def list_items_by_header(self, header_id: int) -> list[ReceivingItemModel]:
+    def list_items_by_header(
+        self,
+        header_id: int,
+        keyword: str = "",
+        limit: int = 20,
+        page: int = 1,
+        offset: int = 0,
+    ) -> tuple[list[ReceivingItemModel], Pagination]:
         with SessionLocal() as session:
-            return (
-                session.query(ReceivingItemModel)
-                .filter(ReceivingItemModel.receiving_header_id == header_id)
-                .order_by(ReceivingItemModel.id)
-                .all()
+            query = session.query(ReceivingItemModel).filter(
+                ReceivingItemModel.receiving_header_id == header_id
             )
+            query = apply_keyword_filter(query, [ReceivingItemModel.remarks], keyword)
+            query = query.order_by(ReceivingItemModel.id)
+            return paginate(query, limit=limit, page=page, offset=offset)

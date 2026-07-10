@@ -20,8 +20,8 @@ class ModulePage:
                 "key": True,
             },
             {
-                "name": "date", "label": "Date", "icon": ft.Icons.CALENDAR_MONTH,
-                "row": 1, "col": {"sm": 12, "md": 6},
+                "name": "date", "label": "Date", "icon": ft.Icons.EVENT,
+                "row": 1,
                 "type": "date", "autofocus": True
             },
             {
@@ -37,10 +37,14 @@ class ModulePage:
             name="edit",
             fields=self.fields
         )
-        self.item_table = ItemTable(page, module, record_id)
 
         self.view = ModuleView(page, module, screen)
         self.view.header.set_title("Edit Receiving")
+
+        # Must come after self.view is assigned - ItemTable/Table fetch data
+        # immediately and reach back through parent.view.show_error() on
+        # failure.
+        self.item_table = ItemTable(page, self, module, record_id)
 
         self.view.toolbar.add_submit_button(callback=self.callback_submit)
 
@@ -49,7 +53,14 @@ class ModulePage:
 
     def body(self):
         return ft.Column(
-            controls=[self.form.build(), self.item_table.build()],
+            controls=[
+                self.form.build(),
+                # Table's internal layout expands to fill its parent, which
+                # needs a bounded height when nested alongside other content
+                # in a scrolling Column - otherwise it collapses to zero
+                # height instead of rendering its own internal scroll region.
+                ft.Container(content=self.item_table.build(), height=400),
+            ],
             expand=True,
             scroll=ft.ScrollMode.AUTO,
         )

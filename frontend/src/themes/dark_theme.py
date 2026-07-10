@@ -1,7 +1,18 @@
 """
 Dark theme configuration for the application
+
+Color scheme from Material Theme Builder
+(https://material-foundation.github.io/material-theme-builder/) with seed
+color #769CDF (Material 3 standard-contrast "dark" scheme) - see
+frontend/design/material-theme/ for the full exported reference (Color.kt/
+Theme.kt/Type.kt). Typefaces: Lato (body/label roles), Montserrat (display/
+headline/title roles), per that export's Type.kt - registered as custom
+fonts in `main.py` via `page.fonts`.
 """
 import flet as ft
+
+_DISPLAY_FONT = "Montserrat"
+_BODY_FONT = "Lato"
 
 
 class DarkTheme:
@@ -13,62 +24,81 @@ class DarkTheme:
         return ft.Theme(
             color_scheme=ft.ColorScheme(
                 # Primary colors
-                primary=ft.Colors.BLUE_100,
-                on_primary=ft.Colors.BLUE_900,
-                primary_container=ft.Colors.BLUE_800,
-                on_primary_container=ft.Colors.BLUE_50,
+                primary="#AAC7FF",
+                on_primary="#002F64",
+                primary_container="#769CDF",
+                on_primary_container="#00326A",
 
                 # Secondary colors
-                secondary=ft.Colors.BLUE_GREY_100,
-                on_secondary=ft.Colors.BLUE_GREY_900,
-                secondary_container=ft.Colors.BLUE_GREY_700,
-                on_secondary_container=ft.Colors.BLUE_GREY_50,
+                secondary="#B9C7E5",
+                on_secondary="#233148",
+                secondary_container="#3C4962",
+                on_secondary_container="#ABB9D6",
 
                 # Tertiary colors
-                tertiary=ft.Colors.DEEP_PURPLE_100,
-                on_tertiary=ft.Colors.DEEP_PURPLE_900,
-                tertiary_container=ft.Colors.DEEP_PURPLE_700,
-                on_tertiary_container=ft.Colors.DEEP_PURPLE_50,
+                tertiary="#F2B0F5",
+                on_tertiary="#4D1A55",
+                tertiary_container="#C486C8",
+                on_tertiary_container="#511D58",
 
                 # Error colors
-                error=ft.Colors.RED_300,
-                on_error=ft.Colors.RED_900,
-                error_container=ft.Colors.RED_700,
-                on_error_container=ft.Colors.RED_100,
+                error="#FFB4AB",
+                on_error="#690005",
+                error_container="#93000A",
+                on_error_container="#FFDAD6",
 
-                # Surface colors (BLUE_900 as base surface; background/
-                # surface_variant merged into surface/surface_container_*
-                # in Flet 0.85's ColorScheme)
-                surface=ft.Colors.BLUE_900,
-                on_surface=ft.Colors.BLUE_50,
-                on_surface_variant=ft.Colors.BLUE_100,
-                surface_container=ft.Colors.BLUE_900,
-                surface_container_high=ft.Colors.BLUE_800,
-                surface_container_low=ft.Colors.with_opacity(
-                    0.95, ft.Colors.BLUE_900),
-                surface_container_lowest=ft.Colors.BLACK,
+                # Surface colors (background/surface_variant merged into
+                # surface/surface_container_* in Flet 0.85's ColorScheme)
+                surface="#121317",
+                on_surface="#E2E2E8",
+                on_surface_variant="#C3C6D2",
+                surface_container="#1E2024",
+                surface_container_high="#282A2E",
+                surface_container_low="#1A1C20",
+                surface_container_lowest="#0C0E12",
 
                 # Outline colors
-                outline=ft.Colors.BLUE_600,
-                outline_variant=ft.Colors.BLUE_800,
+                outline="#8D909B",
+                outline_variant="#434750",
 
                 # Other colors
                 shadow=ft.Colors.BLACK,
                 scrim=ft.Colors.BLACK,
-                inverse_surface=ft.Colors.BLUE_50,
-                on_inverse_surface=ft.Colors.BLUE_900,
-                inverse_primary=ft.Colors.BLUE_800,
-                surface_tint=ft.Colors.BLUE_100,
+                inverse_surface="#E2E2E8",
+                on_inverse_surface="#2F3035",
+                inverse_primary="#365E9D",
+                surface_tint="#AAC7FF",
+            ),
+
+            # Typography: Montserrat for display/headline/title, Lato for
+            # body/label - matches frontend/design/material-theme/ui/theme/
+            # Type.kt's body/display font split.
+            text_theme=ft.TextTheme(
+                display_large=ft.TextStyle(font_family=_DISPLAY_FONT),
+                display_medium=ft.TextStyle(font_family=_DISPLAY_FONT),
+                display_small=ft.TextStyle(font_family=_DISPLAY_FONT),
+                headline_large=ft.TextStyle(font_family=_DISPLAY_FONT),
+                headline_medium=ft.TextStyle(font_family=_DISPLAY_FONT),
+                headline_small=ft.TextStyle(font_family=_DISPLAY_FONT),
+                title_large=ft.TextStyle(font_family=_DISPLAY_FONT),
+                title_medium=ft.TextStyle(font_family=_DISPLAY_FONT),
+                title_small=ft.TextStyle(font_family=_DISPLAY_FONT),
+                body_large=ft.TextStyle(font_family=_BODY_FONT),
+                body_medium=ft.TextStyle(font_family=_BODY_FONT),
+                body_small=ft.TextStyle(font_family=_BODY_FONT),
+                label_large=ft.TextStyle(font_family=_BODY_FONT),
+                label_medium=ft.TextStyle(font_family=_BODY_FONT),
+                label_small=ft.TextStyle(font_family=_BODY_FONT),
             ),
 
             # Scrollbar theme
             scrollbar_theme=ft.ScrollbarTheme(
                 thumb_color={
-                    ft.ControlState.DEFAULT: ft.Colors.BLUE_GREY_100,
-                    ft.ControlState.HOVERED: ft.Colors.BLUE_100,
-                    ft.ControlState.DRAGGED: ft.Colors.BLUE_100,
+                    ft.ControlState.DEFAULT: "#B9C7E5",
+                    ft.ControlState.HOVERED: "#AAC7FF",
+                    ft.ControlState.DRAGGED: "#AAC7FF",
                 },
-                track_color=ft.Colors.BLUE_800,
+                track_color="#3C4962",
                 track_visibility=True,
                 thumb_visibility=True,
                 thickness=14,

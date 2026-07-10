@@ -12,7 +12,18 @@ from repository.storage import Storage
 
 
 class Table:
-    def __init__(self, page: ft.Page, parent, name: str, fields: list, endpoint: str | None = None, limit: int = 20, is_inside_form: bool = False):
+    def __init__(
+        self,
+        page: ft.Page,
+        parent,
+        name: str,
+        fields: list,
+        endpoint: str | None = None,
+        limit: int = 20,
+        is_inside_form: bool = False,
+        edit_screen: str = "edit",
+        custom_param: dict | None = None,
+    ):
         """
         Initialize Table
 
@@ -22,6 +33,14 @@ class Table:
             name (str): The name of the table
             fields (list): The list of fields for the table
             endpoint (str, optional): The API endpoint for data fetching. Defaults to None.
+            edit_screen (str, optional): Screen name a row click navigates to
+                (`/modules/{module}/{edit_screen}/{id}`). Defaults to "edit" -
+                override for sub-tables whose row-click target isn't the
+                parent module's own edit screen (e.g. an item sub-table on a
+                header's edit screen navigating to "item_edit" instead).
+            custom_param (dict, optional): Extra static query params merged
+                into every get_data() request (e.g. {"header_id": 3} for an
+                item sub-table scoped to one header).
         """
         self.page = page
         self.storage: Storage = page.data["storage"]
@@ -31,6 +50,8 @@ class Table:
 
         self.module = parent.module
         self.screen = parent.screen
+        self.edit_screen = edit_screen
+        self.custom_param = custom_param or {}
 
         self.is_inside_form = is_inside_form
 
@@ -153,6 +174,8 @@ class Table:
         client = HttpClient(self.page)
         param = f"table-keyword-filter={self.filter}" if self.filter else ""
         param = param + f"&limit={self.limit}&page={page_no}&offset={offset}"
+        for key, value in self.custom_param.items():
+            param = param + f"&{key}={value}"
         response = client.get(
             f"{self.endpoint}?{param}" if param else self.endpoint)
         if isinstance(response, dict) and "error" in response:

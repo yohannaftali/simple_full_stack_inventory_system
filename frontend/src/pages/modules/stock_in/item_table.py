@@ -1,93 +1,84 @@
-"""Read/navigate item sub-table embedded in a receiving header's edit screen.
+"""Item sub-table embedded in a receiving header's edit screen, built on the
+shared `components/table/table.py` (paginated list/search, same lazy-loading
+contract as every other list screen: `table-keyword-filter`/`limit`/`page`/
+`offset`, with `db_total_page`/`db_num_rows` on the first row).
 
-Not built on components/table/table.py: that component's row click always
-navigates to `/modules/{module}/edit/{id}`, which would collide with this
-same module's header edit screen (`edit/<header_id>` vs. wanting
-`item_edit/<item_id>`). A plain DataTable with a custom on-click sidesteps
-that instead of fighting the shared component.
+Not simply reused as-is: `Table`'s row click always builds
+`/modules/{module}/edit/{id}`, which would collide with this same module's
+header edit screen. `Table.edit_screen` (and `custom_param` to scope every
+request to this one header) exist specifically so this sub-table can reuse
+the shared component instead of a bespoke widget - row clicks go to
+`item_edit/<item_id>` here instead.
 """
 
 import flet as ft
 
-from utils.http_client import HttpClient
+from components.table.table import Table
 
 
 class ItemTable:
     """Item sub-table for a receiving header, with an "Add Item" button."""
 
-    def __init__(self, page: ft.Page, module: str, header_id: str | int):
+    def __init__(self, page: ft.Page, parent, module: str, header_id: str | int):
         self.page = page
+        self.parent = parent  # the header's edit ModulePage
         self.module = module
+        self.screen = f"{parent.screen}_items"
         self.header_id = header_id
-        self.data: list = []
+
+        self.fields = [
+            {
+                "name": "id",
+                "type": "hidden", "key": True, "serialize": False
+            },
+            {
+                "name": "material_code", "label": "Material Code",
+                "type": "label"
+            },
+            {
+                "name": "material_name", "label": "Material",
+                "type": "label"
+            },
+            {
+                "name": "location_code", "label": "Location",
+                "type": "label"
+            },
+            {
+                "name": "qty_received", "label": "Qty",
+                "type": "label", "format": "number"
+            },
+            {
+                "name": "price_buy", "label": "Price",
+                "type": "label", "format": "number"
+            },
+            {
+                "name": "remarks", "label": "Remarks",
+                "type": "label"
+            }
+        ]
+
+        self.table = Table(
+            page=page,
+            parent=self,
+            name="items",
+            fields=self.fields,
+            endpoint=f"C_{module}/get_items",
+            custom_param={"header_id": header_id},
+            edit_screen="item_edit",
+        )
+
+        self.table.toolbar.add_new_button(callback=self.callback_add_new)
+
+    @property
+    def view(self):
+        """Delegate to the header edit page's view - Table.get_data() calls
+        `self.parent.view.show_error(...)` on load failure."""
+        return self.parent.view
 
     def build(self) -> ft.Control:
-        self._load()
+        return self.table.build()
 
-        rows = []
-        for item in self.data:
-            rows.append(
-                ft.DataRow(
-                    cells=[
-                        ft.DataCell(ft.Text(item.get("material_code", ""))),
-                        ft.DataCell(ft.Text(item.get("material_name", ""))),
-                        ft.DataCell(ft.Text(item.get("location_code", ""))),
-                        ft.DataCell(ft.Text(str(item.get("qty_received", "")))),
-                        ft.DataCell(ft.Text(str(item.get("price_buy", "")))),
-                        ft.DataCell(ft.Text(item.get("remarks", ""))),
-                    ],
-                    on_select_change=self._make_on_click(item["id"]),
-                )
-            )
-
-        table = ft.DataTable(
-            columns=[
-                ft.DataColumn(ft.Text("Material Code")),
-                ft.DataColumn(ft.Text("Material")),
-                ft.DataColumn(ft.Text("Location")),
-                ft.DataColumn(ft.Text("Qty")),
-                ft.DataColumn(ft.Text("Price")),
-                ft.DataColumn(ft.Text("Remarks")),
-            ],
-            rows=rows,
-        )
-
-        return ft.Column(
-            controls=[
-                ft.Row(
-                    controls=[
-                        ft.Text("Items", weight=ft.FontWeight.BOLD, size=16),
-                        ft.IconButton(
-                            icon=ft.Icons.ADD,
-                            tooltip="Add item",
-                            on_click=self._on_add_click,
-                        ),
-                    ],
-                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                ),
-                ft.Container(
-                    content=table,
-                    padding=ft.Padding.only(top=5),
-                ),
-            ],
-            spacing=5,
-        )
-
-    def _load(self):
-        client = HttpClient(self.page)
-        response = client.get(f"C_{self.module}/get_items", {"header_id": self.header_id})
-        if isinstance(response, list):
-            self.data = response
-
-    def _make_on_click(self, item_id):
-        def handler(e):
-            self.page.run_task(
-                self.page.push_route, f"/modules/{self.module}/item_edit/{item_id}"
-            )
-
-        return handler
-
-    def _on_add_click(self, e):
+    def callback_add_new(self, e):
         self.page.run_task(
             self.page.push_route, f"/modules/{self.module}/item_new/{self.header_id}"
         )

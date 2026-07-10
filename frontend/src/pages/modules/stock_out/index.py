@@ -19,7 +19,7 @@ class ModulePage:
             },
             {
                 "name": "date", "label": "Date",
-                "type": "label"
+                "type": "label", "format": "date"
             },
             {
                 "name": "description", "label": "Description",

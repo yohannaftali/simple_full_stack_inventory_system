@@ -6,7 +6,14 @@ from repository.storage import Storage
 class HomeSearchBar:
     """Home search bar component"""
 
-    def __init__(self, page: ft.Page, modules: list, on_filter_change=None, on_submit=None, initial_value: str = ""):
+    def __init__(
+        self,
+        page: ft.Page,
+        modules: list,
+        on_filter_change=None,
+        on_submit=None,
+        initial_value: str = "",
+    ):
         """
         Initialize home search bar
 
@@ -33,36 +40,51 @@ class HomeSearchBar:
             on_change=self.on_search_change,
             on_submit=self.on_search_submit,
             value=initial_value,
-            bar_bgcolor=ft.Colors.SECONDARY,
-            bar_text_style=ft.TextStyle(color=ft.Colors.ON_SECONDARY),
-            bar_overlay_color=ft.Colors.PRIMARY,
-            bar_leading=ft.Icon(
-                ft.Icons.SEARCH, color=ft.Colors.ON_SECONDARY, size=20),
-            view_leading=ft.Icon(
-                ft.Icons.SEARCH, color=ft.Colors.ON_PRIMARY, size=20),
-            bar_trailing=[ft.IconButton(
-                icon=ft.Icons.CLEAR,
-                icon_color=ft.Colors.ON_SECONDARY,
-                icon_size=20,
-                on_click=self.clear_search,
-            )],
-            view_trailing=[ft.IconButton(
-                icon=ft.Icons.CLEAR,
-                icon_color=ft.Colors.ON_PRIMARY,
-                icon_size=20,
-                on_click=self.clear_search,
-            )],
+            # Material 3 Search bar spec: surfaceContainerHigh background,
+            # onSurface content - a subtly-elevated neutral container, not a
+            # colored accent (that's the older M2 convention).
+            bar_bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
+            bar_text_style=ft.TextStyle(color=ft.Colors.ON_SURFACE, size=14),
+            # A ControlState dict of low-opacity tints (the M3 "state layer"
+            # convention), not a single solid color: passing a plain color
+            # here replaces the whole bar background on hover/focus/press
+            # instead of tinting it, which is why the bar used to turn
+            # solid near-black in light mode / near-white in dark mode
+            # (on_surface at full opacity) with same-colored, invisible text
+            # on top.
+            bar_overlay_color={
+                ft.ControlState.HOVERED: ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE),
+                ft.ControlState.FOCUSED: ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
+                ft.ControlState.PRESSED: ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
+            },
+            bar_leading=ft.Icon(ft.Icons.SEARCH, color=ft.Colors.ON_SURFACE, size=14),
+            view_leading=ft.Icon(ft.Icons.SEARCH, color=ft.Colors.ON_SURFACE, size=14),
+            bar_trailing=[
+                ft.IconButton(
+                    icon=ft.Icons.CLEAR,
+                    icon_color=ft.Colors.ON_SURFACE,
+                    icon_size=14,
+                    on_click=self.clear_search,
+                )
+            ],
+            view_trailing=[
+                ft.IconButton(
+                    icon=ft.Icons.CLEAR,
+                    icon_color=ft.Colors.ON_SURFACE,
+                    icon_size=20,
+                    on_click=self.clear_search,
+                )
+            ],
         )
 
-        self.container = ft.Container(
-            content=ft.Container(
-                content=self.search_bar,
-                padding=ft.Padding.only(left=20, right=20, top=0, bottom=20),
-                alignment=ft.Alignment.CENTER,
-            ),
-            bgcolor=ft.Colors.PRIMARY,
-            padding=ft.Padding.only(top=12),
-        )
+        # No `expand=True` here: this container is a direct child of the
+        # home body's Column (components/home/body.py), where `expand` on a
+        # child governs the Column's *main* (vertical) axis share, not
+        # width - it would make the search bar fight the module grid/footer
+        # for vertical space instead of just sizing to its own content
+        # height. Full width comes from that Column's
+        # `horizontal_alignment=STRETCH` instead.
+        self.container = ft.Container(content=self.search_bar, padding=20)
 
     def build(self):
         """Build and return the search bar control"""
@@ -80,7 +102,8 @@ class HomeSearchBar:
             self.filtered_modules = self.modules.copy()
         else:
             self.filtered_modules = [
-                module for module in self.modules
+                module
+                for module in self.modules
                 if search_text in module.get("label", "").lower()
                 or (module.get("group") and search_text in module["group"].lower())
             ]
@@ -116,7 +139,8 @@ class HomeSearchBar:
             # Recompute filtered list using existing search text
             lowered = current_value.lower()
             self.filtered_modules = [
-                module for module in self.modules
+                module
+                for module in self.modules
                 if lowered in module.get("label", "").lower()
                 or (module.get("group") and lowered in module["group"].lower())
             ]

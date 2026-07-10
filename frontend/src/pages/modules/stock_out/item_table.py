@@ -1,84 +1,87 @@
-"""Read-only item sub-table embedded in a stock out header's detail screen.
+"""Item sub-table embedded in a stock out header's edit screen, built on the
+shared `components/table/table.py` (paginated list/search, same lazy-loading
+contract as every other list screen). See `stock_in/item_table.py`'s
+docstring for why a sub-table needs `Table`'s `custom_param`/`edit_screen`
+support rather than being reused unmodified.
 
-Stock out items are create-only (see services.inventory_service on the
-backend for why issuing can't be edited), so — unlike stock_in's item_table —
-rows here have no click-through, just an "Add Item" button.
+Stock out items are create-only (see `services.inventory_service` on the
+backend for why issuing can't be edited), so - unlike stock_in's item
+table - no field here is marked `"key": True`, giving no row-click
+navigation (same convention as `stock_browse`/`usage_report`, which also
+have no edit screen to navigate to). Just an "Add Item" button.
 """
 
 import flet as ft
 
-from utils.http_client import HttpClient
+from components.table.table import Table
 
 
 class ItemTable:
     """Item sub-table for a stock out header, with an "Add Item" button."""
 
-    def __init__(self, page: ft.Page, module: str, header_id: str | int):
+    def __init__(self, page: ft.Page, parent, module: str, header_id: str | int):
         self.page = page
+        self.parent = parent  # the header's edit ModulePage
         self.module = module
+        self.screen = f"{parent.screen}_items"
         self.header_id = header_id
-        self.data: list = []
+
+        self.fields = [
+            {
+                "name": "id",
+                "type": "hidden", "serialize": False
+            },
+            {
+                "name": "material_code", "label": "Material Code",
+                "type": "label"
+            },
+            {
+                "name": "material_name", "label": "Material",
+                "type": "label"
+            },
+            {
+                "name": "location_code", "label": "Location",
+                "type": "label"
+            },
+            {
+                "name": "qty_out", "label": "Qty Out",
+                "type": "label", "format": "number"
+            },
+            {
+                "name": "price", "label": "Price",
+                "type": "label", "format": "number"
+            },
+            {
+                "name": "total_value", "label": "Total Value",
+                "type": "label", "format": "number"
+            },
+            {
+                "name": "remarks", "label": "Remarks",
+                "type": "label"
+            }
+        ]
+
+        self.table = Table(
+            page=page,
+            parent=self,
+            name="items",
+            fields=self.fields,
+            endpoint=f"C_{module}/get_items",
+            custom_param={"header_id": header_id},
+        )
+
+        self.table.toolbar.add_new_button(callback=self.callback_add_new)
+
+    @property
+    def view(self):
+        """Delegate to the header edit page's view - Table.get_data() calls
+        `self.parent.view.show_error(...)` on load failure."""
+        return self.parent.view
 
     def build(self) -> ft.Control:
-        self._load()
+        return self.table.build()
 
-        rows = []
-        for item in self.data:
-            rows.append(
-                ft.DataRow(
-                    cells=[
-                        ft.DataCell(ft.Text(item.get("material_code", ""))),
-                        ft.DataCell(ft.Text(item.get("material_name", ""))),
-                        ft.DataCell(ft.Text(item.get("location_code", ""))),
-                        ft.DataCell(ft.Text(str(item.get("qty_out", "")))),
-                        ft.DataCell(ft.Text(str(item.get("price", "")))),
-                        ft.DataCell(ft.Text(str(item.get("total_value", "")))),
-                        ft.DataCell(ft.Text(item.get("remarks", ""))),
-                    ],
-                )
-            )
-
-        table = ft.DataTable(
-            columns=[
-                ft.DataColumn(ft.Text("Material Code")),
-                ft.DataColumn(ft.Text("Material")),
-                ft.DataColumn(ft.Text("Location")),
-                ft.DataColumn(ft.Text("Qty Out")),
-                ft.DataColumn(ft.Text("Price")),
-                ft.DataColumn(ft.Text("Total Value")),
-                ft.DataColumn(ft.Text("Remarks")),
-            ],
-            rows=rows,
-        )
-
-        return ft.Column(
-            controls=[
-                ft.Row(
-                    controls=[
-                        ft.Text("Items", weight=ft.FontWeight.BOLD, size=16),
-                        ft.IconButton(
-                            icon=ft.Icons.ADD,
-                            tooltip="Add item",
-                            on_click=self._on_add_click,
-                        ),
-                    ],
-                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                ),
-                ft.Container(
-                    content=table,
-                    padding=ft.Padding.only(top=5),
-                ),
-            ],
-            spacing=5,
-        )
-
-    def _load(self):
-        client = HttpClient(self.page)
-        response = client.get(f"C_{self.module}/get_items", {"header_id": self.header_id})
-        if isinstance(response, list):
-            self.data = response
-
-    def _on_add_click(self, e):
+    def callback_add_new(self, e):
         self.page.run_task(
             self.page.push_route, f"/modules/{self.module}/item_new/{self.header_id}"
         )

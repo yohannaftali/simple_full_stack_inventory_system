@@ -66,11 +66,18 @@ class StockOutRepository:
             session.commit()
             return True
 
-    def list_items_by_header(self, header_id: int) -> list[StockOutItemModel]:
+    def list_items_by_header(
+        self,
+        header_id: int,
+        keyword: str = "",
+        limit: int = 20,
+        page: int = 1,
+        offset: int = 0,
+    ) -> tuple[list[StockOutItemModel], Pagination]:
         with SessionLocal() as session:
-            return (
-                session.query(StockOutItemModel)
-                .filter(StockOutItemModel.stock_out_header_id == header_id)
-                .order_by(StockOutItemModel.id)
-                .all()
+            query = session.query(StockOutItemModel).filter(
+                StockOutItemModel.stock_out_header_id == header_id
             )
+            query = apply_keyword_filter(query, [StockOutItemModel.remarks], keyword)
+            query = query.order_by(StockOutItemModel.id)
+            return paginate(query, limit=limit, page=page, offset=offset)

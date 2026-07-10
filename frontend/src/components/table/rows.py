@@ -1,6 +1,13 @@
 import flet as ft
 
 from components.table.columns import Columns
+from utils.formatting import format_date, format_number, format_time
+
+_FORMATTERS = {
+    "number": format_number,
+    "date": format_date,
+    "time": format_time,
+}
 
 
 class Rows:
@@ -47,26 +54,43 @@ class Rows:
                     module = self.page.data.get('module')
 
                 if module:
-                    def _make_tap(kf, kv, mod):
-                        # Use path parameter for id: /modules/<module>/edit/<id>
+                    # Table's own `edit_screen` (default "edit") lets a
+                    # sub-table (e.g. an item list on a header's edit
+                    # screen) navigate somewhere other than the parent
+                    # module's own edit route, avoiding a route collision.
+                    edit_screen = getattr(self.parent, "edit_screen", "edit")
+
+                    def _make_tap(kf, kv, mod, screen):
+                        # Use path parameter for id: /modules/<module>/<screen>/<id>
                         if kv is None:
                             return lambda e: None
-                        return lambda e: self.page.run_task(self.page.push_route, f"/modules/{mod}/edit/{kv}")
+                        return lambda e: self.page.run_task(self.page.push_route, f"/modules/{mod}/{screen}/{kv}")
 
-                    on_tap_handler = _make_tap(key_field, key_value, module)
+                    on_tap_handler = _make_tap(key_field, key_value, module, edit_screen)
 
             cells = []
             for i, name in enumerate(self.columns.index):
-                value = record.get(name, "")
+                raw_value = record.get(name, "")
+                field = self.columns.fields_by_name.get(name, {})
+                formatter = _FORMATTERS.get(field.get("format"))
+                value = formatter(raw_value) if formatter else raw_value
+                is_numeric = field.get("format") == "number"
+                text_align = ft.TextAlign.RIGHT if is_numeric else None
+
                 # Wrap text in container with fixed width if available
-                content = ft.Text(str(value), overflow=ft.TextOverflow.ELLIPSIS)
+                content = ft.Text(
+                    str(value), overflow=ft.TextOverflow.ELLIPSIS, text_align=text_align
+                )
                 if columns_widths is not None and i < len(columns_widths):
                     # Ensure integer pixel widths (Flet expects integers)
                     w = int(columns_widths[i])
                     content = ft.Container(
-                        content=ft.Text(str(value), overflow=ft.TextOverflow.ELLIPSIS),
+                        content=ft.Text(
+                            str(value), overflow=ft.TextOverflow.ELLIPSIS, text_align=text_align
+                        ),
                         width=w,
                         padding=5,
+                        alignment=ft.Alignment.CENTER_RIGHT if is_numeric else None,
                     )
 
                 # attach on_tap to each DataCell so clicking any cell navigates

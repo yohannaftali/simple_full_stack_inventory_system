@@ -35,11 +35,11 @@ class ModulePage:
             },
             {
                 "name": "total_qty_out", "label": "Total Qty",
-                "type": "label"
+                "type": "label", "format": "number"
             },
             {
                 "name": "total_cost", "label": "Total Cost",
-                "type": "label"
+                "type": "label", "format": "number"
             }
         ]
 

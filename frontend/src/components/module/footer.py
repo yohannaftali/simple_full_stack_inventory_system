@@ -30,7 +30,9 @@ class ModuleFooter:
                 controls=self.controls,
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             ),
-            bgcolor=ft.Colors.PRIMARY,
+            # Material 3 chrome uses a neutral surface color, not primary -
+            # matches components/module/header.py's top bar.
+            bgcolor=ft.Colors.SURFACE,
             padding=5,
         )
 
@@ -41,11 +43,11 @@ class ModuleFooter:
             ft.Row(
                 controls=[
                     ft.Icon(ft.Icons.APP_REGISTRATION,
-                            color=ft.Colors.ON_PRIMARY, size=10),
+                            color=ft.Colors.ON_SURFACE, size=10),
                     ft.Text(
                         footer_text,
                         size=8,
-                        color=ft.Colors.ON_PRIMARY,
+                        color=ft.Colors.ON_SURFACE,
                     )
                 ],
                 alignment=ft.MainAxisAlignment.START,
@@ -56,11 +58,11 @@ class ModuleFooter:
             ft.Row(
                 controls=[
                     ft.Icon(ft.Icons.DATASET,
-                            color=ft.Colors.ON_PRIMARY, size=10),
+                            color=ft.Colors.ON_SURFACE, size=10),
                     ft.Text(
                         server_url,
                         size=8,
-                        color=ft.Colors.ON_PRIMARY,
+                        color=ft.Colors.ON_SURFACE,
                     ),
                 ],
                 alignment=ft.MainAxisAlignment.START,

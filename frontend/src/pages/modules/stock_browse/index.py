@@ -35,15 +35,15 @@ class ModulePage:
             },
             {
                 "name": "qty", "label": "Qty",
-                "type": "label"
+                "type": "label", "format": "number"
             },
             {
                 "name": "average_price", "label": "Avg Price",
-                "type": "label"
+                "type": "label", "format": "number"
             },
             {
                 "name": "value", "label": "Value",
-                "type": "label"
+                "type": "label", "format": "number"
             }
         ]
 

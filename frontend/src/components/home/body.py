@@ -82,9 +82,25 @@ class Body:
                     controls,
                     spacing=0,
                     expand=True,
+                    # Column.horizontal_alignment (cross-axis) defaults to
+                    # CrossAxisAlignment.START, which shrinks children to
+                    # their own intrinsic width - `expand=True` on a child
+                    # only shares out the Column's *main* (vertical) axis,
+                    # it does nothing for width. The module grid looks fine
+                    # regardless since GridView sizes itself full-bleed, but
+                    # the search bar (a plain shrink-to-content SearchBar)
+                    # needs the Column itself told to stretch children
+                    # horizontally.
+                    horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
                 ),
-                alignment=ft.Alignment.CENTER,
+                # No `alignment` here deliberately: a Container with
+                # `alignment` set gives its child loose constraints (size
+                # yourself, then I'll position you), so the search bar -
+                # which has no `expand` of its own - shrinks to its
+                # intrinsic width and gets centered instead of filling the
+                # row (same issue fixed in components/table/search_bar.py).
                 padding=0,
+                expand=True,
             ),
             expand=True,
         )

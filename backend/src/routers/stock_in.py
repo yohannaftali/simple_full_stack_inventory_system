@@ -11,7 +11,8 @@ screen (material/location are then read-only — see inventory_service).
 - GET  C_stock_in/get_detail -> paginated receiving headers.
 - GET  C_stock_in/get?id=<id> -> single header {id, date, description}.
 - POST C_stock_in/submit (form: id, date, description) -> upsert header.
-- GET  C_stock_in/get_items?header_id=<id> -> that header's items, joined
+- GET  C_stock_in/get_items?header_id=<id>&table-keyword-filter=&limit=&page=&offset=
+  -> paginated items for that header (keyword matches `remarks`), joined
   with material_code/name and location_code/name for display.
 - GET  C_stock_in/get_item?id=<item_id> -> single item for the edit screen:
   {id, material_name, location_name, qty_received, price_buy, remarks}.
@@ -89,8 +90,17 @@ def submit(
 
 
 @router.get("/get_items")
-def get_items(header_id: int, user: UserModel = Depends(_require_access)) -> list:
-    items = _receiving_repository.list_items_by_header(header_id)
+def get_items(
+    header_id: int,
+    keyword: str = Query("", alias="table-keyword-filter"),
+    limit: int = Query(20),
+    page: int = Query(1),
+    offset: int = Query(0),
+    user: UserModel = Depends(_require_access),
+) -> list:
+    items, pagination = _receiving_repository.list_items_by_header(
+        header_id, keyword=keyword, limit=limit, page=page, offset=offset
+    )
     result = []
     for item in items:
         material = _material_repository.get_material_by_id(item.material_id)
@@ -105,11 +115,9 @@ def get_items(header_id: int, user: UserModel = Depends(_require_access)) -> lis
                 "qty_received": item.qty_received,
                 "price_buy": item.price_buy,
                 "remarks": item.remarks,
-                "db_total_page": 1,
-                "db_num_rows": len(items),
             }
         )
-    return result
+    return attach_pagination(result, pagination)
 
 
 @router.get("/get_item")

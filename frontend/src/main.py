@@ -45,6 +45,21 @@ async def main(page: ft.Page):
     page.padding = 0
     page.adaptive = True
 
+    # Custom typefaces referenced by themes/light_theme.py and
+    # themes/dark_theme.py's TextTheme (Montserrat for display/headline/
+    # title, Lato for body/label - matches frontend/design/material-theme's
+    # Compose export, the complete reference for this app's theme). page.fonts
+    # needs a direct .ttf/.otf/.ttc URL, not a Google Fonts CSS stylesheet URL.
+    page.fonts = {
+        "Montserrat": (
+            "https://fonts.gstatic.com/s/montserrat/v31/"
+            "JTUHjIg1_i6t8kCHKm4532VJOt5-QNFgpCtr6Hw5aX8.ttf"
+        ),
+        "Lato": (
+            "https://fonts.gstatic.com/s/lato/v25/S6uyw4BMUTPHjx4wWw.ttf"
+        ),
+    }
+
     # Set window size only for desktop mode
     if hasattr(page, "window") and page.window:
         page.window.width = 400

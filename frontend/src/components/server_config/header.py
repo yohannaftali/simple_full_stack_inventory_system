@@ -25,14 +25,17 @@ class Header:
         return ft.AppBar(
             leading=ft.IconButton(
                 icon=ft.Icons.ARROW_BACK,
-                icon_color=ft.Colors.ON_PRIMARY,
+                icon_color=ft.Colors.ON_SURFACE,
                 tooltip="Back to Login",
                 on_click=self.on_back_click,
             ),
-            title=ft.Text("Server Configuration", color=ft.Colors.ON_PRIMARY),
-            bgcolor=ft.Colors.PRIMARY,
+            title=ft.Text("Server Configuration", color=ft.Colors.ON_SURFACE),
+            bgcolor=ft.Colors.SURFACE,
             actions=actions,
-            center_title=True
+            center_title=True,
+            elevation=0,
+            elevation_on_scroll=0,
+            shadow_color=ft.Colors.SHADOW,
         )
 
     def on_back_click(self, e):

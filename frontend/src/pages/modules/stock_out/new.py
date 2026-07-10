@@ -19,7 +19,7 @@ class ModulePage:
                 "key": True
             },
             {
-                "name": "date", "label": "Date", "icon": ft.Icons.CALENDAR_MONTH,
+                "name": "date", "label": "Date", "icon": ft.Icons.EVENT,
                 "row": 1, "col": {"sm": 12, "md": 6},
                 "type": "date", "autofocus": True
             },

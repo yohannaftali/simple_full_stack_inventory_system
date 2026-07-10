@@ -173,10 +173,11 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
 
   **Table list/pagination convention**: every paginated `list_*` repository
   method (`list_modules`, `list_users`, `list_locations`, `list_suppliers`,
-  `list_departments`, `list_materials`, `list_headers` in
-  `receiving_repository.py`/`stock_out_repository.py`, `list_stock_summary`,
-  `list_usage_by_department`) and its corresponding router's `get_detail`
-  endpoint (`GET C_{module}/get_detail?table-keyword-filter=&limit=&page=&offset=`)
+  `list_departments`, `list_materials`, `list_groups`, `list_headers` /
+  `list_items_by_header` in `receiving_repository.py`/`stock_out_repository.py`,
+  `list_stock_summary`, `list_usage_by_department`) and its corresponding
+  router's `get_detail` (or, for item sub-lists, `get_items`) endpoint
+  (`GET C_{module}/get_detail?table-keyword-filter=&limit=&page=&offset=`)
   **must** use `backend/src/core/table_query.py` instead of hand-rolling
   keyword-filtering/pagination — a Python port of the pagination/filtering
   half of a legacy PHP library called `L_database`
@@ -570,34 +571,60 @@ password-masking support (`password`/`can_reveal_password`, defaulting to
 off, added specifically for this field).
 
 `stock_in`/`stock_out` needed a **header/item master-detail pattern that
-doesn't exist elsewhere in this codebase**. Two roads not taken, and why:
-- `components/form/table.py` / `list.py` (the `Form` component's `"table"`/
-  `"list"` field types) look like the obvious fit, but they serialize their
-  rows as indexed fields (`items[0]`, `items[1]`, ...) submitted together
-  with the parent form in **one** POST — the spec here is "click + to add
-  one item via its own form," a separate transaction per item, not a bulk
-  combined save.
-- Reusing `components/table/table.py` (the plain list-table, as used by
-  every `index.py`) for the *item* sub-list doesn't work either:
-  `components/table/rows.py`'s row-tap handler is hardcoded to navigate to
-  `/modules/{module}/edit/{id}` — which is already the header's own edit
-  route. Using it for items would either collide with the header edit
-  screen or misinterpret an item id as a header id.
+doesn't exist elsewhere in this codebase**. A road not taken, and why:
+`components/form/table.py` / `list.py` (the `Form` component's `"table"`/
+`"list"` field types) look like the obvious fit, but they serialize their
+rows as indexed fields (`items[0]`, `items[1]`, ...) submitted together
+with the parent form in **one** POST — the spec here is "click + to add
+one item via its own form," a separate transaction per item, not a bulk
+combined save.
 
-  Solution: `stock_in/edit.py` and `stock_out/edit.py` embed a small custom
-  `ItemTable` widget (`pages/modules/stock_in/item_table.py`,
-  `pages/modules/stock_out/item_table.py` — plain `ft.DataTable`, not built
-  on the shared `Table` component) with its own "+" button and (stock_in
-  only) row-click, navigating to `item_new/<header_id>` and
-  `item_edit/<item_id>` respectively — screen names local to each module,
-  no collision. Those two screens don't use `Form.submit()` (which always
-  redirects to `/modules/{module}/index`); they call `self.form.serialize()`
-  themselves, POST via `HttpClient`, and redirect back to the header's
-  `edit/<header_id>` screen instead. `item_new` repurposes the route's
-  `record_id` slot to carry the *header* id (it only ever creates, so there's
-  no item id yet); `item_edit` does a small extra GET up front to learn its
-  item's `receiving_header_id` (needed to know where to navigate back to,
-  since the route only carries the item id).
+The *item sub-list itself*, though, **is** built on the shared
+`components/table/table.py` (`stock_in/item_table.py`, `stock_out/item_table.py`
+— thin wrapper classes, each building a `Table` with the header's own
+`get_items` endpoint and `custom_param={"header_id": ...}` to scope every
+request to that one header) — same paginated/lazy-loaded/searchable
+list contract as every other list screen in this codebase
+(`table-keyword-filter`/`limit`/`page`/`offset`, `db_total_page`/
+`db_num_rows` on the first row via `core/table_query.py` on the backend
+side — `receiving_repository.py`/`stock_out_repository.py`'s
+`list_items_by_header` and `stock_in.py`/`stock_out.py`'s `get_items`).
+This used to be a bespoke `ft.DataTable` widget instead, because
+`components/table/rows.py`'s row-tap handler was hardcoded to navigate to
+`/modules/{module}/edit/{id}` — which collides with the header's own edit
+route. Rather than keep duplicating the paginated-list plumbing, `Table`
+itself grew two small hooks so a sub-table *can* reuse it:
+- `edit_screen` (default `"edit"`) — the screen name a row click navigates
+  to (`/modules/{module}/{edit_screen}/{id}`); item tables pass
+  `edit_screen="item_edit"` instead so item clicks don't collide with the
+  header's own edit screen. `stock_out`'s item table has no field marked
+  `"key": True` at all (items are create-only, no edit screen to navigate
+  to — same convention as `stock_browse`/`usage_report`).
+- `custom_param` — extra static query params merged into every
+  `get_data()` request, used here for `header_id`.
+
+  Each `ItemTable` wrapper receives the header's edit `ModulePage` as
+  `parent` and exposes a `view` property delegating to `parent.view`
+  (`Table.get_data()` calls `parent.view.show_error(...)` on failure) — it
+  must be constructed *after* `self.view = ModuleView(...)` in the edit
+  page's `__init__`, since `Table.__init__` fetches data immediately.
+  Because `Table`'s own layout expands to fill its parent, and the edit
+  page nests it inside an already-scrolling `ft.Column` alongside the
+  header `Form`, it's wrapped in a fixed-height `ft.Container` (see
+  `stock_in/edit.py`/`stock_out/edit.py`'s `body()`) so it gets its own
+  bounded scroll region instead of collapsing to zero height.
+
+  The "+" button still navigates to `item_new/<header_id>` and row-click
+  (stock_in only) to `item_edit/<item_id>` — screen names local to each
+  module, no collision with the header's own `edit` screen. Those two
+  screens don't use `Form.submit()` (which always redirects to
+  `/modules/{module}/index`); they call `self.form.serialize()` themselves,
+  POST via `HttpClient`, and redirect back to the header's `edit/<header_id>`
+  screen instead. `item_new` repurposes the route's `record_id` slot to
+  carry the *header* id (it only ever creates, so there's no item id yet);
+  `item_edit` does a small extra GET up front to learn its item's
+  `receiving_header_id` (needed to know where to navigate back to, since
+  the route only carries the item id).
 - Full stock-in → MAP calc across two receipts → edit-item MAP correction →
   browse → stock-out (FIFO across 3 lots, partial-lot deduction, insufficient-
   stock rejection, issue-from-empty-location rejection) → permission-gating

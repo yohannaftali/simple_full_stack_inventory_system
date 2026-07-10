@@ -350,7 +350,13 @@ class Form:
         # Update TextField elements
         for field_name, control in self.elements.items():
             print(f"Field name: {field_name}")
-            if isinstance(control, ft.TextField):
+            if field_name in self.date:
+                # DateForm displays "dd Mon yyyy" but stores/submits the raw
+                # ISO value separately (see DateForm.set_value) - assigning
+                # the ISO value straight to control.value here would show
+                # the unformatted ISO string instead.
+                self.date[field_name].set_value(data[0].get(field_name, ""))
+            elif isinstance(control, ft.TextField):
                 self.elements[field_name].value = data[0].get(field_name, "")
 
             if isinstance(control, ft.Dropdown):
@@ -459,6 +465,10 @@ class Form:
             if is_key:
                 self.record_key = field_name
                 form_data[self.record_key] = self.record_id
+            elif field_name in self.date:
+                # Submit the true ISO value, not the "dd Mon yyyy" text
+                # displayed in the field - see DateForm.get_value().
+                form_data[field_name] = self.date[field_name].get_value()
             elif is_input:
                 control = self.elements.get(field_name)
                 if isinstance(control, ft.TextField):

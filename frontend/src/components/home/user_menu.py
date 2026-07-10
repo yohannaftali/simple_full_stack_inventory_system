@@ -9,15 +9,20 @@ from repository.storage import Storage
 class UserMenu:
     """User Menu component"""
 
-    def __init__(self, page: ft.Page):
+    def __init__(self, page: ft.Page, icon_color: str = ft.Colors.ON_PRIMARY):
         """
         Initialize user menu
 
         Args:
             page: The Flet page
+            icon_color: color of the settings icon - callers pass the color
+                that contrasts with whatever bar this menu is placed on
+                (e.g. `ON_SURFACE` for the neutral module AppBar, vs. the
+                default `ON_PRIMARY` for the home page's primary-colored one)
         """
         self.page = page
         self.storage: Storage = page.data["storage"]
+        self.icon_color = icon_color
 
         if self.storage.client_data:
             self.username = self.storage.client_data.get_username()
@@ -34,7 +39,12 @@ class UserMenu:
 
         self.menu_button = ft.PopupMenuButton(
             icon=ft.Icons.SETTINGS,
-            icon_color=ft.Colors.ON_PRIMARY,
+            icon_color=self.icon_color,
+            # Match the AppBar's other IconButtons (back/search) explicitly -
+            # PopupMenuButton's own default icon size doesn't resolve to the
+            # same size as IconButton's, so left implicit they render visibly
+            # different next to each other in the top bar.
+            icon_size=24,
             tooltip="Menu",
             menu_position=ft.PopupMenuPosition.UNDER,
             items=[

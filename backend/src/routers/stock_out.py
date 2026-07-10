@@ -12,7 +12,8 @@ create-only (no `submit_item` update path, no `get_item`) — see
 - POST C_stock_out/submit (form: id, date, description, department_id) ->
   upsert header. `department_id` is required — every stock-out transaction
   must be attributed to a department.
-- GET  C_stock_out/get_items?header_id=<id> -> that header's items, joined
+- GET  C_stock_out/get_items?header_id=<id>&table-keyword-filter=&limit=&page=&offset=
+  -> paginated items for that header (keyword matches `remarks`), joined
   with material_code/name and location_code/name, plus the captured price
   and total_value.
 - POST C_stock_out/submit_item (form: stock_out_header_id, material_id,
@@ -114,8 +115,17 @@ def submit(
 
 
 @router.get("/get_items")
-def get_items(header_id: int, user: UserModel = Depends(_require_access)) -> list:
-    items = _stock_out_repository.list_items_by_header(header_id)
+def get_items(
+    header_id: int,
+    keyword: str = Query("", alias="table-keyword-filter"),
+    limit: int = Query(20),
+    page: int = Query(1),
+    offset: int = Query(0),
+    user: UserModel = Depends(_require_access),
+) -> list:
+    items, pagination = _stock_out_repository.list_items_by_header(
+        header_id, keyword=keyword, limit=limit, page=page, offset=offset
+    )
     result = []
     for item in items:
         material = _material_repository.get_material_by_id(item.material_id)
@@ -131,11 +141,9 @@ def get_items(header_id: int, user: UserModel = Depends(_require_access)) -> lis
                 "price": item.price,
                 "total_value": item.total_value,
                 "remarks": item.remarks,
-                "db_total_page": 1,
-                "db_num_rows": len(items),
             }
         )
-    return result
+    return attach_pagination(result, pagination)
 
 
 @router.post("/submit_item")

@@ -1,12 +1,13 @@
 """
 Body component for the server configuration
 """
+
 import time
 
 import flet as ft
 
-from repository.storage import Storage
 from components.server_config.save_button import SaveButton
+from repository.storage import Storage
 
 
 class Body:
@@ -26,6 +27,11 @@ class Body:
             hint_text="Enter base server URL (e.g., http://localhost:8000)",
             prefix_icon=ft.Icons.CLOUD,
             border_radius=10,
+            color=ft.Colors.ON_SURFACE,
+            label_style=ft.TextStyle(
+                size=14,
+                color=ft.Colors.ON_SECONDARY_CONTAINER,
+            ),
             autofocus=True,
             width=350,
             value=self.storage.server_url.get(),
@@ -47,7 +53,7 @@ class Body:
             ft.Divider(height=20, color=ft.Colors.TRANSPARENT),
             self.success_message,
             ft.Divider(height=20, color=ft.Colors.TRANSPARENT),
-            self.save_button.build()
+            self.save_button.build(),
         ]
         return ft.SafeArea(
             content=ft.Container(
