@@ -2,6 +2,7 @@
 
 from models.base import SessionLocal
 from models.module import ModuleModel
+from models.module_group import ModuleGroupModel
 from models.user_module_permission import UserModulePermissionModel
 
 
@@ -22,7 +23,11 @@ class UserModulePermissionRepository:
             return row is not None
 
     def get_modules_for_user(self, user_id: int) -> list[ModuleModel]:
-        """Get every module a user has been granted access to, sorted by `sort`."""
+        """Get every module a user has been granted access to, sorted by
+        group sort first (so home screen groups appear in their configured
+        order) then by the module's own `sort` within that group. Ungrouped
+        modules (`module_group_id` is NULL) sort before any group, since
+        that's this codebase's convention (see `module_group_id`'s FK)."""
         with SessionLocal() as session:
             return (
                 session.query(ModuleModel)
@@ -30,8 +35,11 @@ class UserModulePermissionRepository:
                     UserModulePermissionModel,
                     UserModulePermissionModel.module_id == ModuleModel.id,
                 )
+                .outerjoin(
+                    ModuleGroupModel, ModuleGroupModel.id == ModuleModel.module_group_id
+                )
                 .filter(UserModulePermissionModel.user_id == user_id)
-                .order_by(ModuleModel.sort)
+                .order_by(ModuleGroupModel.sort, ModuleModel.sort)
                 .all()
             )
 

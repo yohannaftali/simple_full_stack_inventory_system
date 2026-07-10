@@ -3,12 +3,18 @@
 Contract:
 - GET  C_home/home -> {"username", "modules": [...], "title", "footer"} once
   authenticated; 401 if the session cookie is missing/invalid/expired.
-  Each module dict: {"name", "label", "module_icon", "module_description"}
-  (see components/home/module_card.py) — only modules the user has been
-  granted access to (user_module_permissions), ordered by ModuleModel.sort.
-  `title`/`footer` come from the singleton `app_configs` row (see
-  `routers/app_config.py`, frontend module `master_config`), falling back
-  to "SFSIS"/"" if that row somehow doesn't exist yet.
+  Each module dict: {"name", "label", "module_icon", "module_description",
+  "group"} (field names match `components/home/module_card.py` and
+  `components/home/module_container.py`, the latter reading `"group"` to
+  bucket modules under a group header — falls back to "Dashboard" on the
+  frontend if `"group"` is blank/missing) — only modules the user has been
+  granted access to (user_module_permissions), ordered by group sort first
+  then `ModuleModel.sort` within that group (see
+  `UserModulePermissionRepository.get_modules_for_user`), so groups render
+  in their configured order. `title`/`footer` come from the singleton
+  `app_configs` row (see `routers/app_config.py`, frontend module
+  `master_config`), falling back to "SFSIS"/"" if that row somehow doesn't
+  exist yet.
 - GET  C_home/call_generate_totp -> {"secret": "<base32>"}, a candidate secret
   for the user to scan and confirm — not persisted until call_change_totp
   verifies it.
@@ -29,6 +35,7 @@ from core.security import hash_password, verify_password
 from core.totp import generate_secret, verify as verify_totp
 from models.user import UserModel
 from repository.app_config_repository import AppConfigRepository
+from repository.module_group_repository import ModuleGroupRepository
 from repository.user_module_permission_repository import UserModulePermissionRepository
 from repository.user_repository import UserRepository
 from services.auth_service import get_current_user
@@ -37,20 +44,28 @@ router = APIRouter(prefix="/C_home", tags=["home"])
 _user_repository = UserRepository()
 _permission_repository = UserModulePermissionRepository()
 _app_config_repository = AppConfigRepository()
+_module_group_repository = ModuleGroupRepository()
 
 
 @router.get("/home")
 def home(user: UserModel = Depends(get_current_user)) -> dict:
     """Post-login bootstrap data: username, available modules, page chrome."""
-    modules = [
-        {
-            "name": module.name,
-            "label": module.label,
-            "module_icon": module.icon,
-            "module_description": module.description,
-        }
-        for module in _permission_repository.get_modules_for_user(user.id)
-    ]
+    modules = []
+    for module in _permission_repository.get_modules_for_user(user.id):
+        group = (
+            _module_group_repository.get_group_by_id(module.module_group_id)
+            if module.module_group_id
+            else None
+        )
+        modules.append(
+            {
+                "name": module.name,
+                "label": module.label,
+                "module_icon": module.icon,
+                "module_description": module.description,
+                "group": group.name if group else "",
+            }
+        )
     config = _app_config_repository.get_config()
     title = config.app_title if config else "SFSIS"
     footer = config.footer if config else ""
