@@ -59,8 +59,11 @@ class ModalHeader:
         if hasattr(self.page, "data") and isinstance(self.page.data, dict):
             history = self.page.data.get("module_history", [])
         if history:
-            prev_module, prev_screen = history[-1]
+            prev_module, prev_screen, prev_record_id = history[-1]
             self.page.data["module_history"] = history
-            self.page.run_task(self.page.push_route, f"/modules/{prev_module}/{prev_screen}")
+            route = f"/modules/{prev_module}/{prev_screen}"
+            if prev_record_id is not None:
+                route += f"/{prev_record_id}"
+            self.page.run_task(self.page.push_route, route)
         else:
             self.page.run_task(self.page.push_route, "/home")

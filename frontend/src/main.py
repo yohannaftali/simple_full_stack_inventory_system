@@ -186,7 +186,7 @@ async def main(page: ft.Page):
                         ).build()
                     )
                 else:
-                    storage.module_history.add(module, screen)
+                    storage.module_history.add(module, screen, record_id)
                     await asyncio.to_thread(
                         modules.build, module, screen, record_id
                     )

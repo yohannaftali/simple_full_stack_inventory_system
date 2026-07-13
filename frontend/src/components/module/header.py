@@ -61,11 +61,7 @@ class ModuleHeader:
             # but the back button's whole clickable/visual footprint ends up
             # bigger. Match it to the standard Material icon-button size.
             leading_width=48,
-            title=ft.Text(
-                self.title,
-                color=ft.Colors.ON_SURFACE,
-                size=16
-            ),
+            title=ft.Text(self.title, color=ft.Colors.ON_SURFACE, size=16),
             bgcolor=ft.Colors.SURFACE,
             actions=actions,
             center_title=True,
@@ -80,25 +76,33 @@ class ModuleHeader:
 
     def on_click(self, e):
         """Navigate back within module screens or to home if history exhausted."""
-        if hasattr(self.page, 'banner') and self.page.banner:
+        if hasattr(self.page, "banner") and self.page.banner:
             self.page.banner.open = False
             self.page.update()
 
         history = []
         if hasattr(self.page, "data") and isinstance(self.page.data, dict):
             history = self.page.data.get("module_history", [])
+        current_screen = history[-1][1] if history else None
         if history:
             history.pop()
-        if history:
-            prev_module, prev_screen = history[-1]
-            self.page.data["module_history"] = history
-            self.page.run_task(self.page.push_route, f"/modules/{prev_module}/{prev_screen}")
-        else:
+        # Leaving an index screen means leaving the module entirely - drop
+        # the rest of the stack instead of surfacing whatever module was
+        # visited before this one.
+        if current_screen == "index" or not history:
+            self.page.data["module_history"] = []
             self.page.run_task(self.page.push_route, "/home")
+        else:
+            prev_module, prev_screen, prev_record_id = history[-1]
+            self.page.data["module_history"] = history
+            route = f"/modules/{prev_module}/{prev_screen}"
+            if prev_record_id is not None:
+                route += f"/{prev_record_id}"
+            self.page.run_task(self.page.push_route, route)
 
     def on_home_click(self, e):
         """Navigate back to home"""
-        if hasattr(self.page, 'banner') and self.page.banner:
+        if hasattr(self.page, "banner") and self.page.banner:
             self.page.banner.open = False
             self.page.update()
 

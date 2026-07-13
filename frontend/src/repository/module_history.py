@@ -17,17 +17,20 @@ class ModuleHistory:
 
         page.data.setdefault("module_history", [])
 
-    def add(self, module: str, screen: str):
+    def add(self, module: str, screen: str, record_id: str = None):
         """
         Add a module/screen entry to the history
 
         Args:
             module: Module name
             screen: Screen name
+            record_id: Optional record id from the route, so a back
+                navigation can return to the exact same record
         """
         history = self.page.data.get("module_history", [])
-        if not history or history[-1] != (module, screen):
-            history.append((module, screen))
+        entry = (module, screen, record_id)
+        if not history or history[-1] != entry:
+            history.append(entry)
 
         self.page.data["module_history"] = history
 
