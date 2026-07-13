@@ -21,7 +21,7 @@ class ModulePage:
             {
                 "name": "date", "label": "Date", "icon": ft.Icons.EVENT,
                 "row": 1, "col": {"sm": 12, "md": 6},
-                "type": "date", "autofocus": True
+                "type": "date", "autofocus": True, "default": "today"
             },
             {
                 "name": "department_id", "label": "Department", "icon": ft.Icons.APARTMENT,

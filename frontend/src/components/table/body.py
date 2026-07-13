@@ -1,5 +1,5 @@
 import flet as ft
-from components.table.columns import Columns
+from components.table.columns import TABLE_COLUMN_SPACING, TABLE_HORIZONTAL_MARGIN, Columns
 from components.table.rows import Rows
 
 
@@ -21,8 +21,8 @@ class Body:
         self.data_table = ft.DataTable(
             columns=self.columns.build(),
             rows=self.rows.build(),
-            column_spacing=5,
-            horizontal_margin=10,
+            column_spacing=TABLE_COLUMN_SPACING,
+            horizontal_margin=TABLE_HORIZONTAL_MARGIN,
             heading_row_height=0,  # Hide header
             border=ft.Border.only(
                 left=ft.BorderSide(1, ft.Colors.OUTLINE),
@@ -30,8 +30,12 @@ class Body:
                 bottom=ft.BorderSide(1, ft.Colors.OUTLINE),
             ),
             border_radius=ft.BorderRadius.only(bottom_left=5, bottom_right=5),
-            data_row_min_height=40,
-            data_row_max_height=60,
+            # Material 3's own DataTable default is 52dp per data row -
+            # this is already a step tighter ("dense" density) since our
+            # cell content is always single-line text/inputs, never
+            # needing that much vertical room.
+            data_row_min_height=36,
+            data_row_max_height=44,
         )
 
         # Wrap DataTable in a scrollable Column

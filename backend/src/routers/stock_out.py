@@ -16,21 +16,33 @@ create-only (no `submit_item` update path, no `get_item`) — see
   -> paginated items for that header (keyword matches `remarks`), joined
   with material_code/name and location_code/name, plus the captured price
   and total_value.
-- POST C_stock_out/submit_item (form: stock_out_header_id, material_id,
-  location_id, qty_out, remarks) -> services.inventory_service.
-  create_stock_out_item; {"error": "..."} (still HTTP 200) if there isn't
-  enough stock at that location.
+- GET  C_stock_out/get_stock_by_material?material_id=<id> -> current qty per
+  location for one material, qty > 0 only ({"location_id",
+  "location_code", "location_name", "qty"}) - feeds the item form's
+  per-location "Qty Issue" table so the user can see what's available
+  before typing a quantity.
+- POST C_stock_out/submit_items (form: stock_out_header_id, material_id,
+  repeated location_id/qty_out/remarks - one triplet per location row with
+  a qty > 0) -> validates every requested qty against that location's
+  current stock up front (so a shortfall anywhere rejects the whole
+  submission instead of partially issuing), then calls
+  services.inventory_service.create_stock_out_item once per location.
+  Replaces the older single-location `submit_item` shape - issuing is
+  now "pick a material, then a qty per location" instead of "pick a
+  material and one location", matching FIFO-by-location semantics but
+  letting one screen issue from several locations at once.
 - GET  C_stock_out/call_material_id_select, call_location_id_select,
-  call_department_id_select -> options for the header/item forms' `select`
-  fields.
+  call_department_id_select -> options for the header form's `select`
+  fields (`call_location_id_select` is unused by the item form now, kept
+  for parity/possible future use).
 
 Gated by `require_module_access("stock_out")`.
 """
 
 from datetime import date as date_type
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
-from fastapi import APIRouter, Depends, Form, Query
+from fastapi import APIRouter, Depends, Form, Query, Request
 
 from core.table_query import attach_pagination
 from models.user import UserModel
@@ -38,6 +50,7 @@ from repository.department_repository import DepartmentRepository
 from repository.location_repository import LocationRepository
 from repository.material_repository import MaterialRepository
 from repository.stock_out_repository import StockOutRepository
+from repository.stock_repository import StockRepository
 from services import inventory_service
 from services.auth_service import require_module_access
 from services.inventory_service import InsufficientStockError
@@ -47,6 +60,7 @@ _stock_out_repository = StockOutRepository()
 _material_repository = MaterialRepository()
 _location_repository = LocationRepository()
 _department_repository = DepartmentRepository()
+_stock_repository = StockRepository()
 
 _require_access = require_module_access("stock_out")
 
@@ -146,30 +160,74 @@ def get_items(
     return attach_pagination(result, pagination)
 
 
-@router.post("/submit_item")
-def submit_item(
-    stock_out_header_id: str = Form(...),
-    material_id: str = Form(...),
-    location_id: str = Form(...),
-    qty_out: Decimal = Form(...),
-    remarks: str = Form(""),
-    user: UserModel = Depends(_require_access),
-) -> dict:
-    if qty_out <= 0:
-        return {"error": "Quantity out must be greater than zero"}
+@router.get("/get_stock_by_material")
+def get_stock_by_material(material_id: int, user: UserModel = Depends(_require_access)) -> list:
+    return _stock_repository.list_stock_by_material(material_id)
+
+
+@router.post("/submit_items")
+async def submit_items(request: Request, user: UserModel = Depends(_require_access)) -> dict:
+    form = await request.form()
+    stock_out_header_id = form.get("stock_out_header_id")
+    material_id = form.get("material_id")
+    location_ids = form.getlist("location_id")
+    qty_outs = form.getlist("qty_out")
+    remarks_list = form.getlist("remarks")
+
+    if not stock_out_header_id or not material_id:
+        return {"error": "Material is required"}
+
+    # Parse and drop blank/zero rows first, so "enter a qty for some of the
+    # locations, leave the rest blank" (the whole point of this table) never
+    # reaches inventory_service.
+    requested: dict[int, Decimal] = {}
+    remarks_by_location: dict[int, str] = {}
+    for location_id, qty_out_raw, remarks in zip(location_ids, qty_outs, remarks_list):
+        if not str(qty_out_raw).strip():
+            continue
+        try:
+            qty_out = Decimal(str(qty_out_raw))
+        except InvalidOperation:
+            return {"error": f"Invalid quantity: {qty_out_raw}"}
+        if qty_out <= 0:
+            continue
+        requested[int(location_id)] = qty_out
+        remarks_by_location[int(location_id)] = remarks
+
+    if not requested:
+        return {"error": "Enter a quantity to issue for at least one location"}
+
+    # Validate every requested qty against current stock up front, so a
+    # shortfall at any one location rejects the whole submission instead of
+    # issuing some locations and silently failing on others.
+    available = {
+        row["location_id"]: row["qty"]
+        for row in _stock_repository.list_stock_by_material(int(material_id))
+    }
+    for location_id, qty_out in requested.items():
+        on_hand = available.get(location_id, Decimal("0"))
+        if qty_out > on_hand:
+            location = _location_repository.get_location_by_id(location_id)
+            location_label = location.name if location else f"location {location_id}"
+            return {
+                "error": f"Insufficient stock: only {on_hand} available at {location_label}"
+            }
 
     try:
-        inventory_service.create_stock_out_item(
-            stock_out_header_id=int(stock_out_header_id),
-            material_id=int(material_id),
-            location_id=int(location_id),
-            qty_out=qty_out,
-            remarks=remarks,
-        )
+        for location_id, qty_out in requested.items():
+            inventory_service.create_stock_out_item(
+                stock_out_header_id=int(stock_out_header_id),
+                material_id=int(material_id),
+                location_id=location_id,
+                qty_out=qty_out,
+                remarks=remarks_by_location[location_id],
+            )
     except InsufficientStockError as exc:
-        return {"error": f"Insufficient stock: only {exc.available} available at this location"}
+        # Only reachable if stock changed concurrently after the up-front
+        # check above - the common case is already caught there.
+        return {"error": f"Insufficient stock: only {exc.available} available"}
 
-    return {"message": "Stock out item added successfully"}
+    return {"message": f"Stock issued from {len(requested)} location(s) successfully"}
 
 
 @router.get("/call_material_id_select")

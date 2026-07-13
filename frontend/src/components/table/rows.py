@@ -1,13 +1,19 @@
 import flet as ft
 
+from components.form.date import DateForm
 from components.table.columns import Columns
 from utils.formatting import format_date, format_number, format_time
+from utils.http_client import HttpClient
 
 _FORMATTERS = {
     "number": format_number,
     "date": format_date,
     "time": format_time,
 }
+
+# Field types that render an editable control instead of read-only text -
+# see _build_editable_cell() for what each one builds.
+_EDITABLE_TYPES = {"input", "textarea", "select", "option", "datepicker", "checkbox"}
 
 
 class Rows:
@@ -17,6 +23,16 @@ class Rows:
         self.parent = parent
         self.rows = []
         self.index = []
+        # One dict per row (same order as self.rows/self.index), mapping
+        # field_name -> {"type": field_type, "control": control} for every
+        # editable-type column in that row - lets a caller read back what
+        # the user entered via Rows.get_input_values()/
+        # Table.get_rows_with_input_values().
+        self.input_controls: list[dict] = []
+        # "select"-type columns fetch their options once (same list for
+        # every row, like components/form/select.py) and cache them here,
+        # keyed by field name, for the lifetime of this Rows instance.
+        self._select_options_cache: dict[str, list[dict]] = {}
 
     def build(self):
         print("Rows.build")
@@ -31,6 +47,7 @@ class Rows:
         if not append:
             self.rows = []
             self.index = []
+            self.input_controls = []
         # determine key field name (field with 'key': True)
         key_field = None
         try:
@@ -69,27 +86,73 @@ class Rows:
                     on_tap_handler = _make_tap(key_field, key_value, module, edit_screen)
 
             cells = []
+            row_inputs: dict = {}
             for i, name in enumerate(self.columns.index):
                 raw_value = record.get(name, "")
                 field = self.columns.fields_by_name.get(name, {})
+                field_type = field.get("type")
+
+                if field_type in _EDITABLE_TYPES:
+                    w = (
+                        int(columns_widths[i])
+                        if columns_widths is not None and i < len(columns_widths)
+                        else None
+                    )
+                    control, value_holder = self._build_editable_cell(
+                        field_type, field, name, raw_value, w
+                    )
+                    row_inputs[name] = {"type": field_type, "control": value_holder}
+                    # Wrap in a fixed-width Container, same as the read-only
+                    # text cells below - without it, Flet/Flutter sizes the
+                    # DataTable column from the control's own intrinsic
+                    # width (e.g. a TextField's ~300px default) instead of
+                    # the width Columns.load() computed, so editable
+                    # columns drift out of alignment with the rest of the
+                    # table.
+                    # No extra padding here (unlike the read-only Text
+                    # cells below) - the control already carries the same
+                    # `w` as its own width plus its own internal
+                    # content_padding, so an outer padding would shrink its
+                    # available space below what it's sized for.
+                    cell_content = (
+                        ft.Container(content=control, width=w)
+                        if w is not None
+                        else control
+                    )
+                    # Editable cells never navigate, even if some other
+                    # column in this row is marked "key" - a tap needs to
+                    # land in the field to interact, not push a route.
+                    cells.append(ft.DataCell(content=cell_content))
+                    continue
+
                 formatter = _FORMATTERS.get(field.get("format"))
                 value = formatter(raw_value) if formatter else raw_value
                 is_numeric = field.get("format") == "number"
                 text_align = ft.TextAlign.RIGHT if is_numeric else None
 
-                # Wrap text in container with fixed width if available
+                # Wrap text in container with fixed width if available.
+                # max_lines=1 (alongside overflow=ELLIPSIS) guarantees a
+                # single truncated line rather than wrapping onto a second
+                # one when the column is narrow - same fix as the header
+                # label in Columns._build_data_columns().
                 content = ft.Text(
-                    str(value), overflow=ft.TextOverflow.ELLIPSIS, text_align=text_align
+                    str(value),
+                    overflow=ft.TextOverflow.ELLIPSIS,
+                    max_lines=1,
+                    text_align=text_align,
                 )
                 if columns_widths is not None and i < len(columns_widths):
                     # Ensure integer pixel widths (Flet expects integers)
                     w = int(columns_widths[i])
                     content = ft.Container(
                         content=ft.Text(
-                            str(value), overflow=ft.TextOverflow.ELLIPSIS, text_align=text_align
+                            str(value),
+                            overflow=ft.TextOverflow.ELLIPSIS,
+                            max_lines=1,
+                            text_align=text_align,
                         ),
                         width=w,
-                        padding=5,
+                        padding=ft.Padding.symmetric(horizontal=8, vertical=4),
                         alignment=ft.Alignment.CENTER_RIGHT if is_numeric else None,
                     )
 
@@ -103,4 +166,111 @@ class Rows:
 
             self.rows.append(ft.DataRow(cells=cells))
             self.index.append(row)
+            self.input_controls.append(row_inputs)
             row += 1
+
+    def _build_editable_cell(self, field_type: str, field: dict, name: str, raw_value, width):
+        """Build one editable table cell.
+
+        Returns (control, value_holder): `control` is what goes in the
+        DataCell; `value_holder` is what get_input_values() reads back from
+        (usually `control` itself, except "datepicker" - see below).
+        """
+        has_value = raw_value not in (None, "")
+
+        if field_type == "textarea":
+            control = ft.TextField(
+                value=str(raw_value) if has_value else "",
+                hint_text=field.get("hint_text", ""),
+                multiline=True,
+                min_lines=field.get("min_lines", 2),
+                max_lines=field.get("max_lines", 4),
+                dense=True,
+                content_padding=ft.Padding.symmetric(horizontal=8, vertical=4),
+                width=width,
+            )
+            return control, control
+
+        if field_type == "checkbox":
+            value = raw_value if isinstance(raw_value, bool) else str(raw_value).strip().lower() in (
+                "1", "true", "yes"
+            )
+            control = ft.Checkbox(value=value)
+            return control, control
+
+        if field_type in ("select", "option"):
+            options = (
+                field.get("options", [])
+                if field_type == "option"
+                else self._get_select_options(field, name)
+            )
+            control = ft.Dropdown(
+                options=[
+                    ft.DropdownOption(
+                        key=opt.get("value", ""), text=opt.get("label", opt.get("value", ""))
+                    )
+                    for opt in options
+                ],
+                value=str(raw_value) if has_value else None,
+                hint_text=field.get("hint_text", ""),
+                dense=True,
+                enable_filter=field.get("enable_filter", True),
+                width=width,
+            )
+            return control, control
+
+        if field_type == "datepicker":
+            date_form = DateForm(page=self.page, parent=self.parent, field=field)
+            control = date_form.build()
+            if width is not None:
+                control.width = width
+            if has_value:
+                date_form.set_value(str(raw_value))
+            # get_input_values() needs get_value() (raw ISO), not the
+            # displayed "dd Mon yyyy" text - hand back the DateForm itself.
+            return control, date_form
+
+        # Default: "input" - a single-line text field.
+        control = ft.TextField(
+            value=str(raw_value) if has_value else "",
+            hint_text=field.get("hint_text", ""),
+            keyboard_type=field.get("keyboard_type"),
+            dense=True,
+            content_padding=ft.Padding.symmetric(horizontal=8, vertical=4),
+            width=width,
+        )
+        return control, control
+
+    def _get_select_options(self, field: dict, name: str) -> list[dict]:
+        """Fetch (and cache) a "select"-type column's options, same shape as
+        components/form/select.py: C_{module}/call_{field_name}_select
+        unless the field overrides `endpoint`."""
+        if name in self._select_options_cache:
+            return self._select_options_cache[name]
+
+        module = getattr(self.parent, "module", None)
+        endpoint = field.get("endpoint") or (f"C_{module}/call_{name}_select" if module else None)
+        options: list[dict] = []
+        if endpoint:
+            response = HttpClient(self.page).get(endpoint)
+            if isinstance(response, list):
+                options = response
+
+        self._select_options_cache[name] = options
+        return options
+
+    def get_input_values(self) -> list[dict]:
+        """Current value of every editable-type column, one dict per row in
+        load() order (empty dict for rows with no editable columns).
+        "datepicker" columns return their raw ISO value; everything else
+        returns its control's `.value` (bool for "checkbox")."""
+        result = []
+        for row_inputs in self.input_controls:
+            row = {}
+            for name, entry in row_inputs.items():
+                if entry["type"] == "datepicker":
+                    row[name] = entry["control"].get_value()
+                else:
+                    row[name] = entry["control"].value
+            result.append(row)
+        return result

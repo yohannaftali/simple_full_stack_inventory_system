@@ -21,7 +21,7 @@ class ModulePage:
             {
                 "name": "date", "label": "Date", "icon": ft.Icons.EVENT,
                 "row": 1,
-                "type": "date", "autofocus": True
+                "type": "date", "autofocus": True, "default": "today"
             },
             {
                 "name": "description", "label": "Description", "icon": ft.Icons.NOTES,

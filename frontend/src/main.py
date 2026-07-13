@@ -327,4 +327,9 @@ async def main(page: ft.Page):
     await _boot_navigate()
 
 
-ft.run(main)
+if __name__ == "__main__":
+    # Guarded so `asgi.py` (the containerized deployment's entrypoint, see
+    # its docstring) can `from main import main` without this launching a
+    # second, competing Flet server via the socket-based CLI path -
+    # `flet run` / `python main.py` still hit this normally.
+    ft.run(main)

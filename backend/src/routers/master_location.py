@@ -4,10 +4,10 @@ Same list/get/submit/delete contract as `module_admin.py` — see that file's
 docstring for the shape. Gated by `require_module_access("master_location")`.
 """
 
-from fastapi import APIRouter, Depends, Form, Query
+from fastapi import APIRouter, Depends, Form, Query, Request
 from sqlalchemy.exc import IntegrityError
 
-from core.table_query import attach_pagination
+from core.table_query import attach_pagination, parse_sort_fields
 from models.location import LocationModel
 from models.user import UserModel
 from repository.location_repository import LocationRepository
@@ -25,14 +25,16 @@ def _serialize(location: LocationModel) -> dict:
 
 @router.get("/get_detail")
 def get_detail(
+    request: Request,
     keyword: str = Query("", alias="table-keyword-filter"),
     limit: int = Query(20),
     page: int = Query(1),
     offset: int = Query(0),
     user: UserModel = Depends(_require_access),
 ) -> list:
+    sort_fields = parse_sort_fields(request.query_params)
     rows, pagination = _location_repository.list_locations(
-        keyword=keyword, limit=limit, page=page, offset=offset
+        keyword=keyword, limit=limit, page=page, offset=offset, sort_fields=sort_fields
     )
     return attach_pagination([_serialize(location) for location in rows], pagination)
 

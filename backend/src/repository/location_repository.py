@@ -2,9 +2,13 @@
 
 from typing import Optional
 
-from core.table_query import Pagination, apply_keyword_filter, paginate
+from core.table_query import Pagination, apply_keyword_filter, apply_sort, paginate
 from models.base import SessionLocal
 from models.location import LocationModel
+
+# Maps a frontend field name (Table field dict "name") to the real column it
+# sorts by - see core/table_query.py::apply_sort().
+_SORT_COLUMNS = {"code": LocationModel.code, "name": LocationModel.name}
 
 
 class LocationRepository:
@@ -23,14 +27,22 @@ class LocationRepository:
             return session.query(LocationModel).order_by(LocationModel.code).all()
 
     def list_locations(
-        self, keyword: str = "", limit: int = 20, page: int = 1, offset: int = 0
+        self,
+        keyword: str = "",
+        limit: int = 20,
+        page: int = 1,
+        offset: int = 0,
+        sort_fields: list[tuple[str, str]] | None = None,
     ) -> tuple[list[LocationModel], Pagination]:
         with SessionLocal() as session:
             query = session.query(LocationModel)
             query = apply_keyword_filter(
                 query, [LocationModel.code, LocationModel.name], keyword
             )
-            query = query.order_by(LocationModel.code)
+            if sort_fields:
+                query = apply_sort(query, sort_fields, _SORT_COLUMNS)
+            else:
+                query = query.order_by(LocationModel.code)
             return paginate(query, limit=limit, page=page, offset=offset)
 
     def create_location(self, code: str, name: str) -> LocationModel:

@@ -18,12 +18,20 @@ fi
 # socat wants cert+key combined in one PEM file
 cat "$CERT_FILE" "$KEY_FILE" > "$COMBINED_PEM"
 
-# flet run --web has no built-in TLS support, so HTTPS is a socat TLS relay
-# in front of it: terminates TLS on FRONTEND_PORT_SSL, forwards the plain
-# bytes to the plain-HTTP flet server on FRONTEND_PORT. Works for the
-# WebSocket traffic Flet's UI updates ride on too, since socat operates at
-# the raw TCP level and doesn't need to understand HTTP.
-uv run flet run --web --host "${FRONTEND_HOST:-0.0.0.0}" --port "${FRONTEND_PORT:-8000}" src/main.py &
+# src/asgi.py (not the `flet run --web` CLI - see its docstring for why)
+# needs the same FLET_APP_STORAGE_DATA/TEMP env vars the CLI would normally
+# set itself (flet_cli/commands/run.py: `<script's dir>/storage/data` /
+# `.../storage/temp`) - utils/app_logger.py reads these for its log
+# directory and falls back to a generic temp dir without them.
+export FLET_APP_STORAGE_DATA="$(pwd)/src/storage/data"
+export FLET_APP_STORAGE_TEMP="$(pwd)/src/storage/temp"
+
+# No built-in TLS support here either, so HTTPS is a socat TLS relay in
+# front of it: terminates TLS on FRONTEND_PORT_SSL, forwards the plain bytes
+# to the plain-HTTP ASGI server on FRONTEND_PORT. Works for the WebSocket
+# traffic Flet's UI updates ride on too, since socat operates at the raw TCP
+# level and doesn't need to understand HTTP.
+uv run uvicorn asgi:app --app-dir src --host "${FRONTEND_HOST:-0.0.0.0}" --port "${FRONTEND_PORT:-8000}" &
 
 socat OPENSSL-LISTEN:${FRONTEND_PORT_SSL:-8443},cert="$COMBINED_PEM",verify=0,fork,reuseaddr \
   TCP:127.0.0.1:${FRONTEND_PORT:-8000} &

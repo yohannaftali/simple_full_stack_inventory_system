@@ -70,12 +70,13 @@ class UserSession:
 
     async def load(self):
         """Lazy loading data from SharedPreferences (async)"""
-        # NOTE: "is_logged_id" (not "is_logged_in") matches the original
-        # pre-migration code exactly - kept as-is to preserve behavior.
-        # The three keys are loaded concurrently so a not-yet-ready client
-        # (see utils/storage_compat.py::sp_call_with_retry) costs one key's
+        # Was "is_logged_id" here - a typo that never matched what set()
+        # actually persists the flag under ("is_logged_in"), so this key
+        # silently never loaded on any restart/reconnect. The three keys
+        # are loaded concurrently so a not-yet-ready client (see
+        # utils/storage_compat.py::sp_call_with_retry) costs one key's
         # retry budget total, not three sequential budgets.
-        keys = ("username", "is_logged_id", "token")
+        keys = ("username", "is_logged_in", "token")
         await asyncio.gather(*(self._load_key(key) for key in keys))
 
     async def _load_key(self, key: str):

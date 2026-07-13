@@ -19,11 +19,11 @@ class ModulePage:
             },
             {
                 "name": "code", "label": "Code",
-                "type": "label"
+                "type": "label", "sort": True
             },
             {
                 "name": "name", "label": "Name",
-                "type": "label"
+                "type": "label", "sort": True
             }
         ]
 

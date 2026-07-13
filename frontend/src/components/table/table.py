@@ -57,6 +57,17 @@ class Table:
 
         self.columns: Columns = Columns(page, fields)
         self.rows: Rows = Rows(page, self.columns, parent=self)
+        # Lets Columns request a full header/body/rows rebuild after every
+        # resize step (drag tick or double-tap reset) - see
+        # Columns.on_resize_commit's docstring for why a rebuild is needed
+        # at all (Flutter's DataTable only ever grows a column to fit a
+        # wider child, never shrinks it back down from a live property
+        # patch alone).
+        self.columns.on_resize_commit = self._handle_resize_commit
+        # Lets Columns request a data re-fetch (with new sort-fields query
+        # params) after a header click cycles a sortable column's state -
+        # see Columns.on_sort()/serialize_sort().
+        self.columns.on_sort_change = self._handle_sort_change
 
         self.limit = limit
         self.page_number = 1  # Current page
@@ -113,7 +124,7 @@ class Table:
                 controls.append(toolbar_control)
 
         if self.header:
-            header_control = self.header.build()
+            header_control = self._build_header_with_resize_overlay()
             if header_control:
                 controls.append(header_control)
 
@@ -142,17 +153,32 @@ class Table:
                 if isinstance(self.table_container.content.controls, list) and len(self.table_container.content.controls) >= 2:
                     # Replace header and body in the controls list
                     if self.toolbar:
-                        self.table_container.content.controls[1] = self.header.build(
+                        self.table_container.content.controls[1] = self._build_header_with_resize_overlay(
                         )
                         self.table_container.content.controls[2] = self.body.build(
                         )
                     else:
-                        self.table_container.content.controls[0] = self.header.build(
+                        self.table_container.content.controls[0] = self._build_header_with_resize_overlay(
                         )
                         self.table_container.content.controls[1] = self.body.build(
                         )
 
         return self.table_container
+
+    def _build_header_with_resize_overlay(self):
+        """Header.build()'s DataTable, wrapped in a Stack with the
+        resize-handle overlay (Columns.get_resize_overlay()) on top.
+
+        Every caller that rebuilds the header (here and
+        _handle_resize_commit()) must go through this, not
+        `self.header.build()` directly - otherwise a rebuild silently
+        drops the overlay from the tree, and the next drag has nothing to
+        grab."""
+        header_control = self.header.build() if self.header else None
+        if header_control is None:
+            return None
+        overlay = self.columns.get_resize_overlay()
+        return ft.Stack([header_control, *overlay]) if overlay else header_control
 
     def _handle_scroll_end(self):
         """Handle scroll to bottom - load next page"""
@@ -176,6 +202,7 @@ class Table:
         param = param + f"&limit={self.limit}&page={page_no}&offset={offset}"
         for key, value in self.custom_param.items():
             param = param + f"&{key}={value}"
+        param = param + self.columns.serialize_sort()
         response = client.get(
             f"{self.endpoint}?{param}" if param else self.endpoint)
         if isinstance(response, dict) and "error" in response:
@@ -224,7 +251,7 @@ class Table:
             new_body = None
             if self.header:
                 # keep header.columns reference (already set on init)
-                new_header = self.header.build()
+                new_header = self._build_header_with_resize_overlay()
             if self.body:
                 new_body = self.body.build()
 
@@ -251,6 +278,93 @@ class Table:
         if self.body:
             if not self.is_inside_form:
                 self.body.hide_loading()
+
+    def get_rows_with_input_values(self) -> list[dict]:
+        """Each fetched row merged with the current value of any "input"-type
+        column in that row (e.g. an editable "Qty Issue" column) - lets a
+        caller read back what the user typed without wiring its own
+        per-row TextField bookkeeping. Row order matches self.data."""
+        input_values = self.rows.get_input_values()
+        merged = []
+        for i, record in enumerate(self.data):
+            row = dict(record)
+            if i < len(input_values):
+                row.update(input_values[i])
+            merged.append(row)
+        return merged
+
+    def _handle_resize_commit(self, recompute: bool) -> None:
+        """Rebuild Header/Body/Rows after every column-resize step
+        (Columns.on_resize_commit - a drag tick, or a double-tap reset).
+
+        Flutter's `DataTable` grows to fit a wider child during normal
+        layout, but doesn't shrink a column's rendered width back down
+        just because a nested Container's width property patched smaller -
+        only rebuilding the DataTable's `columns`/`rows` with fresh objects
+        forces that (confirmed empirically: a live-only property-patch
+        version showed both columns' widths being set correctly and
+        symmetrically on every tick, yet only the growing one ever
+        visibly resized). Doing this on every tick is safe now because the
+        resize handles live in a separate overlay Stack
+        (Columns.get_resize_overlay(), reattached by
+        _build_header_with_resize_overlay() below) entirely outside the
+        DataTable being rebuilt - an earlier version embedded the handle
+        inside the header's own DataColumn label and broke the drag after
+        the first tick by tearing down its own GestureDetector.
+
+        `recompute=True` (double-tap reset) additionally recomputes
+        `Columns.widths` from content via `Columns.load()` first, since a
+        reset changes every column's width, not just one dragged pair.
+        `recompute=False` (a drag tick) keeps the widths `handle_drag()`
+        already tracked, just rebuilds to render them correctly.
+
+        Mirrors Table.load()'s "replace the built header/body controls in
+        place" approach rather than Header.update()/Body.update() (both
+        dead code - nothing in this codebase calls them - so untested):
+        Rows bakes each cell's pixel width in at Rows.load() time, not read
+        live from Columns.widths, so this needs that re-run too, not just
+        Columns.rebuild().
+        """
+        if self.data:
+            if recompute:
+                self.columns.load(self.data)
+            self.rows.load(self.data)
+
+        if self.table_container and hasattr(self.table_container, "content"):
+            col = self.table_container.content  # ft.Column
+            new_header = self._build_header_with_resize_overlay() if self.header else None
+            new_body = self.body.build() if self.body else None
+
+            if isinstance(col.controls, list) and len(col.controls) >= 3:
+                if new_header is not None:
+                    col.controls[1] = new_header
+                if new_body is not None:
+                    col.controls[2] = new_body
+                col.update()
+                self.table_container.update()
+
+    def _handle_sort_change(self) -> None:
+        """A header click cycled a sortable column's state
+        (Columns.on_sort()). Two things need to happen, same split as the
+        senar reference: (1) instant icon feedback - Columns.on_sort()
+        already rebuilt `self.columns.columns` synchronously, so just
+        swap the header control in place, same as
+        _handle_resize_commit()'s header-only refresh; (2) the actual
+        re-sort, which is server-side and needs a round trip - re-fetch
+        with Columns.serialize_sort()'s new sort-fields params.
+        Deliberately does *not* reset to page 1 (get_data() keeps
+        self.page_number as-is) - matches y.form.js's serializePagination/
+        listenerHeaderTable, where only a page-*size* change resets
+        pagination, not a sort change.
+        """
+        if self.table_container and hasattr(self.table_container, "content"):
+            col = self.table_container.content
+            new_header = self._build_header_with_resize_overlay() if self.header else None
+            if new_header is not None and isinstance(col.controls, list) and len(col.controls) >= 2:
+                col.controls[1] = new_header
+                col.update()
+
+        self.get_data(page_no=self.page_number, offset=0)
 
     def on_page_resize(self) -> None:
         """Handle page resize events - called from main page resize handler"""

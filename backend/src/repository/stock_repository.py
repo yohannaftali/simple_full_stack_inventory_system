@@ -77,3 +77,35 @@ class StockRepository:
                     }
                 )
             return summary, pagination
+
+    def list_stock_by_material(self, material_id: int) -> list[dict]:
+        """Current on-hand qty per location for one material, qty > 0 only.
+
+        Not paginated - feeds the stock-out item form's per-location qty
+        table, which is naturally small (one row per location actually
+        holding this material).
+        """
+        with SessionLocal() as session:
+            rows = (
+                session.query(
+                    LocationModel.id.label("location_id"),
+                    LocationModel.code.label("location_code"),
+                    LocationModel.name.label("location_name"),
+                    func.sum(StockModel.qty).label("qty"),
+                )
+                .join(LocationModel, LocationModel.id == StockModel.location_id)
+                .filter(StockModel.material_id == material_id)
+                .group_by(LocationModel.id)
+                .having(func.sum(StockModel.qty) > 0)
+                .order_by(LocationModel.code)
+                .all()
+            )
+            return [
+                {
+                    "location_id": row.location_id,
+                    "location_code": row.location_code,
+                    "location_name": row.location_name,
+                    "qty": row.qty,
+                }
+                for row in rows
+            ]

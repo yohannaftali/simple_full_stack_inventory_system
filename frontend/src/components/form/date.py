@@ -37,7 +37,10 @@ class DateForm:
         self.first_date = field.get("first_date", datetime.date(2000, 1, 1))
         self.last_date = field.get("last_date", datetime.date(2100, 12, 31))
 
-        self.value: str = ""  # raw ISO "YYYY-MM-DD" - the source of truth
+        default = field.get("default")
+        if default == "today":
+            default = datetime.date.today().isoformat()
+        self.value: str = default or ""  # raw ISO "YYYY-MM-DD" - the source of truth
         self.field: ft.TextField | None = None
         self.picker = ft.DatePicker(
             first_date=self.first_date,
