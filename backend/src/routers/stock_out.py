@@ -51,9 +51,11 @@ from repository.department_repository import DepartmentRepository
 from repository.location_repository import LocationRepository
 from repository.material_repository import MaterialRepository
 from repository.stock_out_repository import StockOutRepository
+from models.stock_out_header import StockOutHeaderModel
 from repository.stock_repository import StockRepository
 from services import inventory_service
 from services.auth_service import require_module_access
+from services.bulk_service import BulkRowError, bulk_create, parse_bulk_rows
 from services.inventory_service import InsufficientStockError
 
 router = APIRouter(prefix="/C_stock_out", tags=["stock-out"])
@@ -189,6 +191,35 @@ def submit(
         date=date, description=description, department_id=department_id_value
     )
     return {"message": "Stock out header created successfully"}
+
+
+@router.post("/submit_bulk")
+async def submit_bulk(request: Request, user: UserModel = Depends(_require_access)) -> dict:
+    form = await request.form()
+    rows = parse_bulk_rows(form, ["date", "description", "department_id"])
+
+    def build(row, session):
+        date_raw = str(row.get("date", "")).strip()
+        if not date_raw:
+            raise BulkRowError(row["_row"], "Date is required")
+        try:
+            date_value = date_type.fromisoformat(date_raw)
+        except ValueError:
+            raise BulkRowError(row["_row"], f"Invalid date: {date_raw} (expected YYYY-MM-DD)")
+        department_raw = str(row.get("department_id", "")).strip()
+        if not department_raw:
+            raise BulkRowError(row["_row"], "Department is required")
+        try:
+            department_id = int(department_raw)
+        except ValueError:
+            raise BulkRowError(row["_row"], f"Invalid Department: {department_raw}")
+        return StockOutHeaderModel(
+            date=date_value,
+            description=str(row.get("description", "")).strip(),
+            department_id=department_id,
+        )
+
+    return bulk_create(rows, build)
 
 
 @router.get("/get_items")

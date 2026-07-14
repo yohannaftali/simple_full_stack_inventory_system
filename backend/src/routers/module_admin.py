@@ -20,7 +20,7 @@ pagination metadata and will raise on a genuinely empty result set. That's an
 existing frontend behavior, not something this router works around.
 """
 
-from fastapi import APIRouter, Depends, Form, Query
+from fastapi import APIRouter, Depends, Form, Query, Request
 
 from core.table_export import export_response
 from core.table_query import attach_pagination
@@ -30,6 +30,7 @@ from repository.module_group_repository import ModuleGroupRepository
 from repository.module_repository import ModuleRepository
 from repository.user_module_permission_repository import UserModulePermissionRepository
 from services.auth_service import require_module_access
+from services.bulk_service import BulkRowError, bulk_create, parse_bulk_rows
 
 router = APIRouter(prefix="/C_ap_module", tags=["module-admin"])
 _module_repository = ModuleRepository()
@@ -157,3 +158,37 @@ def delete(id: str = Form(...), user: UserModel = Depends(_require_access)) -> d
     if not deleted:
         return {"error": "Module not found"}
     return {"message": "Module deleted successfully"}
+
+
+@router.post("/submit_bulk")
+async def submit_bulk(request: Request, user: UserModel = Depends(_require_access)) -> dict:
+    form = await request.form()
+    rows = parse_bulk_rows(
+        form, ["name", "label", "sort", "icon", "description", "module_group_id"]
+    )
+
+    def build(row, session):
+        name = str(row.get("name", "")).strip()
+        label = str(row.get("label", "")).strip()
+        if not name or not label:
+            raise BulkRowError(row["_row"], "Name and Label are required")
+        sort_raw = str(row.get("sort", "")).strip()
+        try:
+            sort_value = int(sort_raw) if sort_raw else 0
+        except ValueError:
+            raise BulkRowError(row["_row"], "Sort must be a number")
+        group_raw = str(row.get("module_group_id", "")).strip()
+        try:
+            module_group_id = int(group_raw) if group_raw else None
+        except ValueError:
+            raise BulkRowError(row["_row"], f"Invalid Group: {group_raw}")
+        return ModuleModel(
+            name=name,
+            label=label,
+            sort=sort_value,
+            icon=str(row.get("icon", "")).strip() or "chevron_right",
+            description=str(row.get("description", "")).strip(),
+            module_group_id=module_group_id,
+        )
+
+    return bulk_create(rows, build)

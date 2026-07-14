@@ -13,6 +13,7 @@ from models.location import LocationModel
 from models.user import UserModel
 from repository.location_repository import LocationRepository
 from services.auth_service import require_module_access
+from services.bulk_service import BulkRowError, bulk_create, parse_bulk_rows
 
 router = APIRouter(prefix="/C_master_location", tags=["master-location"])
 _location_repository = LocationRepository()
@@ -92,3 +93,18 @@ def delete(id: str = Form(...), user: UserModel = Depends(_require_access)) -> d
     if not deleted:
         return {"error": "Location not found"}
     return {"message": "Location deleted successfully"}
+
+
+@router.post("/submit_bulk")
+async def submit_bulk(request: Request, user: UserModel = Depends(_require_access)) -> dict:
+    form = await request.form()
+    rows = parse_bulk_rows(form, ["code", "name"])
+
+    def build(row, session):
+        code = str(row.get("code", "")).strip()
+        name = str(row.get("name", "")).strip()
+        if not code or not name:
+            raise BulkRowError(row["_row"], "Code and Name are required")
+        return LocationModel(code=code, name=name)
+
+    return bulk_create(rows, build)

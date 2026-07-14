@@ -80,6 +80,7 @@ class Form:
 
     def build(self, padding: int = 20):
         self.padding_row = padding
+        self._attach_bulk_menu()
         self.form_container = ft.Container(
             content=ft.Column(
                 controls=self.controls,
@@ -111,7 +112,30 @@ class Form:
                 select_form.refresh_with_values(form_data)
 
         return self.form_container
-    
+
+    def _attach_bulk_menu(self):
+        """Give every module `new` screen a bulk-upload hamburger menu at
+        the far right of its ModuleToolbar (issue #5) - zero per-module
+        wiring. Runs in build() (not __init__) deliberately: new.py screens
+        add their submit button between Form construction and body()/
+        build(), so appending here lands the menu rightmost. `screen`
+        guards it to create screens only (edit targets one record;
+        item_new/index/modals have their own flows), and the double-attach
+        flag covers any repeated build() call."""
+        if self.screen != "new" or getattr(self, "_bulk_menu_attached", False):
+            return
+        view = getattr(self.parent, "view", None)
+        if view is None or not hasattr(view, "toolbar"):
+            return
+
+        from components.form.bulk_menu import BulkMenu
+
+        self.bulk_menu = BulkMenu(page=self.page, form=self)
+        if view.toolbar.right is None:
+            view.toolbar.right = []
+        view.toolbar.right.append(self.bulk_menu.build())
+        self._bulk_menu_attached = True
+
     def setup_cascading_selects(self):
         """Set up on_change handlers for parent fields that have dependent selects"""
 

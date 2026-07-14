@@ -28,16 +28,18 @@ Gated by `require_module_access("stock_in")`.
 from datetime import date as date_type
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, Form, Query
+from fastapi import APIRouter, Depends, Form, Query, Request
 
 from core.table_export import export_response
 from core.table_query import attach_pagination
+from models.receiving_header import ReceivingHeaderModel
 from models.user import UserModel
 from repository.location_repository import LocationRepository
 from repository.material_repository import MaterialRepository
 from repository.receiving_repository import ReceivingRepository
 from services import inventory_service
 from services.auth_service import require_module_access
+from services.bulk_service import BulkRowError, bulk_create, parse_bulk_rows
 
 router = APIRouter(prefix="/C_stock_in", tags=["stock-in"])
 _receiving_repository = ReceivingRepository()
@@ -146,6 +148,26 @@ def submit(
 
     _receiving_repository.create_header(date=date, description=description)
     return {"message": "Receiving header created successfully"}
+
+
+@router.post("/submit_bulk")
+async def submit_bulk(request: Request, user: UserModel = Depends(_require_access)) -> dict:
+    form = await request.form()
+    rows = parse_bulk_rows(form, ["date", "description"])
+
+    def build(row, session):
+        date_raw = str(row.get("date", "")).strip()
+        if not date_raw:
+            raise BulkRowError(row["_row"], "Date is required")
+        try:
+            date_value = date_type.fromisoformat(date_raw)
+        except ValueError:
+            raise BulkRowError(row["_row"], f"Invalid date: {date_raw} (expected YYYY-MM-DD)")
+        return ReceivingHeaderModel(
+            date=date_value, description=str(row.get("description", "")).strip()
+        )
+
+    return bulk_create(rows, build)
 
 
 @router.get("/get_items")

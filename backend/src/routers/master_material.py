@@ -7,7 +7,7 @@ existing materials predate the supplier link); the edit/new form's
 `supplier_id` field is a `select` sourced from `call_supplier_id_select`.
 """
 
-from fastapi import APIRouter, Depends, Form, Query
+from fastapi import APIRouter, Depends, Form, Query, Request
 from sqlalchemy.exc import IntegrityError
 
 from core.table_export import export_response
@@ -17,6 +17,7 @@ from models.user import UserModel
 from repository.material_repository import MaterialRepository
 from repository.supplier_repository import SupplierRepository
 from services.auth_service import require_module_access
+from services.bulk_service import BulkRowError, bulk_create, parse_bulk_rows
 
 router = APIRouter(prefix="/C_master_material", tags=["master-material"])
 _material_repository = MaterialRepository()
@@ -126,3 +127,27 @@ def call_supplier_id_select(user: UserModel = Depends(_require_access)) -> list:
         {"value": str(s.id), "label": f"{s.code} - {s.name}"}
         for s in _supplier_repository.get_all_suppliers()
     ]
+
+
+@router.post("/submit_bulk")
+async def submit_bulk(request: Request, user: UserModel = Depends(_require_access)) -> dict:
+    form = await request.form()
+    rows = parse_bulk_rows(form, ["material_code", "material_name", "supplier_id"])
+
+    def build(row, session):
+        material_code = str(row.get("material_code", "")).strip()
+        material_name = str(row.get("material_name", "")).strip()
+        if not material_code or not material_name:
+            raise BulkRowError(row["_row"], "Code and Name are required")
+        supplier_id_raw = str(row.get("supplier_id", "")).strip()
+        try:
+            supplier_id = int(supplier_id_raw) if supplier_id_raw else None
+        except ValueError:
+            raise BulkRowError(row["_row"], f"Invalid Supplier: {supplier_id_raw}")
+        return MaterialModel(
+            material_code=material_code,
+            material_name=material_name,
+            supplier_id=supplier_id,
+        )
+
+    return bulk_create(rows, build)

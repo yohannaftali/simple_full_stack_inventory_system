@@ -26,7 +26,7 @@ Contract (see components/table/table.py, components/form/form.py, components/for
 All routes require `ap_master_user` access (or superuser) via `require_module_access`.
 """
 
-from fastapi import APIRouter, Depends, Form, Query
+from fastapi import APIRouter, Depends, Form, Query, Request
 
 from core.security import hash_password
 from core.table_export import export_response
@@ -37,6 +37,7 @@ from repository.module_repository import ModuleRepository
 from repository.user_module_permission_repository import UserModulePermissionRepository
 from repository.user_repository import UserRepository
 from services.auth_service import require_module_access
+from services.bulk_service import BulkRowError, bulk_create, parse_bulk_rows
 
 router = APIRouter(prefix="/C_ap_master_user", tags=["user-admin"])
 _user_repository = UserRepository()
@@ -194,6 +195,54 @@ def delete(id: str = Form(...), user: UserModel = Depends(_require_access)) -> d
     if not deleted:
         return {"error": "User not found"}
     return {"message": "User deleted successfully"}
+
+
+@router.post("/submit_bulk")
+async def submit_bulk(request: Request, user: UserModel = Depends(_require_access)) -> dict:
+    form = await request.form()
+    rows = parse_bulk_rows(
+        form,
+        ["username", "email", "password", "is_active", "is_superuser", "department_id"],
+    )
+
+    def build(row, session):
+        username = str(row.get("username", "")).strip()
+        email = str(row.get("email", "")).strip()
+        password = str(row.get("password", ""))
+        if not username or not email:
+            raise BulkRowError(row["_row"], "Username and Email are required")
+        if not password:
+            raise BulkRowError(row["_row"], "Password is required to create a user")
+
+        # Queried inside the batch's own session, so rows flushed earlier in
+        # this same file are visible too - one check covers both "already in
+        # the database" and "duplicated within the uploaded file", with the
+        # same message the single-record submit produces.
+        exists = (
+            session.query(UserModel)
+            .filter((UserModel.username == username) | (UserModel.email == email))
+            .first()
+        )
+        if exists:
+            raise BulkRowError(row["_row"], "Username or email already in use")
+
+        department_raw = str(row.get("department_id", "")).strip()
+        try:
+            department_id = int(department_raw) if department_raw else None
+        except ValueError:
+            raise BulkRowError(row["_row"], f"Invalid Department: {department_raw}")
+
+        return UserModel(
+            username=username,
+            email=email,
+            password=hash_password(password),
+            is_active=_parse_bool(row.get("is_active", "true") or "true"),
+            is_superuser=_parse_bool(row.get("is_superuser", "false") or "false"),
+            department_id=department_id,
+            totp_secret="",
+        )
+
+    return bulk_create(rows, build)
 
 
 @router.get("/get_all_modules")

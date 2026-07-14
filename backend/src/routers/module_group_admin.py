@@ -7,7 +7,7 @@ for display/organization; `module_admin.py`'s `call_module_group_id_select`
 sources its options from `get_all_groups` here.
 """
 
-from fastapi import APIRouter, Depends, Form, Query
+from fastapi import APIRouter, Depends, Form, Query, Request
 from sqlalchemy.exc import IntegrityError
 
 from core.table_export import export_response
@@ -16,6 +16,7 @@ from models.module_group import ModuleGroupModel
 from models.user import UserModel
 from repository.module_group_repository import ModuleGroupRepository
 from services.auth_service import require_module_access
+from services.bulk_service import BulkRowError, bulk_create, parse_bulk_rows
 
 router = APIRouter(prefix="/C_master_module_group", tags=["master-module-group"])
 _module_group_repository = ModuleGroupRepository()
@@ -94,3 +95,22 @@ def delete(id: str = Form(...), user: UserModel = Depends(_require_access)) -> d
     if not deleted:
         return {"error": "Module group not found"}
     return {"message": "Module group deleted successfully"}
+
+
+@router.post("/submit_bulk")
+async def submit_bulk(request: Request, user: UserModel = Depends(_require_access)) -> dict:
+    form = await request.form()
+    rows = parse_bulk_rows(form, ["name", "sort"])
+
+    def build(row, session):
+        name = str(row.get("name", "")).strip()
+        if not name:
+            raise BulkRowError(row["_row"], "Name is required")
+        sort_raw = str(row.get("sort", "")).strip()
+        try:
+            sort_value = int(sort_raw) if sort_raw else 0
+        except ValueError:
+            raise BulkRowError(row["_row"], "Sort must be a number")
+        return ModuleGroupModel(name=name, sort=sort_value)
+
+    return bulk_create(rows, build)

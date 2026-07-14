@@ -24,7 +24,7 @@
 | #2 | fix(frontend): table search bar loses focus on every keystroke | closed | 2026-07-14 |
 | #3 | feat(frontend): add multi-format export menu to shared Table toolbar | closed | 2026-07-14 |
 | #4 | feat(frontend): client-side CSV/XLSX upload into table input fields via hamburger menu | ready-for-review | 2026-07-14 |
-| #5 | feat(frontend): bulk create records from CSV/XLSX on module new screens | open | 2026-07-14 |
+| #5 | feat(frontend): bulk create records from CSV/XLSX on module new screens | ready-for-review | 2026-07-14 |
 
 ## Big Picture
 
@@ -321,6 +321,40 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
   `on_upload`-progress flow is needed to *read* a spreadsheet — the
   `upload_dir` wiring in `asgi.py`/`entrypoint.sh` remains for any
   future feature that genuinely needs server-side files.
+
+  **Bulk create convention** (issue #5, 2026-07-14, ALL OR NOTHING):
+  every module `new` screen gets a second hamburger menu at the far right
+  of its `ModuleToolbar` — "Upload bulk from CSV/XLSX" — attached
+  automatically by `Form.build()` via
+  `components/form/bulk_menu.py::BulkMenu` when `parent.screen == "new"`
+  (zero per-module wiring; runs in `build()` rather than `__init__` so it
+  lands *after* the screen's own submit button, i.e. rightmost, and obeys
+  the same three Flet invariants as the table menu above). The file is
+  parsed client-side with the same `parse_csv_bytes`/`parse_xlsx_bytes`,
+  headers matched to form fields by label or name (case-insensitive,
+  unknown columns ignored, blank rows skipped), `select` cells resolved
+  against `call_{name}_select` options by label or value (an unresolvable
+  cell aborts the whole upload client-side with `Row N: unknown <label>
+  '<value>'`), then **every row goes in ONE
+  `POST C_{module}/submit_bulk`** (repeated form fields plus a parallel
+  `row_number` list carrying the file's own numbering — header counts as
+  row 1 among non-blank rows). Backend:
+  `services/bulk_service.py::bulk_create(rows, build_instance)` owns one
+  `SessionLocal()` for the whole batch (per-table repositories can't
+  share a transaction — same reasoning as `inventory_service.py`), adds +
+  **flushes per row** (so unique-constraint violations — in-file
+  duplicates and DB conflicts alike — surface attributed to the offending
+  row) and commits once; any failure rolls back everything and returns
+  `{"error": "Row N: <same message as that module's single submit>"}`.
+  Each router supplies a small `build(row, session)` validating one row
+  (e.g. `user_admin.py` reproduces "Username or email already in use" via
+  a session query that also sees rows flushed earlier in the same file,
+  and bcrypt-hashes each password). Wired on all 9 new-screen routers:
+  `master_location`, `master_supplier`, `master_department`,
+  `master_material`, `master_module_group` (`module_group_admin.py`),
+  `ap_module` (`module_admin.py`), `ap_master_user` (`user_admin.py`),
+  `stock_in` and `stock_out` (headers only — items have their own
+  flows), each gated by its module's `require_module_access`.
 
   **Every list endpoint `get_{name}` gets an export twin
   `export_{name}`** — the table *name* is part of the contract because
