@@ -25,6 +25,7 @@ department usage/cost reporting.
 10. [Stock out (issuing)](#10-stock-out-issuing)
 11. [Browsing current stock](#11-browsing-current-stock)
 12. [Checking usage](#12-checking-usage)
+13. [Download and Upload Features](#13-download-and-upload-features)
 
 ## 1. Deploying the application
 
@@ -349,3 +350,41 @@ Open the **Usage Report** module — a read-only summary of total quantity
 issued and total cost per department + material, aggregated across every
 Stock Out transaction. Use it to answer "how much of what has each
 department consumed, and at what cost." No add/edit here either.
+
+## 13. Download and Upload Features
+
+Most list screens (Users, Materials, Stock In, etc.) have a hamburger menu icon (☰) on the right side of their toolbar. This menu provides options for downloading the current data or uploading new data.
+
+### 13.1 Downloading Data
+
+Click the hamburger menu and select one of the "Download as..." options (CSV, XLSX, etc.). This will download a file containing **all** records that match the current search filter and sort order, not just the rows currently visible on the page.
+
+### 13.2 Uploading Data into a Table
+
+This feature allows you to populate editable fields in a table (like the item entry grid when issuing stock) directly from a CSV or XLSX file.
+
+1.  **Prepare your file**: Create a CSV or XLSX file where the column headers match the labels or field names of the table you want to fill.
+    -   Include columns for any key fields (like "Material" or "Location") to identify which rows to update.
+    -   Include columns for the editable fields you want to populate (like "Qty Issue").
+2.  **Upload**:
+    -   Click the hamburger menu (☰) on the table's toolbar.
+    -   Select "Upload from CSV" or "Upload from XLSX".
+    -   Choose your prepared file.
+3.  **Population**: The system will read the file and populate the values into the matching editable cells on the screen.
+    -   If your file includes key columns, it will match rows based on those keys.
+    -   If no key columns are found, it will populate rows sequentially.
+    -   The data is only populated on the screen; you still need to click the main **Submit** button for the screen to save the changes.
+
+### 13.3 Bulk Creating New Records
+
+On screens where you create new records (like "Add New User" or "Add New Material"), the toolbar on the "New" screen has its own hamburger menu (☰). This allows you to create many records at once from a file.
+
+1.  **Prepare your file**: Create a CSV or XLSX file where the column headers match the labels or field names of the form. For example, a user bulk-upload file would have columns like "Username", "Email", and "Password".
+2.  **Upload**:
+    -   Navigate to the "New" screen for the module (e.g., Users -> Add New).
+    -   Click the hamburger menu (☰) on the toolbar.
+    -   Select "Upload bulk from CSV/XLSX".
+    -   Choose your prepared file.
+3.  **Creation**: The system will process the file and attempt to create a new record for each row.
+    -   The entire upload is **all or nothing**. If any single row fails validation (e.g., a duplicate username, a missing required field), the entire operation is rolled back, and no records are created. An error message will indicate which row and what the error was.
+    -   If all rows are valid, they will all be created in the database.
