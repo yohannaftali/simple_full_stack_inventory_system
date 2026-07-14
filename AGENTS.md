@@ -21,6 +21,7 @@
 | ID | Title | Status | Last Checked |
 |----|-------|--------|--------------|
 | #1 | feat(infra): scaffold full-stack app with MariaDB, FastAPI, and Flet via Podman Compose | ready-for-review | 2026-07-08 |
+| #2 | fix(frontend): table search bar loses focus on every keystroke | ready-for-review | 2026-07-14 |
 
 ## Big Picture
 

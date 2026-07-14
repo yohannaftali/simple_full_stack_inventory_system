@@ -196,6 +196,19 @@
 - Scope: backend, frontend
 - No GitHub issue filed (direct implementation, per user)
 
+## [2026-07-14] — fix(frontend): table search bar loses focus on every keystroke
+- Issue #2 created on GitHub
+- Scope: frontend
+- Labels: bug, frontend
+- Root cause found during triage (not yet fixed): `Table.load()` (`components/table/table.py:231`) rebuilds the toolbar (`col.controls[0] = self.toolbar.build()`) on every `get_data()` call, including the one fired by `TableSearchBar.on_search_change` on every keystroke — this constructs a brand-new search bar control each time, dropping browser focus. Home screen's search bar doesn't go through this rebuild path, which is why it isn't affected
+
+## [2026-07-14] — fix(frontend): stop rebuilding the table toolbar on every data reload
+- Issue #2 fixed on GitHub
+- `Table.load()` (`frontend/src/components/table/table.py`) no longer replaces `col.controls[0]` (the toolbar, which holds the search bar) on every `get_data()` call — only the header (`col.controls[1]`) and body (`col.controls[2]`) are rebuilt now. The toolbar's contents (search bar, add/save buttons) never depend on the fetched row data, so re-fetching it was always unnecessary; it was also the actual cause of the focus-loss bug, since `on_filter_change` -> `get_data()` -> `load()` fires on every keystroke and each one recreated the search bar's underlying `TextField`
+- No syntax/import verification available in this environment (the frontend `.venv`'s `python` symlink is broken — `/usr/local/bin/python3.13` doesn't exist here); only `ast.parse()` syntax-checked. **Needs a real browser check** (type a multi-character search term into any `master_*` list screen and confirm focus is retained) before this can be called fully verified
+- Scope: frontend
+- Files: `frontend/src/components/table/table.py`
+
 ## [2026-07-09] — feat: usage_report module — material cost by department
 - User asked, as a follow-up to the department feature above, for a report of total cost by material by department, using the stock-out department link just added
 - Added `UsageReportRepository` (`backend/src/repository/usage_report_repository.py`) — a dedicated read-only cross-table aggregate repository (`list_usage_by_department`), mirroring `stock_repository.py`'s pattern for `stock_browse` rather than being bolted onto `stock_out_repository.py` (which owns header CRUD + item reads, not reporting). Joins `stock_out_items` → `stock_out_headers` (for `department_id`) → `departments`, and `stock_out_items` → `materials`, grouped by `(department_id, material_id)`, summing `qty_out` into `total_qty_out` and the item's already-captured `total_value` (MAP at time of issue, not today's MAP) into `total_cost`

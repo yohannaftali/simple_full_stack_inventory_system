@@ -255,10 +255,13 @@ class Table:
             if self.body:
                 new_body = self.body.build()
 
-            # Replace the first two controls (header, body) if present
+            # Replace header/body only - never rebuild the toolbar here.
+            # The toolbar holds the search bar, and this method runs on
+            # every keystroke (via on_filter_change -> get_data -> load);
+            # rebuilding it would replace the focused TextField with a new
+            # control, dropping browser focus after each character typed.
             if isinstance(col.controls, list) and len(col.controls) >= 3:
                 if new_header is not None:
-                    col.controls[0] = self.toolbar.build()
                     col.controls[1] = new_header
                 if new_body is not None:
                     col.controls[2] = new_body
