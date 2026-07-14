@@ -7,6 +7,7 @@ docstring for the shape. Gated by `require_module_access("master_supplier")`.
 from fastapi import APIRouter, Depends, Form, Query
 from sqlalchemy.exc import IntegrityError
 
+from core.table_export import export_response
 from core.table_query import attach_pagination
 from models.supplier import SupplierModel
 from models.user import UserModel
@@ -17,6 +18,8 @@ router = APIRouter(prefix="/C_master_supplier", tags=["master-supplier"])
 _supplier_repository = SupplierRepository()
 
 _require_access = require_module_access("master_supplier")
+
+_EXPORT_COLUMNS = [("code", "Code"), ("name", "Name")]
 
 
 def _serialize(supplier: SupplierModel) -> dict:
@@ -35,6 +38,18 @@ def get_detail(
         keyword=keyword, limit=limit, page=page, offset=offset
     )
     return attach_pagination([_serialize(supplier) for supplier in rows], pagination)
+
+
+@router.get("/export_detail")
+def export_detail(
+    format: str = Query(...),  # noqa: A002
+    keyword: str = Query("", alias="table-keyword-filter"),
+    user: UserModel = Depends(_require_access),
+):
+    rows, _pagination = _supplier_repository.list_suppliers(keyword=keyword, limit=0, page=1, offset=0)
+    return export_response(
+        [_serialize(supplier) for supplier in rows], _EXPORT_COLUMNS, format, "master_supplier"
+    )
 
 
 @router.get("/get")

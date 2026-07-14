@@ -6,6 +6,7 @@ from components.table.columns import Columns
 from components.table.rows import Rows
 from components.table.toolbar import TableToolbar
 from components.table.search_bar import TableSearchBar
+from components.table.export_menu import TableExportMenu
 from components.table.header import Header
 from components.table.body import Body
 from repository.storage import Storage
@@ -84,10 +85,21 @@ class Table:
             on_submit=self.on_submit,
             initial_value=self.filter
         )
+        # Every data table gets the download menu for free - see AGENTS.md's
+        # "Table export convention". Reads self.module/self.name/self.filter/
+        # self.columns/self.custom_param at click time, not build time.
+        # Input-mode tables (is_inside_form, e.g. stock_out item_new's
+        # per-location qty-entry table) are an entry widget, not a dataset -
+        # no menu, and no C_{module}/export_{name} endpoint exists for them.
+        self.export_menu = None
+        toolbar_controls = [self.table_search_bar.build()]
+        if not is_inside_form:
+            self.export_menu = TableExportMenu(page=page, parent=self)
+            toolbar_controls.append(self.export_menu.build())
         self.toolbar: TableToolbar | None = TableToolbar(
             page=page,
             parent=self,
-            controls=[self.table_search_bar.build()]
+            controls=toolbar_controls
         )
         self.header: Header | None = None
         self.body: Body | None = None

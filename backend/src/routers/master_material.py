@@ -10,6 +10,7 @@ existing materials predate the supplier link); the edit/new form's
 from fastapi import APIRouter, Depends, Form, Query
 from sqlalchemy.exc import IntegrityError
 
+from core.table_export import export_response
 from core.table_query import attach_pagination
 from models.material import MaterialModel
 from models.user import UserModel
@@ -22,6 +23,12 @@ _material_repository = MaterialRepository()
 _supplier_repository = SupplierRepository()
 
 _require_access = require_module_access("master_material")
+
+_EXPORT_COLUMNS = [
+    ("material_code", "Material Code"),
+    ("material_name", "Material Name"),
+    ("supplier_name", "Supplier"),
+]
 
 
 def _serialize(material: MaterialModel) -> dict:
@@ -51,6 +58,18 @@ def get_detail(
         keyword=keyword, limit=limit, page=page, offset=offset
     )
     return attach_pagination([_serialize(material) for material in rows], pagination)
+
+
+@router.get("/export_detail")
+def export_detail(
+    format: str = Query(...),  # noqa: A002
+    keyword: str = Query("", alias="table-keyword-filter"),
+    user: UserModel = Depends(_require_access),
+):
+    rows, _pagination = _material_repository.list_materials(keyword=keyword, limit=0, page=1, offset=0)
+    return export_response(
+        [_serialize(material) for material in rows], _EXPORT_COLUMNS, format, "master_material"
+    )
 
 
 @router.get("/get")

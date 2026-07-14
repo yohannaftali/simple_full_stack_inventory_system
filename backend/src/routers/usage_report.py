@@ -13,6 +13,7 @@ Gated by `require_module_access("usage_report")`.
 
 from fastapi import APIRouter, Depends, Query
 
+from core.table_export import export_response
 from core.table_query import attach_pagination
 from models.user import UserModel
 from repository.usage_report_repository import UsageReportRepository
@@ -22,6 +23,15 @@ router = APIRouter(prefix="/C_usage_report", tags=["usage-report"])
 _usage_report_repository = UsageReportRepository()
 
 _require_access = require_module_access("usage_report")
+
+_EXPORT_COLUMNS = [
+    ("department_code", "Dept Code"),
+    ("department_name", "Department"),
+    ("material_code", "Material Code"),
+    ("material_name", "Material"),
+    ("total_qty_out", "Total Qty"),
+    ("total_cost", "Total Cost"),
+]
 
 
 @router.get("/get_detail")
@@ -36,3 +46,15 @@ def get_detail(
         keyword=keyword, limit=limit, page=page, offset=offset
     )
     return attach_pagination([dict(row) for row in rows], pagination)
+
+
+@router.get("/export_detail")
+def export_detail(
+    format: str = Query(...),  # noqa: A002
+    keyword: str = Query("", alias="table-keyword-filter"),
+    user: UserModel = Depends(_require_access),
+):
+    rows, _pagination = _usage_report_repository.list_usage_by_department(
+        keyword=keyword, limit=0, page=1, offset=0
+    )
+    return export_response([dict(row) for row in rows], _EXPORT_COLUMNS, format, "usage_report")

@@ -44,6 +44,7 @@ from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, Form, Query, Request
 
+from core.table_export import export_response
 from core.table_query import attach_pagination
 from models.user import UserModel
 from repository.department_repository import DepartmentRepository
@@ -64,6 +65,22 @@ _stock_repository = StockRepository()
 
 _require_access = require_module_access("stock_out")
 
+_EXPORT_DETAIL_COLUMNS = [
+    ("date", "Date"),
+    ("description", "Description"),
+    ("department_name", "Department"),
+]
+_EXPORT_ITEMS_COLUMNS = [
+    ("material_code", "Material Code"),
+    ("material_name", "Material"),
+    ("location_code", "Location Code"),
+    ("location_name", "Location"),
+    ("qty_out", "Qty Out"),
+    ("price", "Price"),
+    ("total_value", "Total Value"),
+    ("remarks", "Remarks"),
+]
+
 
 def _serialize_header(header) -> dict:
     department = (
@@ -80,6 +97,22 @@ def _serialize_header(header) -> dict:
     }
 
 
+def _serialize_item(item) -> dict:
+    material = _material_repository.get_material_by_id(item.material_id)
+    location = _location_repository.get_location_by_id(item.location_id)
+    return {
+        "id": item.id,
+        "material_code": material.material_code if material else "",
+        "material_name": material.material_name if material else "",
+        "location_code": location.code if location else "",
+        "location_name": location.name if location else "",
+        "qty_out": item.qty_out,
+        "price": item.price,
+        "total_value": item.total_value,
+        "remarks": item.remarks,
+    }
+
+
 @router.get("/get_detail")
 def get_detail(
     keyword: str = Query("", alias="table-keyword-filter"),
@@ -92,6 +125,36 @@ def get_detail(
         keyword=keyword, limit=limit, page=page, offset=offset
     )
     return attach_pagination([_serialize_header(header) for header in rows], pagination)
+
+
+@router.get("/export_detail")
+def export_detail(
+    format: str = Query(...),  # noqa: A002
+    keyword: str = Query("", alias="table-keyword-filter"),
+    user: UserModel = Depends(_require_access),
+):
+    rows, _pagination = _stock_out_repository.list_headers(keyword=keyword, limit=0, page=1, offset=0)
+    return export_response(
+        [_serialize_header(header) for header in rows], _EXPORT_DETAIL_COLUMNS, format, "stock_out"
+    )
+
+
+@router.get("/export_items")
+def export_items(
+    header_id: int,
+    format: str = Query(...),  # noqa: A002
+    keyword: str = Query("", alias="table-keyword-filter"),
+    user: UserModel = Depends(_require_access),
+):
+    items, _pagination = _stock_out_repository.list_items_by_header(
+        header_id, keyword=keyword, limit=0, page=1, offset=0
+    )
+    return export_response(
+        [_serialize_item(item) for item in items],
+        _EXPORT_ITEMS_COLUMNS,
+        format,
+        f"stock_out_{header_id}_items",
+    )
 
 
 @router.get("/get")
@@ -140,24 +203,7 @@ def get_items(
     items, pagination = _stock_out_repository.list_items_by_header(
         header_id, keyword=keyword, limit=limit, page=page, offset=offset
     )
-    result = []
-    for item in items:
-        material = _material_repository.get_material_by_id(item.material_id)
-        location = _location_repository.get_location_by_id(item.location_id)
-        result.append(
-            {
-                "id": item.id,
-                "material_code": material.material_code if material else "",
-                "material_name": material.material_name if material else "",
-                "location_code": location.code if location else "",
-                "location_name": location.name if location else "",
-                "qty_out": item.qty_out,
-                "price": item.price,
-                "total_value": item.total_value,
-                "remarks": item.remarks,
-            }
-        )
-    return attach_pagination(result, pagination)
+    return attach_pagination([_serialize_item(item) for item in items], pagination)
 
 
 @router.get("/get_stock_by_material")

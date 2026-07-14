@@ -35,7 +35,7 @@ import os
 import sys
 from pathlib import Path
 
-from utils.storage_compat import sp_call_with_retry
+from utils.storage_compat import sp_call_with_retry, unwrap_legacy_value
 
 
 def _native_store_path() -> Path:
@@ -150,6 +150,20 @@ class _WebSharedPrefsStore:
             print(f"Could not remove {key} from client_storage: {e}")
 
 
+def load_client_session(client_id: str) -> dict:
+    """Synchronously read one browser client's persisted `server_url`/
+    `http_cookies` outside of a live Flet `Page` - used by `asgi.py`'s
+    `/download/{module}` export-proxy route, which handles a plain HTTP
+    request (no Flet websocket/page context) and needs the same session
+    the browser's Flet connection is already using to call the backend
+    export endpoint with the right cookies."""
+    store = _ServerFileStore(client_id)
+    server_url = unwrap_legacy_value(store._data.get("server_url"))
+    cookies_str = unwrap_legacy_value(store._data.get("http_cookies"))
+    cookies = json.loads(cookies_str) if cookies_str else {}
+    return {"server_url": server_url or None, "http_cookies": cookies}
+
+
 def make_session_store(page, sp=None):
     """Pick the persistence backend for the current platform/deployment.
 
@@ -168,8 +182,11 @@ def make_session_store(page, sp=None):
         client_id = None
         if hasattr(page, "data") and isinstance(page.data, dict):
             client_id = page.data.get("client_id")
+        print(f"[make_session_store] is_web={is_web} client_id={client_id!r}")
         if client_id:
+            print("[make_session_store] using _ServerFileStore")
             return _ServerFileStore(client_id)
         if sp is not None:
+            print("[make_session_store] using _WebSharedPrefsStore (fallback)")
             return _WebSharedPrefsStore(page, sp)
     return _NativeFileStore()

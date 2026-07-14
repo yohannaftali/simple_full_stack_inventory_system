@@ -34,7 +34,6 @@ from pages.home import HomePage
 from pages.login import LoginPage
 from pages.server_config import ServerConfigPage
 from pages.troubleshooting import TroubleshootingPage
-from repository.server_url import DEFAULT_SERVER_URL
 from repository.storage import Storage
 from utils.module_loader import ModuleLoader
 from utils.storage_compat import sp_call_with_retry
@@ -264,17 +263,15 @@ async def main(page: ft.Page):
             splash.show_reload_button(lambda e: page.run_task(_reload_library))
 
     async def _boot_navigate():
-        # DEFAULT_SERVER_URL doubles as the "never configured" sentinel: a
-        # never-configured install has nothing persisted, so server_url.get()
-        # falls back to it. It's now the containerized deployment's real
-        # backend address (see repository/server_url.py), so this branch
-        # mainly matters for a genuinely fresh install of some *other*
-        # deployment target (native desktop, etc.) where DEFAULT_SERVER_URL
-        # doesn't resolve - force the user to set a real server URL first
-        # there, instead of throwing a connection error against it or
-        # letting them sit on a login screen that can never succeed.
-        server_url = storage.server_url.get()
-        if server_url == DEFAULT_SERVER_URL:
+        # "Never configured" is tracked explicitly (server_url.is_configured(),
+        # set by load()/set() based on whether a value was actually
+        # persisted) - NOT by comparing get() against DEFAULT_SERVER_URL.
+        # The containerized deployment's real, saved address IS the default
+        # (http://backend:5000), so the old value comparison bounced every
+        # new tab/session of a correctly-configured containerized install
+        # to /server_config forever, before the is_active() check below
+        # could ever restore the logged-in session.
+        if not storage.server_url.is_configured():
             # Could be a genuinely unconfigured install, or the #648
             # SharedPreferences hot-reload race (see storage_compat.py)
             # silently failing to load the real persisted value in time -
@@ -284,9 +281,8 @@ async def main(page: ft.Page):
             # value on disk resolves on the retry, a genuinely unconfigured
             # install just re-defaults and proceeds as before.
             await storage.server_url.load()
-            server_url = storage.server_url.get()
 
-        if server_url == DEFAULT_SERVER_URL:
+        if not storage.server_url.is_configured():
             await _push_route_safe("/server_config")
         elif storage.client_data.is_active():
             await _push_route_safe("/home")

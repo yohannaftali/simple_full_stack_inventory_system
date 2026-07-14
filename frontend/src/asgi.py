@@ -33,9 +33,20 @@ import uuid
 from pathlib import Path
 
 import flet as ft
+import requests
+import urllib3
+from fastapi import Request
+from fastapi.responses import Response
+from fastapi.routing import APIRoute
+
+# Same dev-friendly self-signed-cert tolerance as utils/http_client.py -
+# this route calls the backend with verify=False too.
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from main import main
+from repository.server_url import DEFAULT_SERVER_URL
 from utils.client_context import client_id_var
+from utils.persistence import load_client_session
 
 _COOKIE_NAME = "sfsis_client_id"
 _COOKIE_MAX_AGE = 60 * 60 * 24 * 365  # 1 year
@@ -64,7 +75,9 @@ async def before_main(page: ft.Page):
     so utils/persistence.py's make_session_store() can find it."""
     if not hasattr(page, "data") or page.data is None:
         page.data = {}
-    page.data["client_id"] = client_id_var.get()
+    resolved = client_id_var.get()
+    print(f"[asgi before_main] client_id_var resolved to: {resolved!r}")
+    page.data["client_id"] = resolved
 
 
 class ClientIdMiddleware:
@@ -87,21 +100,37 @@ class ClientIdMiddleware:
         if is_new:
             client_id = uuid.uuid4().hex
 
+        # Log websocket handshakes only (one per Flet session) - http
+        # scope fires for every static asset request and drowns the log.
+        if scope["type"] == "websocket":
+            print(
+                f"[asgi middleware] websocket {scope.get('path')} "
+                f"client_id={client_id!r} is_new={is_new}"
+            )
+
         client_id_var.set(client_id)
 
-        if scope["type"] == "http" and is_new:
-            # Set the cookie on the plain HTTP response that serves the
-            # Flutter web app's index.html - by the time its JS opens the
-            # WebSocket connection moments later, the browser already has
-            # the cookie and sends it automatically, so there's no need to
-            # (and no reliable way to) set it on the WS handshake itself.
+        if is_new:
+            # Set the cookie on whichever response this connection produces:
+            # - http.response.start: the normal first-visit path - the page
+            #   load that serves index.html sets the cookie, and the
+            #   WebSocket the app opens moments later carries it back.
+            # - websocket.accept: a WS handshake that arrived with NO cookie
+            #   (a stale tab from before the cookie existed, auto-reconnecting
+            #   after a container restart - no page reload, so no http
+            #   request ever happens for it). Without setting the cookie on
+            #   the 101 response too, the id minted for that connection dies
+            #   with it: a login persisted under it lands in a session file
+            #   no future tab can ever reach, which looks exactly like "the
+            #   app forgot my login". Browsers do store Set-Cookie from
+            #   websocket handshake responses.
             cookie_value = (
                 f"{_COOKIE_NAME}={client_id}; Path=/; Max-Age={_COOKIE_MAX_AGE}; "
                 "HttpOnly; SameSite=Lax"
             )
 
             async def send_wrapper(message):
-                if message["type"] == "http.response.start":
+                if message["type"] in ("http.response.start", "websocket.accept"):
                     message.setdefault("headers", [])
                     message["headers"].append(
                         (b"set-cookie", cookie_value.encode("latin-1"))
@@ -114,11 +143,93 @@ class ClientIdMiddleware:
         await self.app(scope, receive, send)
 
 
-app = ClientIdMiddleware(
-    ft.run(
-        main=main,
-        before_main=before_main,
-        assets_dir=str(_ASSETS_DIR),
-        export_asgi_app=True,
-    )
+_fastapi_app = ft.run(
+    main=main,
+    before_main=before_main,
+    assets_dir=str(_ASSETS_DIR),
+    export_asgi_app=True,
 )
+
+
+def download_export(module: str, table_name: str, request: Request):
+    """Proxies a table export download for the browser.
+
+    The browser has no session cookie for the backend - only this Flet
+    process does (see AGENTS.md's "Container networking gotcha": every
+    `HttpClient` call runs server-side, here). This route resolves the
+    caller's client id (query param from the launching session, else
+    cookie), loads that browser's persisted server_url/http_cookies (the
+    same ones `HttpClient` itself would use), forwards the request to the
+    backend's `GET C_{module}/export_{table_name}`, and streams the bytes
+    straight back with the backend's own `Content-Disposition`/
+    `Content-Type` headers intact, so the browser downloads a
+    correctly-named file.
+
+    `table_name` is in the path because one module can hold several
+    tables (stock_in's "detail" header list and its "items" sub-table,
+    scoped by a header_id custom param that flows through the query
+    string here) - it mirrors the `get_{name}` convention the table's
+    own data endpoint follows, so `export_{name}` is its export twin.
+
+    A sync `def` (not `async def`) so FastAPI runs the blocking
+    `requests.get` call in its threadpool instead of the event loop.
+    """
+    # The launching Flet session passes its own client_id as a query param
+    # (see components/table/export_menu.py) - prefer it over the cookie,
+    # since it directly names the session file that holds the login that
+    # triggered this download, regardless of what cookie state the browser
+    # is in (a stale tab's session id may never have made it into a
+    # cookie). The id is a per-browser random key, not a credential for
+    # anything beyond this container's own session file.
+    client_id = request.query_params.get("client_id") or request.cookies.get(_COOKIE_NAME)
+    print(f"[download proxy] /download/{module}/{table_name} client_id={client_id!r}")
+    if not client_id:
+        return Response("Not authenticated", status_code=401)
+
+    session = load_client_session(client_id)
+    server_url = (session.get("server_url") or DEFAULT_SERVER_URL).rstrip("/")
+    cookies = session.get("http_cookies") or {}
+
+    backend_url = f"{server_url}/C_{module}/export_{table_name}"
+    # Forward the query string minus client_id - that's frontend-proxy
+    # plumbing, not something the backend export endpoint should see.
+    query = "&".join(
+        part
+        for part in str(request.url.query).split("&")
+        if part and not part.startswith("client_id=")
+    )
+    if query:
+        backend_url = f"{backend_url}?{query}"
+
+    try:
+        backend_response = requests.get(
+            backend_url, cookies=cookies, timeout=300, verify=False, allow_redirects=False
+        )
+    except requests.exceptions.RequestException as e:
+        return Response(f"Export failed: {e}", status_code=502)
+
+    if backend_response.status_code >= 400:
+        return Response(backend_response.text, status_code=backend_response.status_code)
+
+    return Response(
+        content=backend_response.content,
+        media_type=backend_response.headers.get("content-type", "application/octet-stream"),
+        headers={
+            "Content-Disposition": backend_response.headers.get(
+                "content-disposition", f'attachment; filename="{module}_{table_name}"'
+            )
+        },
+    )
+
+
+# Flet's own web app already registered a catch-all `/{path:path}` route
+# (serving the Flutter SPA's index.html for any unmatched path) before this
+# module ever runs `ft.run(export_asgi_app=True)`. FastAPI/Starlette match
+# routes in registration order, so a plain `@_fastapi_app.get(...)`
+# decorator here would append after that catch-all and never be reached -
+# insert at the front of the routing table instead.
+_fastapi_app.router.routes.insert(
+    0, APIRoute("/download/{module}/{table_name}", download_export, methods=["GET"])
+)
+
+app = ClientIdMiddleware(_fastapi_app)

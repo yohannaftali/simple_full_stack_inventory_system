@@ -11,10 +11,14 @@ from utils.storage_compat import unwrap_legacy_value
 # the compose service's DNS name on the podman-compose network, reachable
 # from inside sfsis-frontend but NOT from a browser/native client outside
 # that network (there, use the published host port instead, e.g.
-# http://localhost:5000 or https://localhost:5443). Doubles as the
-# "never configured" sentinel in main.py's _boot_navigate - if you change
-# this to something that resolves for every deployment target, that
-# force-to-/server_config behavior effectively disables itself.
+# http://localhost:5000 or https://localhost:5443).
+#
+# NOT a "never configured" sentinel: a containerized user's real, saved
+# server URL is exactly this value, so comparing get() against it cannot
+# distinguish "saved the default" from "nothing saved" - that comparison
+# in main.py's _boot_navigate used to bounce every new tab/session to
+# /server_config forever. Use is_configured() for that question instead;
+# it tracks whether a value was actually persisted/saved.
 DEFAULT_SERVER_URL = "http://backend:5000"
 
 
@@ -44,7 +48,16 @@ class ServerURL:
             value: The server URL to store
         """
         self.page.data["server_url"] = value
+        self.page.data["server_url_configured"] = True
         self.store.persist("server_url", value)
+
+    def is_configured(self) -> bool:
+        """Whether a server URL was ever actually saved (this session via
+        set(), or found persisted by load()) - as opposed to get() merely
+        falling back to DEFAULT_SERVER_URL. The two are indistinguishable
+        by value alone, since the containerized deployment's real address
+        IS the default."""
+        return bool(self.page.data.get("server_url_configured"))
 
     def get(self) -> str:
         """
@@ -66,6 +79,7 @@ class ServerURL:
         if not hasattr(self.page, "data") or self.page.data is None:
             self.page.data = {}
         self.page.data["server_url"] = ""
+        self.page.data["server_url_configured"] = False
 
         self.store.forget("server_url")
 
@@ -80,7 +94,12 @@ class ServerURL:
         server_url = unwrap_legacy_value(server_url)
         if server_url and server_url != "":
             self.page.data["server_url"] = server_url
+            self.page.data["server_url_configured"] = True
         else:
             self.page.data["server_url"] = DEFAULT_SERVER_URL
+            self.page.data["server_url_configured"] = False
 
-        print(f"Server url: {self.page.data['server_url']}")
+        print(
+            f"Server url: {self.page.data['server_url']} "
+            f"(configured: {self.page.data['server_url_configured']})"
+        )

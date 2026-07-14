@@ -7,6 +7,7 @@ docstring for the shape. Gated by `require_module_access("master_location")`.
 from fastapi import APIRouter, Depends, Form, Query, Request
 from sqlalchemy.exc import IntegrityError
 
+from core.table_export import export_response
 from core.table_query import attach_pagination, parse_sort_fields
 from models.location import LocationModel
 from models.user import UserModel
@@ -17,6 +18,8 @@ router = APIRouter(prefix="/C_master_location", tags=["master-location"])
 _location_repository = LocationRepository()
 
 _require_access = require_module_access("master_location")
+
+_EXPORT_COLUMNS = [("code", "Code"), ("name", "Name")]
 
 
 def _serialize(location: LocationModel) -> dict:
@@ -37,6 +40,22 @@ def get_detail(
         keyword=keyword, limit=limit, page=page, offset=offset, sort_fields=sort_fields
     )
     return attach_pagination([_serialize(location) for location in rows], pagination)
+
+
+@router.get("/export_detail")
+def export_detail(
+    request: Request,
+    format: str = Query(...),  # noqa: A002
+    keyword: str = Query("", alias="table-keyword-filter"),
+    user: UserModel = Depends(_require_access),
+):
+    sort_fields = parse_sort_fields(request.query_params)
+    rows, _pagination = _location_repository.list_locations(
+        keyword=keyword, limit=0, page=1, offset=0, sort_fields=sort_fields
+    )
+    return export_response(
+        [_serialize(location) for location in rows], _EXPORT_COLUMNS, format, "master_location"
+    )
 
 
 @router.get("/get")

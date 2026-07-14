@@ -11,6 +11,7 @@ Gated by `require_module_access("stock_browse")`.
 
 from fastapi import APIRouter, Depends, Query
 
+from core.table_export import export_response
 from core.table_query import attach_pagination
 from models.user import UserModel
 from repository.stock_repository import StockRepository
@@ -20,6 +21,16 @@ router = APIRouter(prefix="/C_stock_browse", tags=["stock-browse"])
 _stock_repository = StockRepository()
 
 _require_access = require_module_access("stock_browse")
+
+_EXPORT_COLUMNS = [
+    ("material_code", "Material Code"),
+    ("material_name", "Material"),
+    ("location_code", "Location Code"),
+    ("location_name", "Location"),
+    ("qty", "Qty"),
+    ("average_price", "Avg Price"),
+    ("value", "Value"),
+]
 
 
 @router.get("/get_detail")
@@ -34,3 +45,13 @@ def get_detail(
         keyword=keyword, limit=limit, page=page, offset=offset
     )
     return attach_pagination([dict(row) for row in rows], pagination)
+
+
+@router.get("/export_detail")
+def export_detail(
+    format: str = Query(...),  # noqa: A002
+    keyword: str = Query("", alias="table-keyword-filter"),
+    user: UserModel = Depends(_require_access),
+):
+    rows, _pagination = _stock_repository.list_stock_summary(keyword=keyword, limit=0, page=1, offset=0)
+    return export_response([dict(row) for row in rows], _EXPORT_COLUMNS, format, "stock_browse")

@@ -21,7 +21,8 @@
 | ID | Title | Status | Last Checked |
 |----|-------|--------|--------------|
 | #1 | feat(infra): scaffold full-stack app with MariaDB, FastAPI, and Flet via Podman Compose | ready-for-review | 2026-07-08 |
-| #2 | fix(frontend): table search bar loses focus on every keystroke | ready-for-review | 2026-07-14 |
+| #2 | fix(frontend): table search bar loses focus on every keystroke | closed | 2026-07-14 |
+| #3 | feat(frontend): add multi-format export menu to shared Table toolbar | ready-for-review | 2026-07-14 |
 
 ## Big Picture
 
@@ -263,6 +264,78 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
       in-memory `this.orderBy[table]` there too), so it resets whenever a
       `Table`/`Columns` instance itself is torn down and rebuilt (e.g.
       navigating away and back).
+
+  **Table export convention** (multi-format download, added 2026-07-14):
+  every non-input `Table` gets a hamburger-icon download menu in its
+  toolbar for free (`components/table/export_menu.py`, wired into
+  `Table.__init__` — no per-module frontend code needed; suppressed when
+  `is_inside_form=True`, since an input-mode table like `stock_out`
+  item_new's per-location qty-entry grid is an entry widget, not a
+  dataset), offering the table's *entire* current filtered/sorted result
+  set (not just the loaded page) as CSV, TSV, SCSV, XLSX, ODS, or PDF.
+  Backend half: `backend/src/core/table_export.py::export_response(rows,
+  columns, format, filename_base)` renders any of the 6 formats from a
+  plain `list[dict]` + `[(field, label), ...]` column spec.
+
+  **Every list endpoint `get_{name}` gets an export twin
+  `export_{name}`** — the table *name* is part of the contract because
+  one module can hold several tables (`stock_in` has the `detail` header
+  list on index AND the `items` sub-table on the header's edit screen,
+  scoped by its `header_id` custom param, which flows through the export
+  query string unchanged). So: `GET C_{module}/export_detail?format=...&
+  table-keyword-filter=...` next to `get_detail`, and
+  `GET C_{module}/export_items?header_id=...&format=...` next to
+  `get_items`. Each is gated by the same `require_module_access(...)`
+  dependency as the rest of its module and re-runs its own `list_*`
+  repository call with `limit=0` (the `table_query.py::paginate()`
+  convention for "no limit, return everything") instead of the paginated
+  `limit`/`page`/`offset` triple, then calls `export_response(...)`.
+  Wired: `export_detail` on `master_location` (the only one whose export
+  also honors `sort_fields`, matching `get_detail`'s own sort rollout
+  above), `master_supplier`, `master_department`, `master_material`,
+  `ap_module`, `ap_master_user`, `master_module_group`, `stock_browse`,
+  `usage_report`, `stock_in`, `stock_out`; `export_items` on `stock_in`
+  and `stock_out`. (`stock_out`'s `get_stock_by_material` deliberately
+  has no export twin — its only consumer is the `is_inside_form` entry
+  grid, which never shows the menu.)
+
+  Getting the actual bytes into the browser needed one new piece of
+  frontend-only plumbing, because of the same "Container networking
+  gotcha" documented under Frontend Architecture below: the containerized
+  frontend's `HttpClient` calls always run **server-side** (the Flet
+  process), so the browser itself has no session cookie for the backend
+  and can't be pointed at a backend export URL directly, nor can the
+  Flet process just push raw bytes at an already-open browser tab. The
+  fix is a plain HTTP proxy route, `GET /download/{module}/{table_name}`
+  (mapping to the backend's `C_{module}/export_{table_name}`), added
+  directly to the FastAPI app `asgi.py` builds (`ft.run(...,
+  export_asgi_app=True)`) — **must be inserted at the front of
+  `_fastapi_app.router.routes`**, not appended via the normal
+  `@app.get(...)` decorator, because Flet's own catch-all `/{path:path}`
+  SPA route is already registered by the time this module runs and would
+  otherwise shadow it (routes match in registration order). The handler
+  is a **sync** `def` (FastAPI runs sync path functions in a threadpool,
+  so the blocking `requests.get` call below doesn't block the event
+  loop): it resolves the client id from a `client_id` query param first
+  (the launching Flet session appends its own id in `export_menu.py` —
+  that id directly names the session file holding the login that
+  triggered the download, immune to whatever cookie state the browser is
+  in), falling back to the `sfsis_client_id` cookie, then loads that
+  browser's persisted `server_url`/`http_cookies` via
+  a new `utils/persistence.py::load_client_session(client_id)` helper
+  (a synchronous, page-free read of the same per-client JSON file
+  `_ServerFileStore` uses — needed because this route handles a plain
+  HTTP request with no live Flet `Page`/websocket context to hang a
+  `Storage` instance off of), calls the backend's `/C_{module}/export`
+  with those cookies, and streams the response straight back with the
+  backend's own `Content-Disposition`/`Content-Type` headers intact — the
+  browser ends up with a correctly-named real file download, not a data
+  URI with a browser-generated filename. `export_menu.py`'s click handler
+  just does `page.launch_url(f"/download/{module}?...")`; no popup/new-tab
+  target needed since a `Content-Disposition: attachment` response never
+  navigates the browser away from the running app, the same as clicking a
+  plain `<a download>` link.
+
 - **`src/services/`**: business logic that composes repositories +
   `core/`. `auth_service.py`:
   - `authenticate(username, password, totp)` checks the user is active,
@@ -913,9 +986,18 @@ managed via `pyproject.toml` (uv/Poetry).
   - `/modules/<module>/<screen>/<id?>` and `/modals/<modal>/<screen>/<id?>`
     → dynamically resolved via `ModuleLoader` (permission-checked for
     modules via `storage.client_data.has_permission`)
-  - Boot logic (`_boot_navigate`): if the server URL is still the
-    placeholder default → force `/server_config`; else if the client session
-    is active → `/home`; else → `/login`.
+  - Boot logic (`_boot_navigate`): if no server URL was ever actually
+    saved (`storage.server_url.is_configured()` — an explicit flag set by
+    `ServerURL.load()`/`set()` based on whether a persisted value exists,
+    **not** a `get() == DEFAULT_SERVER_URL` comparison) → force
+    `/server_config`; else if the client session is still active
+    (`client_data.is_active()`, a real `C_home/home` round trip using the
+    persisted cookies) → `/home`; else → `/login`. The value comparison it
+    replaced was a real bug (fixed 2026-07-14): the containerized
+    deployment's correct, saved address IS `DEFAULT_SERVER_URL`
+    (`http://backend:5000`), so a properly-configured, logged-in install
+    was indistinguishable from a fresh one and every new tab/session got
+    bounced to `/server_config` before `is_active()` could restore it.
 
 - **Pages** (`src/pages/`): top-level singleton pages (`login`, `home`,
   `server_config`, `troubleshooting`, `error`, `permission_error`, `loader`),
@@ -993,7 +1075,13 @@ managed via `pyproject.toml` (uv/Poetry).
     flag uses internally - and wraps it in `ClientIdMiddleware`, bare ASGI
     middleware (not Starlette's `BaseHTTPMiddleware`, which doesn't cover
     websocket scopes) that reads/sets a durable `client_id` cookie (plain
-    `Set-Cookie` on the first HTTP response, no JS round trip to race) and
+    `Set-Cookie` on the first HTTP response, no JS round trip to race —
+    and, since 2026-07-14, also on the `websocket.accept` handshake
+    response when the WS arrived cookieless: a stale tab from before the
+    cookie existed auto-reconnects its WS after a container restart
+    *without* any page load, and without binding the freshly-minted id
+    back into the browser there, a login made in that tab persists into a
+    session file no future tab can ever reach) and
     exposes it via a `ContextVar` (`utils/client_context.py`) for the rest
     of that connection's call chain. Flet's `before_main(page)` hook - which
     runs in that same call chain, before any `asyncio.create_task` split
@@ -1043,11 +1131,10 @@ managed via `pyproject.toml` (uv/Poetry).
     `DEFAULT_SERVER_URL` is now `http://backend:5000` specifically so a
     fresh containerized frontend gets this right automatically, without
     anyone having to rediscover the gotcha above via the Server Config page.
-    Note this doubles as the "never configured, force `/server_config`"
-    sentinel in `main.py`'s `_boot_navigate` (see the comment there) — it's
-    a real working address for *this* deployment target now, not a pure
-    placeholder, so that force-to-config behavior effectively only fires for
-    other deployment targets (native desktop, etc.) where it doesn't resolve.
+    It is deliberately **not** used as a "never configured" sentinel
+    anymore — `ServerURL.is_configured()` tracks that explicitly, because a
+    containerized user's genuinely-saved address equals the default and the
+    old value comparison couldn't tell the two apart (see Boot logic above).
 
 - **Module loading** (`src/utils/module_loader.py`): `ModuleLoader(page,
   target)` (`target` is `"modules"` or `"modals"`) preloads every screen

@@ -22,6 +22,7 @@ existing frontend behavior, not something this router works around.
 
 from fastapi import APIRouter, Depends, Form, Query
 
+from core.table_export import export_response
 from core.table_query import attach_pagination
 from models.module import ModuleModel
 from models.user import UserModel
@@ -36,6 +37,15 @@ _permission_repository = UserModulePermissionRepository()
 _module_group_repository = ModuleGroupRepository()
 
 _require_access = require_module_access("ap_module")
+
+_EXPORT_COLUMNS = [
+    ("name", "Name"),
+    ("label", "Label"),
+    ("sort", "Sort"),
+    ("icon", "Icon"),
+    ("description", "Description"),
+    ("module_group_name", "Group"),
+]
 
 
 def _serialize(module: ModuleModel) -> dict:
@@ -69,6 +79,16 @@ def get_detail(
         keyword=keyword, limit=limit, page=page, offset=offset
     )
     return attach_pagination([_serialize(module) for module in rows], pagination)
+
+
+@router.get("/export_detail")
+def export_detail(
+    format: str = Query(...),  # noqa: A002
+    keyword: str = Query("", alias="table-keyword-filter"),
+    user: UserModel = Depends(_require_access),
+):
+    rows, _pagination = _module_repository.list_modules(keyword=keyword, limit=0, page=1, offset=0)
+    return export_response([_serialize(module) for module in rows], _EXPORT_COLUMNS, format, "ap_module")
 
 
 @router.get("/get")

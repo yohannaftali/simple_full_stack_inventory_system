@@ -29,6 +29,7 @@ All routes require `ap_master_user` access (or superuser) via `require_module_ac
 from fastapi import APIRouter, Depends, Form, Query
 
 from core.security import hash_password
+from core.table_export import export_response
 from core.table_query import attach_pagination
 from models.user import UserModel
 from repository.department_repository import DepartmentRepository
@@ -44,6 +45,14 @@ _permission_repository = UserModulePermissionRepository()
 _department_repository = DepartmentRepository()
 
 _require_access = require_module_access("ap_master_user")
+
+_EXPORT_COLUMNS = [
+    ("username", "Username"),
+    ("email", "Email"),
+    ("is_active", "Active"),
+    ("is_superuser", "Superuser"),
+    ("department_name", "Department"),
+]
 
 _YES_NO_OPTIONS = [
     {"value": "true", "label": "Yes"},
@@ -85,6 +94,18 @@ def get_detail(
         keyword=keyword, limit=limit, page=page, offset=offset
     )
     return attach_pagination([_serialize_user(row_user) for row_user in rows], pagination)
+
+
+@router.get("/export_detail")
+def export_detail(
+    format: str = Query(...),  # noqa: A002
+    keyword: str = Query("", alias="table-keyword-filter"),
+    user: UserModel = Depends(_require_access),
+):
+    rows, _pagination = _user_repository.list_users(keyword=keyword, limit=0, page=1, offset=0)
+    return export_response(
+        [_serialize_user(row_user) for row_user in rows], _EXPORT_COLUMNS, format, "ap_master_user"
+    )
 
 
 @router.get("/get")
