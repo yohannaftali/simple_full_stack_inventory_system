@@ -117,7 +117,7 @@ class ModuleLoader:
             # Check if item exists
             spec = importlib.util.find_spec(path)
             if spec is None:
-                print(f"  ⚠ Item not found: {path}")
+                print(f"not found /{self.target}/{item}/{screen}.py")
                 return
 
             # Import the item
@@ -129,8 +129,7 @@ class ModuleLoader:
             print(f"  ✓ Cached {cache_key}")
 
         except Exception as e:
-            print(
-                f"  ✗ Failed to preload {cache_key}: {type(e).__name__}: {e}")
+            print(f"  ✗ Failed to preload {cache_key}: {type(e).__name__}: {e}")
             traceback.print_exc()
 
     def get_module(self, module: str, screen: str):
@@ -160,10 +159,9 @@ class ModuleLoader:
 
         try:
             # Already imported in this process: reload to pick up edits
-            if path in importlib.util.sys.modules:
+            if path in sys.modules:
                 print(f"Item {path} found in sys.modules, reloading")
-                imported_module = importlib.reload(
-                    importlib.util.sys.modules[path])
+                imported_module = importlib.reload(sys.modules[path])
                 self.cache[cache_key] = imported_module
                 print(f"✓ Successfully reloaded {path}")
                 return imported_module
@@ -217,14 +215,20 @@ class ModuleLoader:
         if page_library is None:
             self.page.views.clear()
             self.page.views.append(
-                ErrorPage(self.page, self.target, item, screen, f"Import {item} failed, please restart application, if problem persist please contact IT Support").build())
+                ErrorPage(
+                    self.page,
+                    self.target,
+                    item,
+                    screen,
+                    f"Import {item} failed, please restart application, if problem persist please contact IT Support",
+                ).build()
+            )
         else:
             try:
                 PageClass = getattr(page_library, self.page_class)
                 page_class = None
                 try:
-                    page_class = PageClass(
-                        self.page, item, screen, record_id)
+                    page_class = PageClass(self.page, item, screen, record_id)
                 except TypeError:
                     page_class = PageClass(self.page, item, screen)
                     if record_id is not None:
@@ -235,9 +239,23 @@ class ModuleLoader:
 
             except AttributeError as e:
                 self.page.views.clear()
-                self.page.views.append(ErrorPage(
-                    self.page, self.target, item, screen,  f"Error: Building page {item}/{screen}: {e}").build())
+                self.page.views.append(
+                    ErrorPage(
+                        self.page,
+                        self.target,
+                        item,
+                        screen,
+                        f"Error: Building page {item}/{screen}: {e}",
+                    ).build()
+                )
             except Exception as e:
                 self.page.views.clear()
-                self.page.views.append(ErrorPage(
-                    self.page, self.target, item, screen, f"Unexpected error building {item}/{screen}: {e}").build())
+                self.page.views.append(
+                    ErrorPage(
+                        self.page,
+                        self.target,
+                        item,
+                        screen,
+                        f"Unexpected error building {item}/{screen}: {e}",
+                    ).build()
+                )

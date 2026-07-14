@@ -22,7 +22,9 @@
 |----|-------|--------|--------------|
 | #1 | feat(infra): scaffold full-stack app with MariaDB, FastAPI, and Flet via Podman Compose | ready-for-review | 2026-07-08 |
 | #2 | fix(frontend): table search bar loses focus on every keystroke | closed | 2026-07-14 |
-| #3 | feat(frontend): add multi-format export menu to shared Table toolbar | ready-for-review | 2026-07-14 |
+| #3 | feat(frontend): add multi-format export menu to shared Table toolbar | closed | 2026-07-14 |
+| #4 | feat(frontend): client-side CSV/XLSX upload into table input fields via hamburger menu | ready-for-review | 2026-07-14 |
+| #5 | feat(frontend): bulk create records from CSV/XLSX on module new screens | open | 2026-07-14 |
 
 ## Big Picture
 
@@ -265,17 +267,60 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
       `Table`/`Columns` instance itself is torn down and rebuilt (e.g.
       navigating away and back).
 
-  **Table export convention** (multi-format download, added 2026-07-14):
-  every non-input `Table` gets a hamburger-icon download menu in its
-  toolbar for free (`components/table/export_menu.py`, wired into
-  `Table.__init__` — no per-module frontend code needed; suppressed when
-  `is_inside_form=True`, since an input-mode table like `stock_out`
-  item_new's per-location qty-entry grid is an entry widget, not a
-  dataset), offering the table's *entire* current filtered/sorted result
-  set (not just the loaded page) as CSV, TSV, SCSV, XLSX, ODS, or PDF.
-  Backend half: `backend/src/core/table_export.py::export_response(rows,
-  columns, format, filename_base)` renders any of the 6 formats from a
-  plain `list[dict]` + `[(field, label), ...]` column spec.
+  **Table export/upload convention** (multi-format download 2026-07-14,
+  CSV/XLSX upload added same day for issue #4): every `Table` gets a
+  hamburger-icon menu at the far right of its toolbar for free
+  (`components/table/menu.py`, class `Menu` — renamed from the original
+  `export_menu.py`; wired into `Table.__init__` as `self.export_menu`,
+  appended rightmost by `toolbar.py`). Menu contents by table kind:
+  non-input tables get the 6 download entries, a separator, then the two
+  upload entries; `is_inside_form=True` tables (input-mode grids like
+  `stock_out` item_new's per-location qty-entry table — the *primary*
+  upload use case) get an upload-only menu, since no
+  `C_{module}/export_{name}` endpoint exists for them. Downloads offer
+  the table's *entire* current filtered/sorted result set (not just the
+  loaded page) as CSV, TSV, SCSV, XLSX, ODS, or PDF. Backend half:
+  `backend/src/core/table_export.py::export_response(rows, columns,
+  format, filename_base)` renders any of the 6 formats from a plain
+  `list[dict]` + `[(field, label), ...]` column spec.
+
+  **Upload half is entirely client-side** (in the Flet process): the
+  picked file's bytes are parsed (`parse_csv_bytes` sniffs comma/
+  semicolon/tab so this table's own SCSV/TSV downloads round-trip;
+  `parse_xlsx_bytes` via openpyxl; blank rows skipped) and matched
+  against the table's columns by visible label or field name,
+  case-insensitive. Label (read-only) columns whose headers appear in
+  the file form a possibly-composite key selecting which loaded rows to
+  fill; with no key columns in the file, editable cells fill
+  sequentially row-by-row. Only rows currently loaded on the client are
+  populated (lazy-loaded pages ignored); values land in the editable
+  controls only — persisting still goes through the screen's own submit.
+  Three hard-won Flet 0.85 invariants live in `menu.py` (each broke the
+  app in a different way before being learned — see CHANGE_HISTORY
+  2026-07-14):
+  1. `ft.FilePicker` is a `Service`, not a visual Control: it registers
+     via `page.services` (like `ft.SharedPreferences` in
+     `repository/storage.py`), never `page.overlay` (which renders it as
+     "Unknown control FilePicker" client-side).
+  2. `page.services` resolves through the ROOT VIEW (`views[0]`) and
+     **raises RuntimeError while `page.views` is empty** — which is
+     exactly the state during `ModulePage.__init__` (route_change clears
+     views first; module_loader.build appends the new view only after
+     the constructor returns). So `Menu.__init__` must be completely
+     page-passive; the picker is created and registered lazily inside
+     the async click handler (on the event loop, with a live root view).
+     Registering at construction also dies with the old root view on the
+     next navigation anyway.
+  3. An `on_click` that calls an async method must BE an `async def`
+     closure — a sync `lambda e: self._async_method(...)` returns an
+     un-awaited coroutine that Flet's dispatcher (which checks
+     `inspect.iscoroutinefunction`) silently drops ("coroutine was never
+     awaited", handler never runs).
+  `pick_files(..., with_data=True)` returns the file's bytes directly
+  (web and desktop), which is why no `upload_url`/`FLET_UPLOAD_DIR`/
+  `on_upload`-progress flow is needed to *read* a spreadsheet — the
+  `upload_dir` wiring in `asgi.py`/`entrypoint.sh` remains for any
+  future feature that genuinely needs server-side files.
 
   **Every list endpoint `get_{name}` gets an export twin
   `export_{name}`** — the table *name* is part of the contract because
@@ -317,7 +362,7 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
   is a **sync** `def` (FastAPI runs sync path functions in a threadpool,
   so the blocking `requests.get` call below doesn't block the event
   loop): it resolves the client id from a `client_id` query param first
-  (the launching Flet session appends its own id in `export_menu.py` —
+  (the launching Flet session appends its own id in `menu.py` —
   that id directly names the session file holding the login that
   triggered the download, immune to whatever cookie state the browser is
   in), falling back to the `sfsis_client_id` cookie, then loads that
@@ -330,8 +375,8 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
   with those cookies, and streams the response straight back with the
   backend's own `Content-Disposition`/`Content-Type` headers intact — the
   browser ends up with a correctly-named real file download, not a data
-  URI with a browser-generated filename. `export_menu.py`'s click handler
-  just does `page.launch_url(f"/download/{module}?...")`; no popup/new-tab
+  URI with a browser-generated filename. `menu.py`'s click handler
+  just does `page.launch_url(f"/download/{module}/{name}?...")`; no popup/new-tab
   target needed since a `Content-Disposition: attachment` response never
   navigates the browser away from the running app, the same as clicking a
   plain `<a download>` link.

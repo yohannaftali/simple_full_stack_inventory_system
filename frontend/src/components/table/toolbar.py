@@ -25,7 +25,11 @@ class TableToolbar:
 
     def build(self):
         """Build and return the toolbar component"""
-        if self.left is None and self.right is None and not self.controls:
+        right_controls = list(self.right) if self.right else []
+        if hasattr(self.parent, "export_menu") and self.parent.export_menu:
+            right_controls.append(self.parent.export_menu.build())
+
+        if self.left is None and not right_controls and not self.controls:
             return ft.Container()
 
         return ft.Container(
@@ -39,8 +43,8 @@ class TableToolbar:
                         expand=True,
                         alignment=ft.MainAxisAlignment.END,
                     ),
-                    ft.Container(content=ft.Row(controls=self.right))
-                    if self.right
+                    ft.Container(content=ft.Row(controls=right_controls))
+                    if right_controls
                     else ft.Container(),
                 ],
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,

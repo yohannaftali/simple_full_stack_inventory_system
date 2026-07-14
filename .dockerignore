@@ -1,0 +1,27 @@
+# IDE and OS specific
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Git
+.git/
+.gitignore
+
+# Python virtual environments
+backend/.venv/
+frontend/.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Local data and logs
+database/
+logs/
+
+# Node.js dependencies
+node_modules/
+npm-debug.log

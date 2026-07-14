@@ -25,6 +25,8 @@ cat "$CERT_FILE" "$KEY_FILE" > "$COMBINED_PEM"
 # directory and falls back to a generic temp dir without them.
 export FLET_APP_STORAGE_DATA="$(pwd)/src/storage/data"
 export FLET_APP_STORAGE_TEMP="$(pwd)/src/storage/temp"
+export FLET_UPLOAD_DIR="$(pwd)/src/storage/uploads"
+mkdir -p "$FLET_APP_STORAGE_DATA" "$FLET_APP_STORAGE_TEMP" "$FLET_UPLOAD_DIR"
 
 # No built-in TLS support here either, so HTTPS is a socat TLS relay in
 # front of it: terminates TLS on FRONTEND_PORT_SSL, forwards the plain bytes

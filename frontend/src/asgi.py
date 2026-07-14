@@ -29,6 +29,7 @@ session-persistence section for exactly what to check before trusting this
 in a real deployment, and how to roll it back if something regresses.
 """
 
+import os
 import uuid
 from pathlib import Path
 
@@ -147,6 +148,9 @@ _fastapi_app = ft.run(
     main=main,
     before_main=before_main,
     assets_dir=str(_ASSETS_DIR),
+    upload_dir=os.environ.get(
+        "FLET_UPLOAD_DIR", str(Path(__file__).resolve().parent / "storage" / "uploads")
+    ),
     export_asgi_app=True,
 )
 
@@ -175,13 +179,15 @@ def download_export(module: str, table_name: str, request: Request):
     `requests.get` call in its threadpool instead of the event loop.
     """
     # The launching Flet session passes its own client_id as a query param
-    # (see components/table/export_menu.py) - prefer it over the cookie,
+    # (see components/table/menu.py) - prefer it over the cookie,
     # since it directly names the session file that holds the login that
     # triggered this download, regardless of what cookie state the browser
     # is in (a stale tab's session id may never have made it into a
     # cookie). The id is a per-browser random key, not a credential for
     # anything beyond this container's own session file.
-    client_id = request.query_params.get("client_id") or request.cookies.get(_COOKIE_NAME)
+    client_id = request.query_params.get("client_id") or request.cookies.get(
+        _COOKIE_NAME
+    )
     print(f"[download proxy] /download/{module}/{table_name} client_id={client_id!r}")
     if not client_id:
         return Response("Not authenticated", status_code=401)
@@ -203,7 +209,11 @@ def download_export(module: str, table_name: str, request: Request):
 
     try:
         backend_response = requests.get(
-            backend_url, cookies=cookies, timeout=300, verify=False, allow_redirects=False
+            backend_url,
+            cookies=cookies,
+            timeout=300,
+            verify=False,
+            allow_redirects=False,
         )
     except requests.exceptions.RequestException as e:
         return Response(f"Export failed: {e}", status_code=502)
@@ -213,7 +223,9 @@ def download_export(module: str, table_name: str, request: Request):
 
     return Response(
         content=backend_response.content,
-        media_type=backend_response.headers.get("content-type", "application/octet-stream"),
+        media_type=backend_response.headers.get(
+            "content-type", "application/octet-stream"
+        ),
         headers={
             "Content-Disposition": backend_response.headers.get(
                 "content-disposition", f'attachment; filename="{module}_{table_name}"'

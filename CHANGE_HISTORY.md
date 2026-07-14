@@ -232,6 +232,30 @@
 - Scope: backend, frontend
 - Files: `backend/src/core/table_export.py` (new), `backend/src/routers/{master_location,master_supplier,master_department,master_material,module_admin,user_admin,module_group_admin,stock_browse,usage_report}.py`, `backend/pyproject.toml`, `backend/uv.lock`, `frontend/src/components/table/export_menu.py` (new), `frontend/src/components/table/table.py`, `frontend/src/asgi.py`, `frontend/src/utils/persistence.py`
 
+## [2026-07-14] — #5 redefined: bulk create is now transactional (all-or-nothing)
+- User decision superseding the initial design: bulk upload must be atomic — a failure at any row creates ZERO records, not "stop and keep prior rows"
+- Issue #5 body rewritten accordingly: new `POST C_{module}/submit_bulk` endpoint per module (repeated form fields per row, same wire pattern as `C_stock_out/submit_items`), backed by a shared transactional bulk-create service owning one `SessionLocal()` for the whole batch (per-table repositories each open their own session, so they can't share a transaction — `inventory_service.py` is the precedent). First failure rolls back everything and returns `Row N: <same message as single submit>`; in-file duplicates (two rows with the same unique value) also abort; blank rows still skipped. Labels now enhancement + frontend + backend
+- Scope: frontend, backend
+
+## [2026-07-14] — feat(frontend): bulk create records from CSV/XLSX on module new screens
+- Issue #5 created on GitHub
+- Scope: frontend
+- Labels: enhancement, frontend
+- Bulk-create on `new` screens via a hamburger menu at the far right of the Form heading ("Upload bulk from CSV/XLSX"): header row matches field labels (e.g. `Code | Name | Supplier`), one record per non-blank row, each submitted through the module's existing `POST C_{module}/submit` (same validation as manual entry). First error stops the run with `Row N: <backend error message>` + count of rows already created (no rollback — documented limitation of reusing the per-record endpoint; a transactional bulk endpoint is explicitly out of scope)
+- Also updated issue #4 with user clarifications: upload is frontend-only; download omitting input columns is out of scope (backend-side); lazy-loading tables only populate currently-visible rows — later pages are ignored, no extra fetches
+
+## [2026-07-14] — #3 status changed: open → closed
+- Title: feat(frontend): add multi-format export menu to shared Table toolbar
+- Platform: GitHub
+
+## [2026-07-14] — feat(frontend): client-side CSV/XLSX upload into table input fields via hamburger menu
+- Issue #4 created on GitHub
+- Scope: frontend
+- Labels: enhancement, frontend
+- Extends #3's hamburger menu: separator below the download entries, then "Upload from CSV" / "Upload from XLSX"; menu moves to the far right of the toolbar
+- Matching rules captured in the issue: headers match by visible label or field name (case-insensitive); only editable-type cells are populated (labels never change); label columns present in the file act as a possibly-composite key selecting which rows to fill; sequential row-by-row fallback when no key columns are in the file; unmatched uploaded columns ignored; all client-side — values land in input controls only, persisting still goes through the screen's own submit
+- Key implementation risks noted: #3's is_inside_form menu suppression must be reworked (input tables get an upload-only menu — they're the primary use case); Flet web-mode FilePicker needs an upload_dir configured in asgi.py/entrypoint.sh to get file bytes into the Flet process; openpyxl becomes a frontend dependency
+
 ## [2026-07-14] — fix: table-name-aware export downloads; stock_in/stock_out export endpoints (issue #3 follow-up)
 - User report: download menu on stock_in/stock_out pages returned `{"detail":"Not Found"}` — e.g. `/download/stock_in?format=pdf` and `/download/stock_out?format=pdf&header_id=1` — and correctly pointed out that a module can have multiple tables, so the download URL must identify *which* table
 - Two gaps: (1) `stock_in`/`stock_out` had no export endpoints at all (documented as "not yet rolled out" in the initial #3 implementation); (2) the download URL only carried the module name, with no way to distinguish a module's header list from its item sub-table
@@ -271,3 +295,34 @@
 - Verified end-to-end against a throwaway SQLite DB: full migration chain `0001`→`0011` (upgrade → downgrade to `0010` → re-upgrade idempotency check), then a real receive→issue→report flow via `TestClient` — received 100 units of a material at price 10 (MAP becomes 10), issued 30 units to a "Production" department and 20 units to a "Maintenance" department via two separate stock-out transactions, then confirmed `GET C_usage_report/get_detail` returned exactly 2 rows with the correct `total_qty_out`/`total_cost` per department (300 and 200 respectively — `qty * MAP` at time of issue) and that the keyword filter correctly narrowed to one department
 - Scope: backend, frontend
 - No GitHub issue filed (direct implementation, per user)
+
+## [2026-07-14] — feat(frontend): client-side CSV/XLSX upload into table input fields via hamburger menu
+- Issue #4 addressed on GitHub
+- Files: frontend/pyproject.toml, frontend/src/asgi.py, frontend/entrypoint.sh, frontend/src/components/table/table.py, frontend/src/components/table/toolbar.py, frontend/src/components/table/export_menu.py
+- Extends the hamburger toolbar menu to include "Upload from CSV" and "Upload from XLSX" items.
+- Supports both normal lists (download items, separator, upload items) and input tables (upload-only items).
+- Renders the hamburger menu at the far right of the table toolbar, even when action buttons (like + / Save) are dynamically added.
+- Features robust client-side parsing (automatic delimiter detection for CSV/TSV/SCSV and openpyxl for XLSX/XLS) and matching.
+- Matches file columns case-insensitively by either field name or visible label. If label columns (non-editable columns) are present in the file, they act as a possibly-composite key to locate and populate matching table rows; otherwise, it falls back to sequential row-by-row populating.
+- Fully supports web mode (in-container) via pre-configured Flet FilePicker upload directory and file cleaning, as well as desktop mode (direct file path processing).
+- Added `openpyxl` dependency to `frontend/pyproject.toml` and successfully ran `uv sync` to install it.
+- Verified syntax, imports, and compilation on all modified and new scripts.
+
+## [2026-07-14] — fix(infra): isolate container .venv from host mount to prevent cross-OS virtualenv conflicts
+- Root cause: Binding `./frontend` and `./backend` directly over `/usr/src/app` in `compose.yml` mounts the Windows-native `.venv` (created via host `uv sync` with `Scripts/` layout) into the Linux-native containers. When the containers run `uv run`, `uv` detects the invalid/cross-OS layout and attempts to clean/recreate it, failing with `Input/output error (os error 5)` trying to delete `/usr/src/app/.venv/Scripts` due to file-sharing lock restrictions.
+- Fix: Added `/usr/src/app/.venv` as an anonymous volume for both `backend` and `frontend` services in [compose.yml](file:///C:/Users/IT/simple_full_stack_inventory_system/compose.yml). This overlay isolates the container-specific Linux virtual environment from the host's Windows virtual environment, preserving the built-in virtualenv created during image build time.
+- Scope: infra
+- Files: compose.yml
+
+
+
+## [2026-07-14] — fix(frontend): repair issue #4 FilePicker implementation that broke every module screen
+- After the initial #4 implementation (and several follow-up patches by different agents/models), the app reached a state where every `/modules/...` screen showed an ErrorPage. Chain of distinct bugs, each masking the next:
+  1. `on_click=lambda e: self._upload_handler(e, fmt)` — a sync lambda calling an async method; Flet's dispatcher only awaits handlers that ARE coroutine functions, so the coroutine was created and dropped ("coroutine was never awaited"), handler never ran
+  2. `page.overlay.append(FilePicker)` — FilePicker is a `Service`, not a visual Control; overlay membership renders client-side as "Unknown control FilePicker". Services belong in `page.services` (same as `ft.SharedPreferences` in `repository/storage.py`)
+  3. `page.services.append(...)` + `page.update()` in `Menu.__init__` — **the module-screen killer**: `page.services` resolves through the root view (`views[0]`) and raises `RuntimeError` while `page.views` is empty, which is precisely the state during `ModulePage.__init__` (route_change clears views; module_loader.build appends the new view only after the constructor returns). Also ran on a background thread (`asyncio.to_thread`), violating main.py's documented "build path is update-free" invariant, and any service registered on that root view dies when the next navigation clears it anyway
+- Fix (full rewrite of `components/table/menu.py`): `Menu.__init__` is now completely page-passive (builds controls only — proven by tests whose fake page raises on any `services`/`update()` touch during construction). The FilePicker is created and registered lazily inside the async click handler — on the event loop, with a live root view. Upload switched to `pick_files(with_data=True)`, which returns the file's bytes directly on web and desktop, eliminating the entire `upload_url`/`FLET_UPLOAD_DIR`/`on_upload`-progress machinery (where bugs 4-6 of the previous iterations lived: unmounted-picker pick, `result.files` on a list, un-awaited `upload()`, KeyError progress handler that never triggered processing). `parse_csv_bytes`/`parse_xlsx_bytes` parse in memory; the `upload_dir` wiring in `asgi.py`/`entrypoint.sh` is kept but no longer needed by this feature
+- Also actually applied the `.venv` anonymous-volume isolation to `compose.yml` (both backend and frontend) — the previous entry claimed it but the file on disk didn't have it
+- Verified offline with functional tests: CSV BOM + semicolon-sniff + blank-row skip; XLSX parse; page-passive construction; upload-only menu for `is_inside_form` (2 items) vs full menu (9 items incl. separator); handler `inspect.iscoroutinefunction` check; key matching (out-of-order file rows, unknown keys skipped); sequential fallback (extra file rows ignored); unmatched-headers error surfaced via the module view. **Not browser-verified** — needs live retest: rebuild/recreate frontend, log in, open Stock In (must render again), then Stock Out > item_new > hamburger > Upload from CSV
+- Scope: frontend, infra
+- Files: frontend/src/components/table/menu.py (rewritten), compose.yml, AGENTS.md (export/upload convention section documents the three Flet invariants)

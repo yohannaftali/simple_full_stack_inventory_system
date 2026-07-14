@@ -1,15 +1,14 @@
 import flet as ft
 
-from utils.http_client import HttpClient
-
-from components.table.columns import Columns
-from components.table.rows import Rows
-from components.table.toolbar import TableToolbar
-from components.table.search_bar import TableSearchBar
-from components.table.export_menu import TableExportMenu
-from components.table.header import Header
 from components.table.body import Body
+from components.table.columns import Columns
+from components.table.header import Header
+from components.table.menu import Menu
+from components.table.rows import Rows
+from components.table.search_bar import TableSearchBar
+from components.table.toolbar import TableToolbar
 from repository.storage import Storage
+from utils.http_client import HttpClient
 
 
 class Table:
@@ -73,17 +72,16 @@ class Table:
         self.limit = limit
         self.page_number = 1  # Current page
         self.total_pages = 1  # Total pages from API
-        self.total_rows = 0   # Total rows from API
+        self.total_rows = 0  # Total rows from API
 
         self.filter = ""
-        self.filter = self.storage.table_search.get(
-            self.module, self.screen, self.name)
+        self.filter = self.storage.table_search.get(self.module, self.screen, self.name)
         self.table_search_bar = TableSearchBar(
             page=page,
             parent=self,
             on_filter_change=self.on_filter_change,
             on_submit=self.on_submit,
-            initial_value=self.filter
+            initial_value=self.filter,
         )
         # Every data table gets the download menu for free - see AGENTS.md's
         # "Table export convention". Reads self.module/self.name/self.filter/
@@ -91,15 +89,10 @@ class Table:
         # Input-mode tables (is_inside_form, e.g. stock_out item_new's
         # per-location qty-entry table) are an entry widget, not a dataset -
         # no menu, and no C_{module}/export_{name} endpoint exists for them.
-        self.export_menu = None
+        self.export_menu = Menu(page=page, parent=self)
         toolbar_controls = [self.table_search_bar.build()]
-        if not is_inside_form:
-            self.export_menu = TableExportMenu(page=page, parent=self)
-            toolbar_controls.append(self.export_menu.build())
         self.toolbar: TableToolbar | None = TableToolbar(
-            page=page,
-            parent=self,
-            controls=toolbar_controls
+            page=page, parent=self, controls=toolbar_controls
         )
         self.header: Header | None = None
         self.body: Body | None = None
@@ -107,25 +100,24 @@ class Table:
 
         self.table_container: ft.Container | None = None
         self.data: list = []
-        self.endpoint = endpoint if endpoint is not None else f"C_{self.module}/get_{self.name}"
+        self.endpoint = (
+            endpoint if endpoint is not None else f"C_{self.module}/get_{self.name}"
+        )
 
-        if 'active_tables' not in page.data:
-            page.data['active_tables'] = []
-        page.data['active_tables'].append(self)
+        if "active_tables" not in page.data:
+            page.data["active_tables"] = []
+        page.data["active_tables"].append(self)
 
         if not is_inside_form:
             self.get_data()
 
     def build(self, padding: int = 0):
-        self.header = Header(
-            page=self.page,
-            columns=self.columns
-        )
+        self.header = Header(page=self.page, columns=self.columns)
         self.body = Body(
             page=self.page,
             columns=self.columns,
             rows=self.rows,
-            on_scroll_end=self._handle_scroll_end
+            on_scroll_end=self._handle_scroll_end,
         )
 
         # Build controls list, filtering out None values
@@ -162,18 +154,21 @@ class Table:
             self.rows.load(self.data, append=False)
             # Rebuild the header and body with the loaded data
             if self.header and self.body:
-                if isinstance(self.table_container.content.controls, list) and len(self.table_container.content.controls) >= 2:
+                if (
+                    isinstance(self.table_container.content.controls, list)
+                    and len(self.table_container.content.controls) >= 2
+                ):
                     # Replace header and body in the controls list
                     if self.toolbar:
-                        self.table_container.content.controls[1] = self._build_header_with_resize_overlay(
+                        self.table_container.content.controls[1] = (
+                            self._build_header_with_resize_overlay()
                         )
-                        self.table_container.content.controls[2] = self.body.build(
-                        )
+                        self.table_container.content.controls[2] = self.body.build()
                     else:
-                        self.table_container.content.controls[0] = self._build_header_with_resize_overlay(
+                        self.table_container.content.controls[0] = (
+                            self._build_header_with_resize_overlay()
                         )
-                        self.table_container.content.controls[1] = self.body.build(
-                        )
+                        self.table_container.content.controls[1] = self.body.build()
 
         return self.table_container
 
@@ -195,7 +190,8 @@ class Table:
     def _handle_scroll_end(self):
         """Handle scroll to bottom - load next page"""
         print(
-            f"Scroll end handler called - page: {self.page_number}/{self.total_pages}, loading: {self.is_loading_more}")
+            f"Scroll end handler called - page: {self.page_number}/{self.total_pages}, loading: {self.is_loading_more}"
+        )
 
         if self.is_loading_more or self.page_number >= self.total_pages:
             print("Skipping load - already loading or last page reached")
@@ -215,12 +211,10 @@ class Table:
         for key, value in self.custom_param.items():
             param = param + f"&{key}={value}"
         param = param + self.columns.serialize_sort()
-        response = client.get(
-            f"{self.endpoint}?{param}" if param else self.endpoint)
+        response = client.get(f"{self.endpoint}?{param}" if param else self.endpoint)
         if isinstance(response, dict) and "error" in response:
             print(f"Error fetching data: {response.get('error')}")
-            self.parent.view.show_error(
-                f"Failed to load data: {response.get('error')}")
+            self.parent.view.show_error(f"Failed to load data: {response.get('error')}")
             return
 
         if isinstance(response, list):
@@ -229,8 +223,8 @@ class Table:
             # module with zero records) is a valid response, not an error.
             if response:
                 first_row = response[0]
-                self.total_pages = first_row.get('db_total_page', 1)
-                self.total_rows = first_row.get('db_num_rows', len(response))
+                self.total_pages = first_row.get("db_total_page", 1)
+                self.total_rows = first_row.get("db_num_rows", len(response))
             else:
                 self.total_pages = 1
                 self.total_rows = 0
@@ -255,7 +249,7 @@ class Table:
         # DataColumn/DataRow objects (with fixed-width Containers) are used.
         # Rebuilding the DataTable controls ensures Flet lays out cells with the
         # newly-applied container widths.
-        if self.table_container and hasattr(self.table_container, 'content'):
+        if self.table_container and hasattr(self.table_container, "content"):
             col = self.table_container.content  # ft.Column
             # Recreate header and body DataTable widgets using the header/body
             # builders which read from `self.columns` and `self.rows`.
@@ -347,7 +341,9 @@ class Table:
 
         if self.table_container and hasattr(self.table_container, "content"):
             col = self.table_container.content  # ft.Column
-            new_header = self._build_header_with_resize_overlay() if self.header else None
+            new_header = (
+                self._build_header_with_resize_overlay() if self.header else None
+            )
             new_body = self.body.build() if self.body else None
 
             if isinstance(col.controls, list) and len(col.controls) >= 3:
@@ -374,8 +370,14 @@ class Table:
         """
         if self.table_container and hasattr(self.table_container, "content"):
             col = self.table_container.content
-            new_header = self._build_header_with_resize_overlay() if self.header else None
-            if new_header is not None and isinstance(col.controls, list) and len(col.controls) >= 2:
+            new_header = (
+                self._build_header_with_resize_overlay() if self.header else None
+            )
+            if (
+                new_header is not None
+                and isinstance(col.controls, list)
+                and len(col.controls) >= 2
+            ):
                 col.controls[1] = new_header
                 col.update()
 

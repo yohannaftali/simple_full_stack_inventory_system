@@ -1,7 +1,7 @@
 FROM python:3.13-slim
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends openssl socat \
+    && apt-get install -y --no-install-recommends openssl socat zenity \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/src/app
