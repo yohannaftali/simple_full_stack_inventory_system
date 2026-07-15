@@ -8,9 +8,14 @@ plain `Table` of its items (`GET C_stock_in/get_items?header_id=`), with a
 `POST C_stock_in/submit_item`; clicking a row navigates to an item_edit
 screen (material/location are then read-only — see inventory_service).
 
-- GET  C_stock_in/get_detail -> paginated receiving headers.
-- GET  C_stock_in/get?id=<id> -> single header {id, date, description}.
-- POST C_stock_in/submit (form: id, date, description) -> upsert header.
+- GET  C_stock_in/get_detail -> paginated receiving headers, including
+  supplier_id/supplier_name (optional - a receiving header may predate the
+  supplier link, or the shipment's supplier may be unknown). Keyword search
+  also matches the linked supplier's code/name, not just description.
+- GET  C_stock_in/get?id=<id> -> single header {id, date, description,
+  supplier_id, supplier_name}.
+- POST C_stock_in/submit (form: id, date, description, supplier_id) ->
+  upsert header. supplier_id is optional (blank = no supplier recorded).
 - GET  C_stock_in/get_items?header_id=<id>&table-keyword-filter=&limit=&page=&offset=
   -> paginated items for that header (keyword matches `remarks`), joined
   with material_code/name and location_code/name for display.
@@ -21,6 +26,8 @@ screen (material/location are then read-only — see inventory_service).
   qty_received, price_buy, remarks) -> services.inventory_service create/update.
 - GET  C_stock_in/call_material_id_select, call_location_id_select -> options
   for the item form's `select` fields.
+- GET  C_stock_in/call_supplier_id_select -> options for the header form's
+  `supplier_id` select field.
 
 Gated by `require_module_access("stock_in")`.
 """
@@ -37,6 +44,7 @@ from models.user import UserModel
 from repository.location_repository import LocationRepository
 from repository.material_repository import MaterialRepository
 from repository.receiving_repository import ReceivingRepository
+from repository.supplier_repository import SupplierRepository
 from services import inventory_service
 from services.auth_service import require_module_access
 from services.bulk_service import BulkRowError, bulk_create, parse_bulk_rows
@@ -45,10 +53,15 @@ router = APIRouter(prefix="/C_stock_in", tags=["stock-in"])
 _receiving_repository = ReceivingRepository()
 _material_repository = MaterialRepository()
 _location_repository = LocationRepository()
+_supplier_repository = SupplierRepository()
 
 _require_access = require_module_access("stock_in")
 
-_EXPORT_DETAIL_COLUMNS = [("date", "Date"), ("description", "Description")]
+_EXPORT_DETAIL_COLUMNS = [
+    ("date", "Date"),
+    ("description", "Description"),
+    ("supplier_name", "Supplier"),
+]
 _EXPORT_ITEMS_COLUMNS = [
     ("material_code", "Material Code"),
     ("material_name", "Material"),
@@ -58,6 +71,21 @@ _EXPORT_ITEMS_COLUMNS = [
     ("price_buy", "Price"),
     ("remarks", "Remarks"),
 ]
+
+
+def _serialize_header(header) -> dict:
+    supplier = (
+        _supplier_repository.get_supplier_by_id(header.supplier_id)
+        if header.supplier_id
+        else None
+    )
+    return {
+        "id": header.id,
+        "date": header.date.isoformat(),
+        "description": header.description,
+        "supplier_id": str(header.supplier_id) if header.supplier_id else "",
+        "supplier_name": supplier.name if supplier else "",
+    }
 
 
 def _serialize_item(item) -> dict:
@@ -86,11 +114,7 @@ def get_detail(
     rows, pagination = _receiving_repository.list_headers(
         keyword=keyword, limit=limit, page=page, offset=offset
     )
-    result = [
-        {"id": header.id, "date": header.date.isoformat(), "description": header.description}
-        for header in rows
-    ]
-    return attach_pagination(result, pagination)
+    return attach_pagination([_serialize_header(header) for header in rows], pagination)
 
 
 @router.get("/export_detail")
@@ -100,11 +124,9 @@ def export_detail(
     user: UserModel = Depends(_require_access),
 ):
     rows, _pagination = _receiving_repository.list_headers(keyword=keyword, limit=0, page=1, offset=0)
-    result = [
-        {"id": header.id, "date": header.date.isoformat(), "description": header.description}
-        for header in rows
-    ]
-    return export_response(result, _EXPORT_DETAIL_COLUMNS, format, "stock_in")
+    return export_response(
+        [_serialize_header(header) for header in rows], _EXPORT_DETAIL_COLUMNS, format, "stock_in"
+    )
 
 
 @router.get("/export_items")
@@ -130,7 +152,7 @@ def get(id: int, user: UserModel = Depends(_require_access)) -> dict:  # noqa: A
     header = _receiving_repository.get_header_by_id(id)
     if header is None:
         return {"error": "Receiving header not found"}
-    return {"id": header.id, "date": header.date.isoformat(), "description": header.description}
+    return _serialize_header(header)
 
 
 @router.post("/submit")
@@ -138,22 +160,29 @@ def submit(
     id: str = Form(""),  # noqa: A002
     date: date_type = Form(...),
     description: str = Form(""),
+    supplier_id: str = Form(""),
     user: UserModel = Depends(_require_access),
 ) -> dict:
+    supplier_id_value = int(supplier_id) if supplier_id else None
+
     if id:
-        updated = _receiving_repository.update_header(int(id), date=date, description=description)
+        updated = _receiving_repository.update_header(
+            int(id), date=date, description=description, supplier_id=supplier_id_value
+        )
         if not updated:
             return {"error": "Receiving header not found"}
         return {"message": "Receiving header updated successfully"}
 
-    _receiving_repository.create_header(date=date, description=description)
+    _receiving_repository.create_header(
+        date=date, description=description, supplier_id=supplier_id_value
+    )
     return {"message": "Receiving header created successfully"}
 
 
 @router.post("/submit_bulk")
 async def submit_bulk(request: Request, user: UserModel = Depends(_require_access)) -> dict:
     form = await request.form()
-    rows = parse_bulk_rows(form, ["date", "description"])
+    rows = parse_bulk_rows(form, ["date", "description", "supplier_id"])
 
     def build(row, session):
         date_raw = str(row.get("date", "")).strip()
@@ -163,8 +192,15 @@ async def submit_bulk(request: Request, user: UserModel = Depends(_require_acces
             date_value = date_type.fromisoformat(date_raw)
         except ValueError:
             raise BulkRowError(row["_row"], f"Invalid date: {date_raw} (expected YYYY-MM-DD)")
+        supplier_raw = str(row.get("supplier_id", "")).strip()
+        try:
+            supplier_id = int(supplier_raw) if supplier_raw else None
+        except ValueError:
+            raise BulkRowError(row["_row"], f"Invalid Supplier: {supplier_raw}")
         return ReceivingHeaderModel(
-            date=date_value, description=str(row.get("description", "")).strip()
+            date=date_value,
+            description=str(row.get("description", "")).strip(),
+            supplier_id=supplier_id,
         )
 
     return bulk_create(rows, build)
@@ -259,4 +295,12 @@ def call_location_id_select(user: UserModel = Depends(_require_access)) -> list:
     return [
         {"value": str(loc.id), "label": f"{loc.code} - {loc.name}"}
         for loc in _location_repository.get_all_locations()
+    ]
+
+
+@router.get("/call_supplier_id_select")
+def call_supplier_id_select(user: UserModel = Depends(_require_access)) -> list:
+    return [
+        {"value": str(s.id), "label": f"{s.code} - {s.name}"}
+        for s in _supplier_repository.get_all_suppliers()
     ]

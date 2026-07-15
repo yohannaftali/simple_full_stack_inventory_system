@@ -11,6 +11,7 @@ from core.table_query import Pagination, apply_keyword_filter, paginate
 from models.base import SessionLocal
 from models.receiving_header import ReceivingHeaderModel
 from models.receiving_item import ReceivingItemModel
+from models.supplier import SupplierModel
 
 
 class ReceivingRepository:
@@ -28,22 +29,34 @@ class ReceivingRepository:
         self, keyword: str = "", limit: int = 20, page: int = 1, offset: int = 0
     ) -> tuple[list[ReceivingHeaderModel], Pagination]:
         with SessionLocal() as session:
-            query = session.query(ReceivingHeaderModel)
-            query = apply_keyword_filter(query, [ReceivingHeaderModel.description], keyword)
+            query = session.query(ReceivingHeaderModel).outerjoin(
+                SupplierModel, SupplierModel.id == ReceivingHeaderModel.supplier_id
+            )
+            query = apply_keyword_filter(
+                query,
+                [ReceivingHeaderModel.description, SupplierModel.code, SupplierModel.name],
+                keyword,
+            )
             query = query.order_by(
                 ReceivingHeaderModel.date.desc(), ReceivingHeaderModel.id.desc()
             )
             return paginate(query, limit=limit, page=page, offset=offset)
 
-    def create_header(self, date, description: str) -> ReceivingHeaderModel:
+    def create_header(
+        self, date, description: str, supplier_id: Optional[int] = None
+    ) -> ReceivingHeaderModel:
         with SessionLocal() as session:
-            header = ReceivingHeaderModel(date=date, description=description)
+            header = ReceivingHeaderModel(
+                date=date, description=description, supplier_id=supplier_id
+            )
             session.add(header)
             session.commit()
             session.refresh(header)
             return header
 
-    def update_header(self, header_id: int, date, description: str) -> bool:
+    def update_header(
+        self, header_id: int, date, description: str, supplier_id: Optional[int] = None
+    ) -> bool:
         with SessionLocal() as session:
             header = (
                 session.query(ReceivingHeaderModel)
@@ -55,6 +68,7 @@ class ReceivingRepository:
 
             header.date = date
             header.description = description
+            header.supplier_id = supplier_id
             session.commit()
             return True
 

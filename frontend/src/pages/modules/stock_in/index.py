@@ -24,6 +24,10 @@ class ModulePage:
             {
                 "name": "description", "label": "Description",
                 "type": "label"
+            },
+            {
+                "name": "supplier_name", "label": "Supplier",
+                "type": "label"
             }
         ]
 

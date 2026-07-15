@@ -20,8 +20,13 @@ class ModulePage:
             },
             {
                 "name": "date", "label": "Date", "icon": ft.Icons.EVENT,
-                "row": 1,
+                "row": 1, "col": {"sm": 12, "md": 6},
                 "type": "date", "autofocus": True, "default": "today"
+            },
+            {
+                "name": "supplier_id", "label": "Supplier", "icon": ft.Icons.LOCAL_SHIPPING,
+                "row": 1, "col": {"sm": 12, "md": 6},
+                "type": "select"
             },
             {
                 "name": "description", "label": "Description", "icon": ft.Icons.NOTES,

@@ -26,7 +26,7 @@
 | #4 | feat(frontend): client-side CSV/XLSX upload into table input fields via hamburger menu | ready-for-review | 2026-07-14 |
 | #5 | feat(frontend): bulk create records from CSV/XLSX on module new screens | ready-for-review | 2026-07-14 |
 | #6 | feat(inventory): create master category table and link to materials | closed | 2026-07-15 |
-| #7 | feat(receiving): add supplier tracking to receiving headers | open | 2026-07-14 |
+| #7 | feat(receiving): add supplier tracking to receiving headers | ready-for-review | 2026-07-15 |
 | #8 | feat(reports): purchase report page — total purchase by supplier and by material, date-range + supplier/material filters | open | 2026-07-14 |
 | #9 | feat(reports): add start/end date range filter to usage_report | open | 2026-07-14 |
 | #10 | feat(table): generic per-column filtering, ported from senar's L_database (`{field}-filter` convention) | open | 2026-07-14 |
@@ -608,6 +608,10 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
   `suppliers`/`materials.supplier_id`). `0018_seed_master_category_module.py`
   seeds the `master_category` module (assigned to the `Master` module group)
   + `admin` grant, same pattern as `0008`/`0010`.
+  `0019_add_supplier_id_to_receiving_headers.py` adds a nullable
+  `receiving_headers.supplier_id` FK, same `op.batch_alter_table` pattern —
+  no seed migration needed, since `stock_in` is an existing module, not a
+  new one.
 - Because `src/` code imports as top-level packages (`from models.base import
   ...`, not `from src.models.base import ...`), `Dockerfile-backend` sets
   `ENV PYTHONPATH=/usr/src/app/src` and copies `alembic.ini` +
@@ -692,11 +696,21 @@ represent one department's requester, separately from stock-out headers
 each declaring their own department.
 
 Transactional tables, all in `backend/src/models/`:
-- `receiving_headers` / `receiving_items` (stock in): a header is just
-  `date` + `description`; each item is one `material_id` + `location_id` +
-  `price_buy` + `qty_received` + `remarks`. **`location_id` lives on the
-  item**, not the header — inferred, not explicitly specified, since the
-  `stocks` table needs a location per lot and nothing else supplies one.
+- `receiving_headers` / `receiving_items` (stock in): a header is
+  `date` + `description` + `supplier_id` (nullable FK to `suppliers.id` —
+  nullable since a header can predate the supplier link, or the shipment's
+  supplier may simply be unknown; unlike `stock_out_headers.department_id`,
+  this is never required on submit); each item is one `material_id` +
+  `location_id` + `price_buy` + `qty_received` + `remarks`. **`location_id`
+  lives on the item**, not the header — inferred, not explicitly specified,
+  since the `stocks` table needs a location per lot and nothing else
+  supplies one. `receiving_repository.py::list_headers` outer-joins
+  `SupplierModel` so its `apply_keyword_filter` also matches the linked
+  supplier's `code`/`name`, not just the header's own `description` — the
+  one list-endpoint in this codebase whose keyword search reaches across a
+  join rather than staying on the base table's own columns (same join
+  technique as `stock_repository.py::list_stock_summary`'s aggregate query,
+  just without the `group_by`/`having`).
 - `stocks`: one lot row per receiving item (`receiving_item_id` FK, plus
   denormalized `material_id`/`location_id`/`qty`), unique on
   `(receiving_item_id, material_id, location_id)`. Since one receiving item
@@ -783,7 +797,10 @@ Routers (all under `backend/src/routers/`, each gated by
 - `stock_in.py` / `stock_out.py`: header list/get/submit (same shape as
   master data — `stock_out.py`'s header additionally requires a non-blank
   `department_id` on submit, and its list/get responses include a
-  denormalized `department_name`), plus a **separate item sub-flow** —
+  denormalized `department_name`; `stock_in.py`'s header instead accepts an
+  *optional* `supplier_id`, denormalized as `supplier_name`, and its
+  keyword search also matches the linked supplier), plus a **separate item
+  sub-flow** —
   `get_items` (list by header) for both. `stock_in.py` additionally has
   `submit_item` (create/update) and `get_item` (single, for the edit form),
   because a receiving item is edited on its own screen, not as part of one
@@ -796,9 +813,9 @@ Routers (all under `backend/src/routers/`, each gated by
   one submission can cover several locations at once (see the FIFO note
   above). Both expose `call_material_id_select`; `stock_in.py` also exposes
   `call_location_id_select` for its item form's location dropdown (unused
-  by `stock_out.py`'s item form now, kept for parity/possible future use);
-  `stock_out.py` additionally exposes `call_department_id_select` for its
-  header form.
+  by `stock_out.py`'s item form now, kept for parity/possible future use)
+  and `call_supplier_id_select` for its header form; `stock_out.py`
+  additionally exposes `call_department_id_select` for its header form.
 
 **Frontend module structure** (`frontend/src/pages/modules/`): `master_location`,
 `master_supplier`, `master_department`, `master_category`, `master_material`,
