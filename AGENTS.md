@@ -23,13 +23,14 @@
 | #1 | feat(infra): scaffold full-stack app with MariaDB, FastAPI, and Flet via Podman Compose | ready-for-review | 2026-07-08 |
 | #2 | fix(frontend): table search bar loses focus on every keystroke | closed | 2026-07-14 |
 | #3 | feat(frontend): add multi-format export menu to shared Table toolbar | closed | 2026-07-14 |
-| #4 | feat(frontend): client-side CSV/XLSX upload into table input fields via hamburger menu | ready-for-review | 2026-07-14 |
-| #5 | feat(frontend): bulk create records from CSV/XLSX on module new screens | ready-for-review | 2026-07-14 |
+| #4 | feat(frontend): client-side CSV/XLSX upload into table input fields via hamburger menu | closed | 2026-07-15 |
+| #5 | feat(frontend): bulk create records from CSV/XLSX on module new screens | closed | 2026-07-15 |
 | #6 | feat(inventory): create master category table and link to materials | closed | 2026-07-15 |
 | #7 | feat(receiving): add supplier tracking to receiving headers | closed | 2026-07-15 |
 | #8 | feat(reports): purchase report page — total purchase by supplier and by material, date-range + supplier/material filters | closed | 2026-07-15 |
 | #9 | feat(reports): add start/end date range filter to usage_report | closed | 2026-07-15 |
 | #10 | feat(table): generic per-column filtering, ported from senar's L_database (`{field}-filter` convention) | closed | 2026-07-15 |
+| #11 | refactor(inventory): remove supplier_id from materials table | open | 2026-07-15 |
 
 ## Big Picture
 

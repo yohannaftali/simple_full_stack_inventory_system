@@ -425,3 +425,13 @@
 - Not verified: the Flet UI in an actual browser (no browser available in this environment) — the sort-icon repositioning and the now-ubiquitous filter toggle button are built on the same proven patterns already exercised elsewhere, but a live visual check is still outstanding
 - Scope: backend, frontend
 - Files: backend/src/core/table_query.py (unchanged, reused as-is), backend/src/repository/{location,supplier,department,category,material,module,user,receiving,stock_out}_repository.py, backend/src/routers/{master_location,master_supplier,master_department,master_category,master_material,module_admin,user_admin,stock_in,stock_out}.py, frontend/src/components/table/{columns,filter_row}.py, frontend/src/pages/modules/master_module_group/index.py, AGENTS.md
+
+## [2026-07-15] — refactor(inventory): remove supplier_id from materials table
+- Issue #11 created on GitHub
+- Scope: backend, frontend
+- Labels: enhancement, backend, frontend
+
+## [2026-07-15] — #4, #5 status synced: ready-for-review → closed
+- Title: feat(frontend): client-side CSV/XLSX upload into table input fields via hamburger menu (#4)
+- Title: feat(frontend): bulk create records from CSV/XLSX on module new screens (#5)
+- Platform: GitHub
