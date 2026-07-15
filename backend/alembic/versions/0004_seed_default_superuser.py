@@ -10,6 +10,7 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
+from core import config
 from core.security import hash_password
 
 revision: str = "0004"
@@ -17,10 +18,14 @@ down_revision: Union[str, None] = "0003"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-# Bootstrap-only credentials — change this password after first login.
-DEFAULT_ADMIN_USERNAME = "admin"
+# Bootstrap-only credentials, sourced from ADMIN_USERNAME/ADMIN_PASSWORD/
+# ADMIN_TOTP_SECRET in .env (see core/config.py) — falls back to the
+# original hardcoded dev defaults if unset. Change the password after
+# first login.
+DEFAULT_ADMIN_USERNAME = config.ADMIN_USERNAME
 DEFAULT_ADMIN_EMAIL = "admin@example.com"
-DEFAULT_ADMIN_PASSWORD = "admin1234#"
+DEFAULT_ADMIN_PASSWORD = config.ADMIN_PASSWORD
+DEFAULT_ADMIN_TOTP_SECRET = config.ADMIN_TOTP_SECRET
 
 _users_table = sa.table(
     "users",
@@ -52,7 +57,7 @@ def upgrade() -> None:
             email=DEFAULT_ADMIN_EMAIL,
             is_active=True,
             is_superuser=True,
-            totp_secret="",
+            totp_secret=DEFAULT_ADMIN_TOTP_SECRET,
         )
     )
 

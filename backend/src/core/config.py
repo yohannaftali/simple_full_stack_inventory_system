@@ -14,3 +14,9 @@ DATABASE_URL = (
 )
 
 JWT_SECRET = os.getenv("JWT_SECRET", "")
+
+# Bootstrap superuser seeded by alembic/versions/0004_seed_default_superuser.py.
+# Falls back to the original hardcoded dev defaults if unset.
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin1234#")
+ADMIN_TOTP_SECRET = os.getenv("ADMIN_TOTP_SECRET", "")
