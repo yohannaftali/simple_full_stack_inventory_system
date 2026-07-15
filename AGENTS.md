@@ -28,7 +28,7 @@
 | #6 | feat(inventory): create master category table and link to materials | closed | 2026-07-15 |
 | #7 | feat(receiving): add supplier tracking to receiving headers | closed | 2026-07-15 |
 | #8 | feat(reports): purchase report page — total purchase by supplier and by material, date-range + supplier/material filters | closed | 2026-07-15 |
-| #9 | feat(reports): add start/end date range filter to usage_report | ready-for-review | 2026-07-15 |
+| #9 | feat(reports): add start/end date range filter to usage_report | closed | 2026-07-15 |
 | #10 | feat(table): generic per-column filtering, ported from senar's L_database (`{field}-filter` convention) | open | 2026-07-14 |
 
 ## Big Picture
