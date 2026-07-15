@@ -2,6 +2,8 @@
 Server URL data for managing server URL data
 """
 
+import os
+
 import flet as ft
 
 from utils.storage_compat import unwrap_legacy_value
@@ -11,7 +13,10 @@ from utils.storage_compat import unwrap_legacy_value
 # the compose service's DNS name on the podman-compose network, reachable
 # from inside sfsis-frontend but NOT from a browser/native client outside
 # that network (there, use the published host port instead, e.g.
-# http://localhost:5000 or https://localhost:5443).
+# http://localhost:5000 or https://localhost:5443). Overridable via the
+# FRONTEND_DEFAULT_SERVER_URL env var (see compose.yml's frontend service
+# and example.env) for deployments where the backend isn't reachable at
+# that compose network name - falls back to the compose default if unset.
 #
 # NOT a "never configured" sentinel: a containerized user's real, saved
 # server URL is exactly this value, so comparing get() against it cannot
@@ -19,7 +24,7 @@ from utils.storage_compat import unwrap_legacy_value
 # in main.py's _boot_navigate used to bounce every new tab/session to
 # /server_config forever. Use is_configured() for that question instead;
 # it tracks whether a value was actually persisted/saved.
-DEFAULT_SERVER_URL = "http://backend:5000"
+DEFAULT_SERVER_URL = os.getenv("FRONTEND_DEFAULT_SERVER_URL", "http://backend:5000")
 
 
 class ServerURL:
