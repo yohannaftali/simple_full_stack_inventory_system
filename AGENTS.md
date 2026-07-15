@@ -27,7 +27,7 @@
 | #5 | feat(frontend): bulk create records from CSV/XLSX on module new screens | ready-for-review | 2026-07-14 |
 | #6 | feat(inventory): create master category table and link to materials | closed | 2026-07-15 |
 | #7 | feat(receiving): add supplier tracking to receiving headers | closed | 2026-07-15 |
-| #8 | feat(reports): purchase report page — total purchase by supplier and by material, date-range + supplier/material filters | open | 2026-07-14 |
+| #8 | feat(reports): purchase report page — total purchase by supplier and by material, date-range + supplier/material filters | ready-for-review | 2026-07-15 |
 | #9 | feat(reports): add start/end date range filter to usage_report | open | 2026-07-14 |
 | #10 | feat(table): generic per-column filtering, ported from senar's L_database (`{field}-filter` convention) | open | 2026-07-14 |
 
@@ -208,6 +208,28 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
     `components/table/table.py::get_data()` on the frontend actually reads
     (`response[0]`). Do **not** manually compute `math.ceil(total/limit)` or
     an "effective offset" in a router — that belongs in `table_query.py`.
+  - **Named structured filters** (`{field}-filter` query params, added for
+    issue #8's purchase report): `table_query.py::apply_field_filters(query,
+    [(column, operator, value), ...])` applies each `(column, operator,
+    value)` triple whose `value` is truthy, silently skipping blank/`None`
+    ones — same "absent means no filter" leniency as `apply_keyword_filter`,
+    just for independently-optional structured filters (a date range, a
+    single FK) instead of one free-text OR-LIKE search across columns.
+    `operator` is `">="`/`"<="`/`"=="`. Unlike `sort-fields[N][field]`'s
+    dynamic bracket-indexed keys (which need raw `request.query_params`
+    to parse), each `{field}-filter` name is fixed and known ahead of
+    time, so a router binds it directly:
+    `Query("", alias="start_date-filter")` — no `Request` param needed.
+    The router parses/validates each value itself (e.g. a date string via
+    `date.fromisoformat`, invalid/blank -> `None`) before handing the
+    parsed values to the repository method, which passes them straight
+    into `apply_field_filters`. **Reference implementation**:
+    `purchase_report_repository.py::list_by_supplier`/`list_by_material` +
+    `routers/purchase_report.py` — `start_date-filter`/`end_date-filter`
+    (inclusive date range, each bound independently optional) plus a
+    single-FK scoping filter per table (`supplier_id-filter` /
+    `material_id-filter`). Not yet rolled out elsewhere; #9 plans to reuse
+    the same `start_date-filter`/`end_date-filter` pair on `usage_report`.
   - **Multi-column sort** (ported from the same original app's
     `y.form.js`/`y.panel.js` sortable-header UI, ADR discussion 2026-07-13):
     `table_query.py::parse_sort_fields(request.query_params)` parses
@@ -611,7 +633,9 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
   `0019_add_supplier_id_to_receiving_headers.py` adds a nullable
   `receiving_headers.supplier_id` FK, same `op.batch_alter_table` pattern —
   no seed migration needed, since `stock_in` is an existing module, not a
-  new one.
+  new one. `0020_seed_purchase_report_module.py` seeds the `purchase_report`
+  module (assigned to the `Inventory` module group, sort 24 — right after
+  `usage_report`'s 23) + `admin` grant, same pattern as `0008`/`0010`/`0018`.
 - Because `src/` code imports as top-level packages (`from models.base import
   ...`, not `from src.models.base import ...`), `Dockerfile-backend` sets
   `ENV PYTHONPATH=/usr/src/app/src` and copies `alembic.ini` +
@@ -794,6 +818,29 @@ Routers (all under `backend/src/routers/`, each gated by
   reporting). `total_cost` sums each item's already-captured `total_value`
   (the MAP at time of issue), so the report reflects historical cost, not
   today's MAP.
+- `purchase_report.py`: read-only, two independent aggregate tables —
+  `GET C_purchase_report/get_by_supplier` (total qty received + total
+  purchase value per supplier) and `get_by_material` (same, per material) —
+  both summing `receiving_items.qty_received * price_buy` (today's captured
+  cost at time of receipt, same "reflects the transaction" semantics as
+  `usage_report`'s `total_cost`) across every item joined back through its
+  header. Each inner-joins its own grouping dimension (`SupplierModel` /
+  `MaterialModel`), so a receiving header with no `supplier_id` recorded is
+  simply excluded from the by-supplier breakdown. Backed by
+  `repository/purchase_report_repository.py::PurchaseReportRepository`
+  (same dedicated-aggregate-repository pattern as `stock_repository.py`/
+  `usage_report_repository.py`). Both endpoints accept
+  `start_date-filter`/`end_date-filter` (inclusive date range on the
+  receiving header's `date`, each bound independently optional) via
+  `core/table_query.py::apply_field_filters` (see "Named structured
+  filters" above); `get_by_supplier` additionally accepts
+  `supplier_id-filter` and `get_by_material` accepts `material_id-filter`,
+  each narrowing that table to one row (blank/absent = the full grouped
+  breakdown) — deliberately **not** cross-applied between the two tables,
+  so picking one supplier on the by-supplier table doesn't also scope the
+  by-material table. `call_supplier_id_select`/`call_material_id_select`
+  each prepend an explicit `{"value": "", "label": "All Suppliers"/"All
+  Materials"}` option for the frontend's filter dropdowns.
 - `stock_in.py` / `stock_out.py`: header list/get/submit (same shape as
   master data — `stock_out.py`'s header additionally requires a non-blank
   `department_id` on submit, and its list/get responses include a
@@ -833,7 +880,20 @@ blank is valid) and a read-only `module_group_name` label on `index`.
 `stock_browse` and `usage_report` are `index.py` only (no `new`/`edit` — and
 deliberately no field marked `"key": True` in their `Table` config, since
 `Rows.py` unconditionally wires a `"key"` field to row-tap-navigates-to-
-`edit/<id>`, and neither has an edit screen to navigate to).
+`edit/<id>`, and neither has an edit screen to navigate to). `purchase_report`
+is the same shape, but with **two** `Table`s on one `index.py` (`by_supplier`/
+`by_material`, each defaulting its endpoint to `C_purchase_report/get_by_x`
+purely from its `name=` — no `endpoint=` override needed) plus two standalone
+`components/form/date.py::DateForm` instances (reused outside a `Form`
+context, same as an editable table cell does) for the shared date range and
+two hand-built `ft.Dropdown`s (populated from `call_supplier_id_select`/
+`call_material_id_select`, same pattern as `stock_out/item_new.py`'s material
+picker) for each table's own scoping filter. `DateForm` has no `on_change`
+hook, so filters apply on demand via a toolbar "Apply Filters" button
+(`ModuleToolbar.add_button`) rather than live per-keystroke/per-select —
+reads the current date-form values + both dropdowns, sets each table's
+`custom_param` to the matching `{field}-filter` keys, resets `page_number`
+to 1, and calls `get_data()` on both.
 
 `master_config` and `mail_config` are a **different, simpler shape**: a
 **singleton settings screen**, not list+CRUD. Each is just one

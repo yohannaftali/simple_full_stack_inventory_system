@@ -49,6 +49,38 @@ def apply_keyword_filter(query: Query, columns: Sequence, keyword: str) -> Query
     return query.filter(or_(*[column.like(like) for column in columns]))
 
 
+_FIELD_FILTER_OPS = {
+    ">=": lambda column, value: column >= value,
+    "<=": lambda column, value: column <= value,
+    "==": lambda column, value: column == value,
+}
+
+
+def apply_field_filters(
+    query: Query, filters: Sequence[tuple[object, str, object]]
+) -> Query:
+    """Apply a list of `(column, operator, value)` structured filters,
+    skipping any whose `value` is falsy (blank/None) — same "absent means
+    no filter" leniency as `apply_keyword_filter`, just for named,
+    independently-optional filters (`{field}-filter` query params, e.g.
+    `start_date-filter`/`end_date-filter`/`supplier_id-filter`) rather than
+    one free-text OR-LIKE search. `operator` is one of `">="`, `"<="`,
+    `"=="`. Callers parse each `{field}-filter` query param themselves
+    (blank string, or an invalid date, become `None`/falsy before reaching
+    here) since — unlike `sort-fields[N][field]`'s dynamic bracket keys —
+    these are fixed, named params a router can bind directly via
+    `Query("", alias="...")`.
+
+    Not per-endpoint bespoke: any new report screen needing this same
+    date-range / single-FK filter shape reuses this helper instead of
+    hand-rolling its own `if value: query.filter(...)` chain."""
+    for column, operator, value in filters:
+        if not value:
+            continue
+        query = query.filter(_FIELD_FILTER_OPS[operator](column, value))
+    return query
+
+
 _SORT_FIELD_PATTERN = re.compile(r"^sort-fields\[(\d+)\]\[(.+)\]$")
 
 

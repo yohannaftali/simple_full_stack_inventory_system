@@ -14,6 +14,7 @@ from routers.master_supplier import router as master_supplier_router
 from routers.module import router as module_router
 from routers.module_admin import router as module_admin_router
 from routers.module_group_admin import router as module_group_admin_router
+from routers.purchase_report import router as purchase_report_router
 from routers.stock_browse import router as stock_browse_router
 from routers.stock_in import router as stock_in_router
 from routers.stock_out import router as stock_out_router
@@ -41,6 +42,7 @@ app.include_router(stock_in_router)
 app.include_router(stock_out_router)
 app.include_router(stock_browse_router)
 app.include_router(usage_report_router)
+app.include_router(purchase_report_router)
 app.include_router(app_config_router)
 app.include_router(mail_config_router)
 app.include_router(module_router)
