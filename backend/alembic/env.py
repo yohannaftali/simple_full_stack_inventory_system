@@ -13,6 +13,7 @@ from core.config import DATABASE_URL  # noqa: E402
 from models.base import Base  # noqa: E402
 from models import (  # noqa: E402,F401
     app_config,
+    category,
     department,
     inventory_value,
     location,

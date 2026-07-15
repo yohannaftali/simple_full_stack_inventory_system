@@ -23,6 +23,9 @@ class MaterialModel(Base):
     supplier_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("suppliers.id"), nullable=True, index=True
     )
+    category_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("categories.id"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
     )

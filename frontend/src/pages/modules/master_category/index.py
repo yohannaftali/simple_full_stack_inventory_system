@@ -18,19 +18,15 @@ class ModulePage:
                 "type": "hidden", "key": True, "serialize": False
             },
             {
-                "name": "material_code", "label": "Code",
+                "name": "code", "label": "Code",
                 "type": "label"
             },
             {
-                "name": "material_name", "label": "Name",
+                "name": "name", "label": "Name",
                 "type": "label"
             },
             {
-                "name": "supplier_name", "label": "Supplier",
-                "type": "label"
-            },
-            {
-                "name": "category_name", "label": "Category",
+                "name": "description", "label": "Description",
                 "type": "label"
             }
         ]

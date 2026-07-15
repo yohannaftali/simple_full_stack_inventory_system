@@ -19,24 +19,19 @@ class ModulePage:
                 "key": True
             },
             {
-                "name": "material_code", "label": "Code", "icon": ft.Icons.QR_CODE,
+                "name": "code", "label": "Code", "icon": ft.Icons.QR_CODE,
                 "row": 1, "col": {"sm": 12, "md": 6},
                 "type": "input", "autofocus": True
             },
             {
-                "name": "material_name", "label": "Name", "icon": ft.Icons.LABEL,
+                "name": "name", "label": "Name", "icon": ft.Icons.LABEL,
                 "row": 1, "col": {"sm": 12, "md": 6},
                 "type": "input"
             },
             {
-                "name": "supplier_id", "label": "Supplier", "icon": ft.Icons.LOCAL_SHIPPING,
-                "row": 2, "col": {"sm": 12, "md": 6},
-                "type": "select"
-            },
-            {
-                "name": "category_id", "label": "Category", "icon": ft.Icons.CATEGORY,
-                "row": 2, "col": {"sm": 12, "md": 6},
-                "type": "select"
+                "name": "description", "label": "Description", "icon": ft.Icons.NOTES,
+                "row": 2,
+                "type": "input"
             }
         ]
 
@@ -49,7 +44,7 @@ class ModulePage:
         )
 
         self.view = ModuleView(page, module, screen)
-        self.view.header.set_title("New Material")
+        self.view.header.set_title("New Category")
 
         self.view.toolbar.add_submit_button(callback=self.callback_submit)
 

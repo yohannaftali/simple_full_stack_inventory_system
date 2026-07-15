@@ -14,6 +14,7 @@ from core.table_export import export_response
 from core.table_query import attach_pagination
 from models.material import MaterialModel
 from models.user import UserModel
+from repository.category_repository import CategoryRepository
 from repository.material_repository import MaterialRepository
 from repository.supplier_repository import SupplierRepository
 from services.auth_service import require_module_access
@@ -22,6 +23,7 @@ from services.bulk_service import BulkRowError, bulk_create, parse_bulk_rows
 router = APIRouter(prefix="/C_master_material", tags=["master-material"])
 _material_repository = MaterialRepository()
 _supplier_repository = SupplierRepository()
+_category_repository = CategoryRepository()
 
 _require_access = require_module_access("master_material")
 
@@ -29,6 +31,7 @@ _EXPORT_COLUMNS = [
     ("material_code", "Material Code"),
     ("material_name", "Material Name"),
     ("supplier_name", "Supplier"),
+    ("category_name", "Category"),
 ]
 
 
@@ -38,12 +41,19 @@ def _serialize(material: MaterialModel) -> dict:
         if material.supplier_id
         else None
     )
+    category = (
+        _category_repository.get_category_by_id(material.category_id)
+        if material.category_id
+        else None
+    )
     return {
         "id": material.id,
         "material_code": material.material_code,
         "material_name": material.material_name,
         "supplier_id": str(material.supplier_id) if material.supplier_id else "",
         "supplier_name": supplier.name if supplier else "",
+        "category_id": str(material.category_id) if material.category_id else "",
+        "category_name": category.name if category else "",
     }
 
 
@@ -87,9 +97,11 @@ def submit(
     material_code: str = Form(...),
     material_name: str = Form(...),
     supplier_id: str = Form(""),
+    category_id: str = Form(""),
     user: UserModel = Depends(_require_access),
 ) -> dict:
     supplier_id_value = int(supplier_id) if supplier_id else None
+    category_id_value = int(category_id) if category_id else None
 
     if id:
         updated = _material_repository.update_material(
@@ -97,6 +109,7 @@ def submit(
             material_code=material_code,
             material_name=material_name,
             supplier_id=supplier_id_value,
+            category_id=category_id_value,
         )
         if not updated:
             return {"error": "Material not found"}
@@ -106,6 +119,7 @@ def submit(
         material_code=material_code,
         material_name=material_name,
         supplier_id=supplier_id_value,
+        category_id=category_id_value,
     )
     return {"message": "Material created successfully"}
 
@@ -129,10 +143,20 @@ def call_supplier_id_select(user: UserModel = Depends(_require_access)) -> list:
     ]
 
 
+@router.get("/call_category_id_select")
+def call_category_id_select(user: UserModel = Depends(_require_access)) -> list:
+    return [
+        {"value": str(c.id), "label": f"{c.code} - {c.name}"}
+        for c in _category_repository.get_all_categories()
+    ]
+
+
 @router.post("/submit_bulk")
 async def submit_bulk(request: Request, user: UserModel = Depends(_require_access)) -> dict:
     form = await request.form()
-    rows = parse_bulk_rows(form, ["material_code", "material_name", "supplier_id"])
+    rows = parse_bulk_rows(
+        form, ["material_code", "material_name", "supplier_id", "category_id"]
+    )
 
     def build(row, session):
         material_code = str(row.get("material_code", "")).strip()
@@ -144,10 +168,16 @@ async def submit_bulk(request: Request, user: UserModel = Depends(_require_acces
             supplier_id = int(supplier_id_raw) if supplier_id_raw else None
         except ValueError:
             raise BulkRowError(row["_row"], f"Invalid Supplier: {supplier_id_raw}")
+        category_id_raw = str(row.get("category_id", "")).strip()
+        try:
+            category_id = int(category_id_raw) if category_id_raw else None
+        except ValueError:
+            raise BulkRowError(row["_row"], f"Invalid Category: {category_id_raw}")
         return MaterialModel(
             material_code=material_code,
             material_name=material_name,
             supplier_id=supplier_id,
+            category_id=category_id,
         )
 
     return bulk_create(rows, build)

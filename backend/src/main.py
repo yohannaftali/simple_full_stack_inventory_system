@@ -6,6 +6,7 @@ from routers.app_config import router as app_config_router
 from routers.home import router as home_router
 from routers.login import router as login_router
 from routers.mail_config import router as mail_config_router
+from routers.master_category import router as master_category_router
 from routers.master_department import router as master_department_router
 from routers.master_location import router as master_location_router
 from routers.master_material import router as master_material_router
@@ -35,6 +36,7 @@ app.include_router(master_location_router)
 app.include_router(master_material_router)
 app.include_router(master_supplier_router)
 app.include_router(master_department_router)
+app.include_router(master_category_router)
 app.include_router(stock_in_router)
 app.include_router(stock_out_router)
 app.include_router(stock_browse_router)

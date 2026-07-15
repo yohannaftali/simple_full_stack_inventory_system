@@ -25,6 +25,11 @@
 | #3 | feat(frontend): add multi-format export menu to shared Table toolbar | closed | 2026-07-14 |
 | #4 | feat(frontend): client-side CSV/XLSX upload into table input fields via hamburger menu | ready-for-review | 2026-07-14 |
 | #5 | feat(frontend): bulk create records from CSV/XLSX on module new screens | ready-for-review | 2026-07-14 |
+| #6 | feat(inventory): create master category table and link to materials | ready-for-review | 2026-07-15 |
+| #7 | feat(receiving): add supplier tracking to receiving headers | open | 2026-07-14 |
+| #8 | feat(reports): purchase report page — total purchase by supplier and by material, date-range + supplier/material filters | open | 2026-07-14 |
+| #9 | feat(reports): add start/end date range filter to usage_report | open | 2026-07-14 |
+| #10 | feat(table): generic per-column filtering, ported from senar's L_database (`{field}-filter` convention) | open | 2026-07-14 |
 
 ## Big Picture
 
@@ -597,7 +602,12 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
   creates the singleton `app_configs` table, seeds its one default row
   (`app_title="SFSIS"`, `footer=""` — so `home.py` behaves identically to
   the old hardcoded values out of the box) and seeds the `master_config`
-  module + `admin` grant.
+  module + `admin` grant. `0017_create_categories_table.py` creates the
+  `categories` table and adds `materials.category_id` (nullable FK, via
+  `op.batch_alter_table` — same SQLite-compatible pattern as `0007`'s
+  `suppliers`/`materials.supplier_id`). `0018_seed_master_category_module.py`
+  seeds the `master_category` module (assigned to the `Master` module group)
+  + `admin` grant, same pattern as `0008`/`0010`.
 - Because `src/` code imports as top-level packages (`from models.base import
   ...`, not `from src.models.base import ...`), `Dockerfile-backend` sets
   `ENV PYTHONPATH=/usr/src/app/src` and copies `alembic.ini` +
@@ -649,17 +659,21 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
 
 Master data: `locations` (`LocationModel`: `code`, `name`), `suppliers`
 (`SupplierModel`: `code`, `name`), `departments` (`DepartmentModel`: `code`,
-`name` — who consumes inventory, for usage reporting), and `materials`
+`name` — who consumes inventory, for usage reporting), `categories`
+(`CategoryModel`: `code`, `name`, `description` — classifies materials into
+logical groups, e.g. Raw Materials/Packaging/Tools), and `materials`
 (`MaterialModel`: `material_code`, `material_name`, `supplier_id` — nullable
 FK to `suppliers.id`, since materials created before the supplier link has
-no supplier to point to), managed via the `master_location`/
-`master_supplier`/`master_department`/`master_material` admin modules
+no supplier to point to; `category_id` — nullable FK to `categories.id`,
+same reasoning), managed via the `master_location`/`master_supplier`/
+`master_department`/`master_category`/`master_material` admin modules
 (plain CRUD, same shape as `ap_module`). `master_material`'s new/edit form
-renders `supplier_id` as a `select` field
-(`GET C_master_material/call_supplier_id_select`), and its list/get
-responses include a denormalized `supplier_name` for display — the same
-pattern as `stock_in`/`stock_out`'s `material_id`/`location_id` selects,
-just on master data instead of a transactional item. `UserModel` also has
+renders `supplier_id` and `category_id` as `select` fields
+(`GET C_master_material/call_supplier_id_select` /
+`call_category_id_select`), and its list/get responses include denormalized
+`supplier_name`/`category_name` for display — the same pattern as
+`stock_in`/`stock_out`'s `material_id`/`location_id` selects, just on master
+data instead of a transactional item. `UserModel` also has
 an optional `department_id` (see Backend Architecture above) so a user can
 represent one department's requester, separately from stock-out headers
 each declaring their own department.
@@ -774,10 +788,12 @@ Routers (all under `backend/src/routers/`, each gated by
   header form.
 
 **Frontend module structure** (`frontend/src/pages/modules/`): `master_location`,
-`master_supplier`, `master_department`, `master_material`, and
-`master_module_group` are plain `{index,new,edit}.py` CRUD, identical in
-shape to `ap_module` (`master_material`'s `new`/`edit` additionally carry a
-`supplier_id` select field, `index` a read-only `supplier_name` label).
+`master_supplier`, `master_department`, `master_category`, `master_material`,
+and `master_module_group` are plain `{index,new,edit}.py` CRUD, identical in
+shape to `ap_module` (`master_category`'s `new`/`edit` additionally carry a
+plain `description` input field; `master_material`'s `new`/`edit` carry
+`supplier_id` and `category_id` select fields, `index` read-only
+`supplier_name`/`category_name` labels).
 `ap_master_user`'s `new`/`edit` similarly carry a `department_id` select
 field (optional — blank is valid) and `index` a read-only `department_name`
 label; `stock_out`'s `new`/`edit` carry a required `department_id` select on

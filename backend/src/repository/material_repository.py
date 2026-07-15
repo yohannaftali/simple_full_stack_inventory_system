@@ -40,13 +40,18 @@ class MaterialRepository:
             return paginate(query, limit=limit, page=page, offset=offset)
 
     def create_material(
-        self, material_code: str, material_name: str, supplier_id: Optional[int] = None
+        self,
+        material_code: str,
+        material_name: str,
+        supplier_id: Optional[int] = None,
+        category_id: Optional[int] = None,
     ) -> MaterialModel:
         with SessionLocal() as session:
             material = MaterialModel(
                 material_code=material_code,
                 material_name=material_name,
                 supplier_id=supplier_id,
+                category_id=category_id,
             )
             session.add(material)
             session.commit()
@@ -59,6 +64,7 @@ class MaterialRepository:
         material_code: str,
         material_name: str,
         supplier_id: Optional[int] = None,
+        category_id: Optional[int] = None,
     ) -> bool:
         with SessionLocal() as session:
             material = (
@@ -70,6 +76,7 @@ class MaterialRepository:
             material.material_code = material_code
             material.material_name = material_name
             material.supplier_id = supplier_id
+            material.category_id = category_id
             session.commit()
             return True
 
