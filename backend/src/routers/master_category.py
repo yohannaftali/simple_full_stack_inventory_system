@@ -35,6 +35,7 @@ def _serialize(category: CategoryModel) -> dict:
 
 @router.get("/get_detail")
 def get_detail(
+    request: Request,
     keyword: str = Query("", alias="table-keyword-filter"),
     limit: int = Query(20),
     page: int = Query(1),
@@ -42,19 +43,20 @@ def get_detail(
     user: UserModel = Depends(_require_access),
 ) -> list:
     rows, pagination = _category_repository.list_categories(
-        keyword=keyword, limit=limit, page=page, offset=offset
+        keyword=keyword, query_params=request.query_params, limit=limit, page=page, offset=offset
     )
     return attach_pagination([_serialize(category) for category in rows], pagination)
 
 
 @router.get("/export_detail")
 def export_detail(
+    request: Request,
     format: str = Query(...),  # noqa: A002
     keyword: str = Query("", alias="table-keyword-filter"),
     user: UserModel = Depends(_require_access),
 ):
     rows, _pagination = _category_repository.list_categories(
-        keyword=keyword, limit=0, page=1, offset=0
+        keyword=keyword, query_params=request.query_params, limit=0, page=1, offset=0
     )
     return export_response(
         [_serialize(category) for category in rows], _EXPORT_COLUMNS, format, "master_category"

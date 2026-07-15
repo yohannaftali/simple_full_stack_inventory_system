@@ -1,11 +1,18 @@
 """Per-column `{field}-filter` filter row (issue #10), ported from senar's
 `L_database::filter()`/`y.form.js`'s `row-y-filter-{table}` — one
-`ft.TextField` per field marked `"filterable": True` in its config,
-collapsed by default and toggled via a toolbar button
-(`Table._toggle_filter_row`). A field additionally marked
-`"numeric_filter": True` gets a hint pointing at the operator-syntax
-(`>=5and<=10`) `core/table_query.py::_parse_numeric_filter` understands on
-the backend; every other filterable field is a plain LIKE substring match.
+`ft.TextField` per visible field, collapsed by default and toggled via a
+toolbar button (`Table._toggle_filter_row`). **On by default for every
+non-hidden field** (opt out per-field with `"filter": False"`) — every
+table gets this for free, matching the ported PHP where every column
+`L_database::filter()` was given got its own filter, not an opt-in per
+column. A field is treated as numeric-operator (hint pointing at the
+`>=5and<=10` syntax `core/table_query.py::_parse_numeric_filter`
+understands) when marked `"numeric_filter": True`, or automatically when
+its own display config already says so (`"format": "number"` /
+`"is_numeric": True` — the same flags `Columns._build_data_columns()`
+already reads for right-alignment) - one source of truth for "this
+column is numeric," not a second flag every numeric field must
+separately remember to set.
 
 Renders as an inline row rather than trying to align pixel-for-pixel with
 `Columns`' resize/sort-aware DataTable header cells — those two systems
@@ -23,7 +30,13 @@ class FilterRow:
         self.page = page
         self.parent = parent
         self.on_apply = on_apply
-        self.filterable_fields = [f for f in fields if f.get("filterable")]
+        self.filterable_fields = [
+            f
+            for f in fields
+            if f.get("name") is not None
+            and f.get("type", "text") != "hidden"
+            and f.get("filter", True) is not False
+        ]
         self.controls: dict[str, ft.TextField] = {}
         self.visible = False
         self.container: ft.Container | None = None
@@ -40,7 +53,11 @@ class FilterRow:
         for field in self.filterable_fields:
             name = field.get("name")
             label = field.get("label", name)
-            is_numeric = bool(field.get("numeric_filter"))
+            is_numeric = bool(
+                field.get("numeric_filter")
+                or field.get("is_numeric")
+                or field.get("format") == "number"
+            )
             hint_text = (
                 "e.g. >=5and<=10" if is_numeric else f"Filter {label}"
             )

@@ -2,9 +2,11 @@
 
 from typing import Optional
 
-from core.table_query import Pagination, apply_keyword_filter, paginate
+from core.table_query import Pagination, apply_column_filters, apply_keyword_filter, paginate
 from models.base import SessionLocal
 from models.department import DepartmentModel
+
+_FILTER_COLUMN_MAP = {"code": DepartmentModel.code, "name": DepartmentModel.name}
 
 
 class DepartmentRepository:
@@ -27,13 +29,15 @@ class DepartmentRepository:
             return session.query(DepartmentModel).order_by(DepartmentModel.code).all()
 
     def list_departments(
-        self, keyword: str = "", limit: int = 20, page: int = 1, offset: int = 0
+        self, keyword: str = "", query_params=None, limit: int = 20, page: int = 1, offset: int = 0
     ) -> tuple[list[DepartmentModel], Pagination]:
         with SessionLocal() as session:
             query = session.query(DepartmentModel)
             query = apply_keyword_filter(
                 query, [DepartmentModel.code, DepartmentModel.name], keyword
             )
+            if query_params is not None:
+                query = apply_column_filters(query, query_params, _FILTER_COLUMN_MAP)
             query = query.order_by(DepartmentModel.code)
             return paginate(query, limit=limit, page=page, offset=offset)
 

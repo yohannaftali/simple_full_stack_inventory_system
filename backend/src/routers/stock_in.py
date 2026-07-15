@@ -105,6 +105,7 @@ def _serialize_item(item) -> dict:
 
 @router.get("/get_detail")
 def get_detail(
+    request: Request,
     keyword: str = Query("", alias="table-keyword-filter"),
     limit: int = Query(20),
     page: int = Query(1),
@@ -112,18 +113,21 @@ def get_detail(
     user: UserModel = Depends(_require_access),
 ) -> list:
     rows, pagination = _receiving_repository.list_headers(
-        keyword=keyword, limit=limit, page=page, offset=offset
+        keyword=keyword, query_params=request.query_params, limit=limit, page=page, offset=offset
     )
     return attach_pagination([_serialize_header(header) for header in rows], pagination)
 
 
 @router.get("/export_detail")
 def export_detail(
+    request: Request,
     format: str = Query(...),  # noqa: A002
     keyword: str = Query("", alias="table-keyword-filter"),
     user: UserModel = Depends(_require_access),
 ):
-    rows, _pagination = _receiving_repository.list_headers(keyword=keyword, limit=0, page=1, offset=0)
+    rows, _pagination = _receiving_repository.list_headers(
+        keyword=keyword, query_params=request.query_params, limit=0, page=1, offset=0
+    )
     return export_response(
         [_serialize_header(header) for header in rows], _EXPORT_DETAIL_COLUMNS, format, "stock_in"
     )
@@ -131,13 +135,14 @@ def export_detail(
 
 @router.get("/export_items")
 def export_items(
+    request: Request,
     header_id: int,
     format: str = Query(...),  # noqa: A002
     keyword: str = Query("", alias="table-keyword-filter"),
     user: UserModel = Depends(_require_access),
 ):
     items, _pagination = _receiving_repository.list_items_by_header(
-        header_id, keyword=keyword, limit=0, page=1, offset=0
+        header_id, keyword=keyword, query_params=request.query_params, limit=0, page=1, offset=0
     )
     return export_response(
         [_serialize_item(item) for item in items],
@@ -208,6 +213,7 @@ async def submit_bulk(request: Request, user: UserModel = Depends(_require_acces
 
 @router.get("/get_items")
 def get_items(
+    request: Request,
     header_id: int,
     keyword: str = Query("", alias="table-keyword-filter"),
     limit: int = Query(20),
@@ -216,7 +222,12 @@ def get_items(
     user: UserModel = Depends(_require_access),
 ) -> list:
     items, pagination = _receiving_repository.list_items_by_header(
-        header_id, keyword=keyword, limit=limit, page=page, offset=offset
+        header_id,
+        keyword=keyword,
+        query_params=request.query_params,
+        limit=limit,
+        page=page,
+        offset=offset,
     )
     return attach_pagination([_serialize_item(item) for item in items], pagination)
 

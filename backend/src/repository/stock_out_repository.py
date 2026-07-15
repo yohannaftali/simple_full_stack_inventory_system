@@ -8,10 +8,19 @@ atomically.
 
 from typing import Optional
 
-from core.table_query import Pagination, apply_keyword_filter, paginate
+from core.table_query import Pagination, apply_column_filters, apply_keyword_filter, paginate
 from models.base import SessionLocal
 from models.stock_out_header import StockOutHeaderModel
 from models.stock_out_item import StockOutItemModel
+
+_HEADER_FILTER_COLUMN_MAP = {"description": StockOutHeaderModel.description}
+_ITEM_FILTER_COLUMN_MAP = {
+    "remarks": StockOutItemModel.remarks,
+    "qty_out": StockOutItemModel.qty_out,
+    "price": StockOutItemModel.price,
+    "total_value": StockOutItemModel.total_value,
+}
+_ITEM_FILTER_NUMERIC_FIELDS = {"qty_out", "price", "total_value"}
 
 
 class StockOutRepository:
@@ -26,11 +35,13 @@ class StockOutRepository:
             )
 
     def list_headers(
-        self, keyword: str = "", limit: int = 20, page: int = 1, offset: int = 0
+        self, keyword: str = "", query_params=None, limit: int = 20, page: int = 1, offset: int = 0
     ) -> tuple[list[StockOutHeaderModel], Pagination]:
         with SessionLocal() as session:
             query = session.query(StockOutHeaderModel)
             query = apply_keyword_filter(query, [StockOutHeaderModel.description], keyword)
+            if query_params is not None:
+                query = apply_column_filters(query, query_params, _HEADER_FILTER_COLUMN_MAP)
             query = query.order_by(
                 StockOutHeaderModel.date.desc(), StockOutHeaderModel.id.desc()
             )
@@ -70,6 +81,7 @@ class StockOutRepository:
         self,
         header_id: int,
         keyword: str = "",
+        query_params=None,
         limit: int = 20,
         page: int = 1,
         offset: int = 0,
@@ -79,5 +91,9 @@ class StockOutRepository:
                 StockOutItemModel.stock_out_header_id == header_id
             )
             query = apply_keyword_filter(query, [StockOutItemModel.remarks], keyword)
+            if query_params is not None:
+                query = apply_column_filters(
+                    query, query_params, _ITEM_FILTER_COLUMN_MAP, _ITEM_FILTER_NUMERIC_FIELDS
+                )
             query = query.order_by(StockOutItemModel.id)
             return paginate(query, limit=limit, page=page, offset=offset)

@@ -253,15 +253,36 @@ class Columns:
                 row_children.append(icon)
             if text is not None:
                 row_children.append(text)
-            if is_sortable and show_label:
-                row_children.append(self._build_sort_icon(field["name"]))
 
             if len(row_children) == 0:
-                label_content = None
+                left_content = None
             elif len(row_children) == 1:
-                label_content = row_children[0]
+                left_content = row_children[0]
             else:
-                label_content = ft.Row(row_children, spacing=4, tight=True)
+                left_content = ft.Row(row_children, spacing=4, tight=True)
+
+            # Sort icon sits at the column's far right edge (SPACE_BETWEEN
+            # against the field icon/label on the left), not glued directly
+            # onto the label text - a non-tight Row fills the fixed-width
+            # Container below it (no `alignment` set there, so the
+            # Container passes its own width down as a tight constraint -
+            # same mechanism components/form/date.py's docstring documents
+            # for why an alignment-less Container forces full-width on its
+            # child), so SPACE_BETWEEN has the whole column width to work
+            # with.
+            if is_sortable and show_label:
+                sort_icon = self._build_sort_icon(field["name"])
+                label_content = ft.Row(
+                    [left_content, sort_icon] if left_content is not None else [sort_icon],
+                    alignment=(
+                        ft.MainAxisAlignment.SPACE_BETWEEN
+                        if left_content is not None
+                        else ft.MainAxisAlignment.END
+                    ),
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                )
+            else:
+                label_content = left_content
 
             final_content = label_content
             # Apply width if available (use integer pixel values). No

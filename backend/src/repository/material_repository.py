@@ -2,9 +2,14 @@
 
 from typing import Optional
 
-from core.table_query import Pagination, apply_keyword_filter, paginate
+from core.table_query import Pagination, apply_column_filters, apply_keyword_filter, paginate
 from models.base import SessionLocal
 from models.material import MaterialModel
+
+_FILTER_COLUMN_MAP = {
+    "material_code": MaterialModel.material_code,
+    "material_name": MaterialModel.material_name,
+}
 
 
 class MaterialRepository:
@@ -29,13 +34,15 @@ class MaterialRepository:
             return session.query(MaterialModel).order_by(MaterialModel.material_code).all()
 
     def list_materials(
-        self, keyword: str = "", limit: int = 20, page: int = 1, offset: int = 0
+        self, keyword: str = "", query_params=None, limit: int = 20, page: int = 1, offset: int = 0
     ) -> tuple[list[MaterialModel], Pagination]:
         with SessionLocal() as session:
             query = session.query(MaterialModel)
             query = apply_keyword_filter(
                 query, [MaterialModel.material_code, MaterialModel.material_name], keyword
             )
+            if query_params is not None:
+                query = apply_column_filters(query, query_params, _FILTER_COLUMN_MAP)
             query = query.order_by(MaterialModel.material_code)
             return paginate(query, limit=limit, page=page, offset=offset)
 

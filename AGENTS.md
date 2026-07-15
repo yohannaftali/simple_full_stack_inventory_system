@@ -264,25 +264,64 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
     request. No `HAVING`/aggregate-column routing yet (senar's `$having`
     array) — no aggregate list screen is wired onto this helper yet, same
     documented gap as `apply_keyword_filter`'s own HAVING branch.
-    **Reference implementation** (verify the mechanism here before
-    extending it further, same rollout pattern as multi-column sort's
-    `master_location`): `module_group_repository.py::list_groups` +
-    `routers/module_group_admin.py` (`master_module_group` — `name` text/LIKE,
-    `sort` numeric/operator-syntax, exercising both code paths on one
-    simple, non-aggregate list) — `get_detail`/`export_detail` both take
-    `request: Request` and forward `request.query_params`. **Not yet rolled
-    out elsewhere**; #8/#9's hand-rolled `apply_field_filters` usage is an
-    explicitly-deferred follow-up migration, not required by this issue.
+    **On by default for every non-hidden field, every table** (rolled out
+    2026-07-15, same day as landing) — the frontend flips the polarity
+    from the original opt-in design: `FilterRow.__init__` includes any
+    field with a `name` whose `"type"` isn't `"hidden"`, unless that
+    field is explicitly marked `"filter": False`. There is no
+    `"filterable"` flag anymore (removed — every table gets this for
+    free, matching the ported PHP where `L_database::filter()` gave every
+    column passed to it its own filter, not an opt-in subset). A field's
+    numeric-operator hint (`"numeric_filter": True`) is also inferred
+    automatically from whatever the field already uses for
+    right-alignment/number formatting (`"format": "number"` or
+    `"is_numeric": True` — the same flags `Columns._build_data_columns()`
+    reads) — one source of truth for "this column is numeric," not a
+    second flag every numeric field must separately remember to set.
+    Wired on every non-aggregate `list_*` repository/router pair in the
+    app: `location_repository.py` (reuses its existing `_SORT_COLUMNS` map
+    as the filter `column_map` too — same field names, same columns),
+    `supplier_repository.py`, `department_repository.py`,
+    `category_repository.py`, `material_repository.py`,
+    `module_repository.py` (`sort` numeric), `user_repository.py`,
+    `module_group_repository.py` (the original #10 reference),
+    `receiving_repository.py` (`list_headers`'s `supplier_name` filters
+    against the header's existing supplier outer-join;
+    `list_items_by_header`'s `qty_received`/`price_buy` numeric),
+    `stock_out_repository.py` (`list_items_by_header`'s
+    `qty_out`/`price`/`total_value` numeric) — each router gained a
+    `request: Request` param (or reused an existing one) forwarding
+    `request.query_params` straight through, same as `master_location`'s
+    existing sort wiring. **Deliberately NOT wired**: the three aggregate
+    repositories (`stock_repository.py`/`usage_report_repository.py`/
+    `purchase_report_repository.py`) — `apply_column_filters` has no
+    `HAVING`/aggregate-column routing yet (see above), so a grouped
+    query's own `column_map` entries would need to route through
+    `.having()` instead of `.filter()`, which this helper doesn't support;
+    #8/#9's own hand-rolled `apply_field_filters` usage on those aggregate
+    reports is unaffected, still using its own narrower, named-filter
+    mechanism. **Known gap**: a few fields are join-derived/denormalized
+    display values with no real column in their own repository's query
+    (e.g. `stock_out`'s header `department_name`, item tables'
+    `material_code`/`location_code`, `master_material`'s
+    `supplier_name`/`category_name`) — the frontend still shows a filter
+    box for these by default (no way to know from the frontend field
+    config alone that a name has no backend mapping), but since that
+    field name isn't in the repository's `column_map`, `apply_column_filters`
+    silently skips it — the box renders but is currently inert, same
+    "unmapped field silently skipped" leniency the mechanism already has
+    elsewhere. Wiring these would mean adding the same
+    `receiving_repository.py::list_headers`-style outer-join to each
+    affected repository; not done yet.
     Frontend half: `components/table/filter_row.py::FilterRow` — a
-    collapsible row of `ft.TextField`s, one per field marked
-    `"filterable": True` (`"numeric_filter": True` additionally swaps in an
-    operator-syntax hint), toggled via a toolbar button
+    collapsible row of `ft.TextField`s, toggled via a toolbar button
     (`Table._toggle_filter_row`) only added when at least one field opts
-    in. Renders as a free-standing row above the header rather than trying
-    to align pixel-for-pixel with `Columns`' resize/sort-aware DataTable
-    header cells — those solve a different problem (fixed per-column pixel
-    widths), and reusing that machinery here would mean touching every
-    hardcoded `Table`/`Columns` index assumption for no real UX gain.
+    in (in practice, almost always). Renders as a free-standing row above
+    the header rather than trying to align pixel-for-pixel with
+    `Columns`' resize/sort-aware DataTable header cells — those solve a
+    different problem (fixed per-column pixel widths), and reusing that
+    machinery here would mean touching every hardcoded `Table`/`Columns`
+    index assumption for no real UX gain.
     `Table._build_toolbar_with_filter_row()` folds the filter row into the
     *same* top-level `controls` slot the toolbar alone used to occupy
     (`ft.Column([toolbar, filter_row])` as one element) rather than adding
@@ -345,7 +384,17 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
       state (reverted - see the git history around 2026-07-13), this one
       is real and always visible for a sortable column, so
       `_SORT_ICON_WIDTH` is a correct, exact reservation, not an
-      approximation. `Columns.serialize_sort()` builds the
+      approximation. The icon sits at the column's far-right edge (not
+      glued directly onto the label text): `_build_data_columns()` builds
+      the field icon + label as one `left_content` group, then — only for
+      a sortable column — wraps `[left_content, sort_icon]` in a second
+      `ft.Row(alignment=SPACE_BETWEEN)`, which fills the fixed-width
+      header `Container` below it (no `alignment` set there, so the
+      Container passes its own width down as a tight constraint — same
+      mechanism `components/form/date.py`'s docstring documents for why an
+      alignment-less Container forces full width onto its child) and
+      pushes the icon to that width's far edge. `Columns.serialize_sort()`
+      builds the
       `&sort-fields[N][field]=...` query string
       `components/table/table.py::get_data()` appends on every request.
       `Columns.on_sort_change` (wired to `Table._handle_sort_change`)

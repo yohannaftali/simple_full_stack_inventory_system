@@ -38,7 +38,12 @@ def get_detail(
 ) -> list:
     sort_fields = parse_sort_fields(request.query_params)
     rows, pagination = _location_repository.list_locations(
-        keyword=keyword, limit=limit, page=page, offset=offset, sort_fields=sort_fields
+        keyword=keyword,
+        query_params=request.query_params,
+        limit=limit,
+        page=page,
+        offset=offset,
+        sort_fields=sort_fields,
     )
     return attach_pagination([_serialize(location) for location in rows], pagination)
 
@@ -52,7 +57,12 @@ def export_detail(
 ):
     sort_fields = parse_sort_fields(request.query_params)
     rows, _pagination = _location_repository.list_locations(
-        keyword=keyword, limit=0, page=1, offset=0, sort_fields=sort_fields
+        keyword=keyword,
+        query_params=request.query_params,
+        limit=0,
+        page=1,
+        offset=0,
+        sort_fields=sort_fields,
     )
     return export_response(
         [_serialize(location) for location in rows], _EXPORT_COLUMNS, format, "master_location"

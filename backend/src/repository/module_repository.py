@@ -2,9 +2,17 @@
 
 from typing import Optional
 
-from core.table_query import Pagination, apply_keyword_filter, paginate
+from core.table_query import Pagination, apply_column_filters, apply_keyword_filter, paginate
 from models.base import SessionLocal
 from models.module import ModuleModel
+
+_FILTER_COLUMN_MAP = {
+    "name": ModuleModel.name,
+    "label": ModuleModel.label,
+    "sort": ModuleModel.sort,
+    "description": ModuleModel.description,
+}
+_FILTER_NUMERIC_FIELDS = {"sort"}
 
 
 class ModuleRepository:
@@ -28,7 +36,7 @@ class ModuleRepository:
             )
 
     def list_modules(
-        self, keyword: str = "", limit: int = 20, page: int = 1, offset: int = 0
+        self, keyword: str = "", query_params=None, limit: int = 20, page: int = 1, offset: int = 0
     ) -> tuple[list[ModuleModel], Pagination]:
         """List modules matching an optional keyword, paginated."""
         with SessionLocal() as session:
@@ -36,6 +44,10 @@ class ModuleRepository:
             query = apply_keyword_filter(
                 query, [ModuleModel.name, ModuleModel.label], keyword
             )
+            if query_params is not None:
+                query = apply_column_filters(
+                    query, query_params, _FILTER_COLUMN_MAP, _FILTER_NUMERIC_FIELDS
+                )
             query = query.order_by(ModuleModel.sort)
             return paginate(query, limit=limit, page=page, offset=offset)
 

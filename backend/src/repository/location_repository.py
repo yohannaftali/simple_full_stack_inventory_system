@@ -2,12 +2,20 @@
 
 from typing import Optional
 
-from core.table_query import Pagination, apply_keyword_filter, apply_sort, paginate
+from core.table_query import (
+    Pagination,
+    apply_column_filters,
+    apply_keyword_filter,
+    apply_sort,
+    paginate,
+)
 from models.base import SessionLocal
 from models.location import LocationModel
 
 # Maps a frontend field name (Table field dict "name") to the real column it
-# sorts by - see core/table_query.py::apply_sort().
+# sorts by - see core/table_query.py::apply_sort(). Reused as-is for
+# apply_column_filters()'s column_map (issue #10 rollout) - same field
+# names, same columns.
 _SORT_COLUMNS = {"code": LocationModel.code, "name": LocationModel.name}
 
 
@@ -29,6 +37,7 @@ class LocationRepository:
     def list_locations(
         self,
         keyword: str = "",
+        query_params=None,
         limit: int = 20,
         page: int = 1,
         offset: int = 0,
@@ -39,6 +48,8 @@ class LocationRepository:
             query = apply_keyword_filter(
                 query, [LocationModel.code, LocationModel.name], keyword
             )
+            if query_params is not None:
+                query = apply_column_filters(query, query_params, _SORT_COLUMNS)
             if sort_fields:
                 query = apply_sort(query, sort_fields, _SORT_COLUMNS)
             else:

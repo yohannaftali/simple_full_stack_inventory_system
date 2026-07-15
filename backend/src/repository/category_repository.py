@@ -2,9 +2,15 @@
 
 from typing import Optional
 
-from core.table_query import Pagination, apply_keyword_filter, paginate
+from core.table_query import Pagination, apply_column_filters, apply_keyword_filter, paginate
 from models.base import SessionLocal
 from models.category import CategoryModel
+
+_FILTER_COLUMN_MAP = {
+    "code": CategoryModel.code,
+    "name": CategoryModel.name,
+    "description": CategoryModel.description,
+}
 
 
 class CategoryRepository:
@@ -23,13 +29,15 @@ class CategoryRepository:
             return session.query(CategoryModel).order_by(CategoryModel.code).all()
 
     def list_categories(
-        self, keyword: str = "", limit: int = 20, page: int = 1, offset: int = 0
+        self, keyword: str = "", query_params=None, limit: int = 20, page: int = 1, offset: int = 0
     ) -> tuple[list[CategoryModel], Pagination]:
         with SessionLocal() as session:
             query = session.query(CategoryModel)
             query = apply_keyword_filter(
                 query, [CategoryModel.code, CategoryModel.name], keyword
             )
+            if query_params is not None:
+                query = apply_column_filters(query, query_params, _FILTER_COLUMN_MAP)
             query = query.order_by(CategoryModel.code)
             return paginate(query, limit=limit, page=page, offset=offset)
 

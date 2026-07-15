@@ -84,6 +84,7 @@ def _parse_bool(value: str) -> bool:
 
 @router.get("/get_detail")
 def get_detail(
+    request: Request,
     keyword: str = Query("", alias="table-keyword-filter"),
     limit: int = Query(20),
     page: int = Query(1),
@@ -92,18 +93,21 @@ def get_detail(
 ) -> list:
     """Paginated user list for the admin list screen."""
     rows, pagination = _user_repository.list_users(
-        keyword=keyword, limit=limit, page=page, offset=offset
+        keyword=keyword, query_params=request.query_params, limit=limit, page=page, offset=offset
     )
     return attach_pagination([_serialize_user(row_user) for row_user in rows], pagination)
 
 
 @router.get("/export_detail")
 def export_detail(
+    request: Request,
     format: str = Query(...),  # noqa: A002
     keyword: str = Query("", alias="table-keyword-filter"),
     user: UserModel = Depends(_require_access),
 ):
-    rows, _pagination = _user_repository.list_users(keyword=keyword, limit=0, page=1, offset=0)
+    rows, _pagination = _user_repository.list_users(
+        keyword=keyword, query_params=request.query_params, limit=0, page=1, offset=0
+    )
     return export_response(
         [_serialize_user(row_user) for row_user in rows], _EXPORT_COLUMNS, format, "ap_master_user"
     )
