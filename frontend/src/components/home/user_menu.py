@@ -3,26 +3,23 @@ User Menu component for displaying user configuration
 """
 
 import flet as ft
+
 from repository.storage import Storage
 
 
 class UserMenu:
     """User Menu component"""
 
-    def __init__(self, page: ft.Page, icon_color: str = ft.Colors.ON_PRIMARY):
+    def __init__(self, page: ft.Page):
         """
         Initialize user menu
 
         Args:
             page: The Flet page
-            icon_color: color of the settings icon - callers pass the color
-                that contrasts with whatever bar this menu is placed on
-                (e.g. `ON_SURFACE` for the neutral module AppBar, vs. the
-                default `ON_PRIMARY` for the home page's primary-colored one)
         """
         self.page = page
         self.storage: Storage = page.data["storage"]
-        self.icon_color = icon_color
+        self.icon_color = ft.Colors.ON_SURFACE
 
         if self.storage.client_data:
             self.username = self.storage.client_data.get_username()
@@ -34,7 +31,9 @@ class UserMenu:
         """Create the menu button"""
         # Get current theme mode for icon display
         current_theme = self.storage.theme_mode.get() if self.storage else "light"
-        theme_icon = ft.Icons.DARK_MODE if current_theme == "light" else ft.Icons.LIGHT_MODE
+        theme_icon = (
+            ft.Icons.DARK_MODE if current_theme == "light" else ft.Icons.LIGHT_MODE
+        )
         theme_text = "Dark Mode" if current_theme == "light" else "Light Mode"
 
         self.menu_button = ft.PopupMenuButton(
@@ -48,10 +47,7 @@ class UserMenu:
             tooltip="Menu",
             menu_position=ft.PopupMenuPosition.UNDER,
             items=[
-                ft.PopupMenuItem(
-                    icon=ft.Icons.PERSON,
-                    content=self.username
-                ),
+                ft.PopupMenuItem(icon=ft.Icons.PERSON, content=self.username),
                 ft.PopupMenuItem(),  # Divider
                 ft.PopupMenuItem(
                     icon=theme_icon,
@@ -116,7 +112,9 @@ class UserMenu:
         if self.storage:
             new_theme = self.storage.theme_mode.toggle()
             if self.menu_button:
-                theme_icon = ft.Icons.DARK_MODE if new_theme == "light" else ft.Icons.LIGHT_MODE
+                theme_icon = (
+                    ft.Icons.DARK_MODE if new_theme == "light" else ft.Icons.LIGHT_MODE
+                )
                 theme_text = "Dark Mode" if new_theme == "light" else "Light Mode"
                 self.menu_button.items[2] = ft.PopupMenuItem(
                     icon=theme_icon,

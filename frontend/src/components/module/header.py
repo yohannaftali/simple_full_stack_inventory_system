@@ -23,7 +23,7 @@ class ModuleHeader:
         # Material 3 top app bars use a neutral surface color, not primary -
         # unlike the home page's own AppBar (components/home/header.py),
         # which still uses primary.
-        self.user_menu = UserMenu(page, icon_color=ft.Colors.ON_SURFACE)
+        self.user_menu = UserMenu(page)
         self.title = screen_label
 
     def build(self):
