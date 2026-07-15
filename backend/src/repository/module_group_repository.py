@@ -2,9 +2,17 @@
 
 from typing import Optional
 
-from core.table_query import Pagination, apply_keyword_filter, paginate
+from core.table_query import Pagination, apply_column_filters, apply_keyword_filter, paginate
 from models.base import SessionLocal
 from models.module_group import ModuleGroupModel
+
+# Reference implementation for issue #10's generic per-column filter
+# mechanism — `name` (text, LIKE) and `sort` (numeric, operator-syntax:
+# `>=5and<=10` etc.) exercise both `apply_column_filters` code paths on one
+# simple, non-aggregate list. See AGENTS.md's "Per-column field filters"
+# section before extending this to another screen.
+_FILTER_COLUMN_MAP = {"name": ModuleGroupModel.name, "sort": ModuleGroupModel.sort}
+_FILTER_NUMERIC_FIELDS = {"sort"}
 
 
 class ModuleGroupRepository:
@@ -28,12 +36,22 @@ class ModuleGroupRepository:
             return session.query(ModuleGroupModel).order_by(ModuleGroupModel.sort).all()
 
     def list_groups(
-        self, keyword: str = "", limit: int = 20, page: int = 1, offset: int = 0
+        self, keyword: str = "", query_params=None, limit: int = 20, page: int = 1, offset: int = 0
     ) -> tuple[list[ModuleGroupModel], Pagination]:
-        """List module groups matching an optional keyword, paginated."""
+        """List module groups matching an optional keyword, paginated.
+
+        `query_params` (raw `Request.query_params`, optional) additionally
+        applies any `{field}-filter` present for `name`/`sort` via
+        `apply_column_filters` — skipped entirely if `keyword` is set,
+        matching that helper's own keyword-vs-per-column precedence.
+        """
         with SessionLocal() as session:
             query = session.query(ModuleGroupModel)
             query = apply_keyword_filter(query, [ModuleGroupModel.name], keyword)
+            if query_params is not None:
+                query = apply_column_filters(
+                    query, query_params, _FILTER_COLUMN_MAP, _FILTER_NUMERIC_FIELDS
+                )
             query = query.order_by(ModuleGroupModel.sort)
             return paginate(query, limit=limit, page=page, offset=offset)
 

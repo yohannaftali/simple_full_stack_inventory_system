@@ -2,6 +2,7 @@ import flet as ft
 
 from components.table.body import Body
 from components.table.columns import Columns
+from components.table.filter_row import FilterRow
 from components.table.header import Header
 from components.table.menu import Menu
 from components.table.rows import Rows
@@ -90,10 +91,24 @@ class Table:
         # per-location qty-entry table) are an entry widget, not a dataset -
         # no menu, and no C_{module}/export_{name} endpoint exists for them.
         self.export_menu = Menu(page=page, parent=self)
+        # Per-column `{field}-filter` row (issue #10) - config-driven, one
+        # ft.TextField per field marked "filterable": True; collapsed by
+        # default, toggled via a toolbar button only shown when at least
+        # one field opts in. See components/table/filter_row.py.
+        self.filter_row = FilterRow(
+            page=page, parent=self, fields=fields, on_apply=self._handle_filter_apply
+        )
         toolbar_controls = [self.table_search_bar.build()]
         self.toolbar: TableToolbar | None = TableToolbar(
             page=page, parent=self, controls=toolbar_controls
         )
+        if self.filter_row.has_filters():
+            self.toolbar.add_button(
+                position="left",
+                callback=self._toggle_filter_row,
+                icon=ft.Icons.FILTER_LIST,
+                tooltip="Toggle Filters",
+            )
         self.header: Header | None = None
         self.body: Body | None = None
         self.is_loading_more = False
@@ -122,10 +137,9 @@ class Table:
 
         # Build controls list, filtering out None values
         controls = []
-        if self.toolbar:
-            toolbar_control = self.toolbar.build()
-            if toolbar_control:
-                controls.append(toolbar_control)
+        toolbar_control = self._build_toolbar_with_filter_row()
+        if toolbar_control:
+            controls.append(toolbar_control)
 
         if self.header:
             header_control = self._build_header_with_resize_overlay()
@@ -172,6 +186,29 @@ class Table:
 
         return self.table_container
 
+    def _build_toolbar_with_filter_row(self):
+        """The toolbar, plus the collapsible filter row stacked directly
+        beneath it when at least one field is filterable - folded into the
+        SAME `controls` list slot the toolbar alone used to occupy (index
+        0), not a new slot of its own. `Table.load()`/`_handle_resize_commit()`/
+        `_handle_sort_change()` all hardcode `col.controls[1]`/`[2]` as
+        header/body; inserting a fourth top-level control here would shift
+        those indices and silently corrupt every one of those call sites."""
+        toolbar_control = self.toolbar.build() if self.toolbar else None
+        if not self.filter_row.has_filters():
+            return toolbar_control
+        filter_control = self.filter_row.build()
+        if toolbar_control is None:
+            return filter_control
+        return ft.Column(controls=[toolbar_control, filter_control], spacing=0)
+
+    def _toggle_filter_row(self, e):
+        self.filter_row.toggle()
+
+    def _handle_filter_apply(self):
+        self.page_number = 1
+        self.get_data()
+
     def _build_header_with_resize_overlay(self):
         """Header.build()'s DataTable, wrapped in a Stack with the
         resize-handle overlay (Columns.get_resize_overlay()) on top.
@@ -211,6 +248,7 @@ class Table:
         for key, value in self.custom_param.items():
             param = param + f"&{key}={value}"
         param = param + self.columns.serialize_sort()
+        param = param + self.filter_row.serialize()
         response = client.get(f"{self.endpoint}?{param}" if param else self.endpoint)
         if isinstance(response, dict) and "error" in response:
             print(f"Error fetching data: {response.get('error')}")

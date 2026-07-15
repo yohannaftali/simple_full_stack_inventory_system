@@ -29,7 +29,7 @@
 | #7 | feat(receiving): add supplier tracking to receiving headers | closed | 2026-07-15 |
 | #8 | feat(reports): purchase report page — total purchase by supplier and by material, date-range + supplier/material filters | closed | 2026-07-15 |
 | #9 | feat(reports): add start/end date range filter to usage_report | closed | 2026-07-15 |
-| #10 | feat(table): generic per-column filtering, ported from senar's L_database (`{field}-filter` convention) | open | 2026-07-14 |
+| #10 | feat(table): generic per-column filtering, ported from senar's L_database (`{field}-filter` convention) | ready-for-review | 2026-07-15 |
 
 ## Big Picture
 
@@ -233,6 +233,69 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
     report) on `usage_report_repository.py::list_usage_by_department` +
     `routers/usage_report.py` (issue #9) — the second consumer, confirming
     the helper generalizes rather than being purchase-report-specific.
+  - **Generic per-column filters** (`{field}-filter` per every column, ported
+    from senar's `L_database::filter()`/`filter_numeric()` — a real
+    cross-language port from PHP7/CodeIgniter3 + jQuery, not a copy; issue
+    #10). Distinct from the two conventions above: `apply_field_filters`
+    (#8) is a *named*, hand-picked set of structured filters a router binds
+    individually; `apply_column_filters(query, query_params, column_map,
+    numeric_fields=())` is *generic* — every column in `column_map` gets
+    its own independently-optional `{field}-filter` for free, LIKE-by-default
+    or operator-syntax for any column named in `numeric_fields`
+    (`_parse_numeric_filter`: a bare number means exact match, otherwise one
+    or more `and`-joined `{operator}{number}` segments — `>=`, `<=`, `>`,
+    `<`, `=`, `!=`/`<>`, e.g. `>=5and<=10` for a range — a *literal*
+    substring split on `"and"`, matching PHP's `explode("and", $param)`
+    rather than a regex word boundary). Like `sort-fields[N][field]`,
+    `{field}-filter` names aren't individually enumerable ahead of time (one
+    per filterable column, config-driven on the frontend) — a router needs
+    a `request: Request` param and passes `request.query_params` straight
+    through to the repository method, which passes it straight into
+    `apply_column_filters` (no per-router parsing, unlike `apply_field_filters`'
+    named params). **Precedence matches the ported PHP exactly**:
+    `apply_column_filters` returns the query untouched if
+    `table-keyword-filter` is also present — the free-text search and the
+    per-column filter row are mutually exclusive on the senar side, not
+    combined, so call `apply_keyword_filter` first and let this helper's own
+    keyword check short-circuit rather than branching in the repository.
+    Multi-column sort is unaffected either way — a disjoint query-param
+    namespace (`sort-fields[N][field]` vs `{field}-filter`), verified to
+    coexist with both keyword search and per-column filters on the same
+    request. No `HAVING`/aggregate-column routing yet (senar's `$having`
+    array) — no aggregate list screen is wired onto this helper yet, same
+    documented gap as `apply_keyword_filter`'s own HAVING branch.
+    **Reference implementation** (verify the mechanism here before
+    extending it further, same rollout pattern as multi-column sort's
+    `master_location`): `module_group_repository.py::list_groups` +
+    `routers/module_group_admin.py` (`master_module_group` — `name` text/LIKE,
+    `sort` numeric/operator-syntax, exercising both code paths on one
+    simple, non-aggregate list) — `get_detail`/`export_detail` both take
+    `request: Request` and forward `request.query_params`. **Not yet rolled
+    out elsewhere**; #8/#9's hand-rolled `apply_field_filters` usage is an
+    explicitly-deferred follow-up migration, not required by this issue.
+    Frontend half: `components/table/filter_row.py::FilterRow` — a
+    collapsible row of `ft.TextField`s, one per field marked
+    `"filterable": True` (`"numeric_filter": True` additionally swaps in an
+    operator-syntax hint), toggled via a toolbar button
+    (`Table._toggle_filter_row`) only added when at least one field opts
+    in. Renders as a free-standing row above the header rather than trying
+    to align pixel-for-pixel with `Columns`' resize/sort-aware DataTable
+    header cells — those solve a different problem (fixed per-column pixel
+    widths), and reusing that machinery here would mean touching every
+    hardcoded `Table`/`Columns` index assumption for no real UX gain.
+    `Table._build_toolbar_with_filter_row()` folds the filter row into the
+    *same* top-level `controls` slot the toolbar alone used to occupy
+    (`ft.Column([toolbar, filter_row])` as one element) rather than adding
+    a new slot — `Table.load()`/`_handle_resize_commit()`/
+    `_handle_sort_change()` all hardcode `col.controls[1]`/`[2]` as
+    header/body, so inserting a genuinely new top-level control would have
+    shifted those indices and silently broken every one of those call
+    sites. `Table.get_data()` appends `FilterRow.serialize()`
+    (`&{field}-filter=value` for every non-blank field) alongside the
+    existing `table-keyword-filter`/`custom_param`/`sort-fields[...]`
+    params — same wire-format convention, no special-casing needed on the
+    frontend for the keyword-vs-column-filter mutual exclusivity (the
+    backend enforces that; sending both is harmless).
   - **Multi-column sort** (ported from the same original app's
     `y.form.js`/`y.panel.js` sortable-header UI, ADR discussion 2026-07-13):
     `table_query.py::parse_sort_fields(request.query_params)` parses

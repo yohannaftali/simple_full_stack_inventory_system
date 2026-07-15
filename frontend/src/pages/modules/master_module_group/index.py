@@ -19,11 +19,11 @@ class ModulePage:
             },
             {
                 "name": "name", "label": "Name",
-                "type": "label"
+                "type": "label", "filterable": True
             },
             {
                 "name": "sort", "label": "Sort",
-                "type": "label"
+                "type": "label", "filterable": True, "numeric_filter": True
             }
         ]
 

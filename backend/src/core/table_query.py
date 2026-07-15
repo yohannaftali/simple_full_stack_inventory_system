@@ -53,6 +53,9 @@ _FIELD_FILTER_OPS = {
     ">=": lambda column, value: column >= value,
     "<=": lambda column, value: column <= value,
     "==": lambda column, value: column == value,
+    ">": lambda column, value: column > value,
+    "<": lambda column, value: column < value,
+    "!=": lambda column, value: column != value,
 }
 
 
@@ -78,6 +81,101 @@ def apply_field_filters(
         if not value:
             continue
         query = query.filter(_FIELD_FILTER_OPS[operator](column, value))
+    return query
+
+
+_NUMERIC_FILTER_TOKEN = re.compile(r"^(>=|<=|!=|<>|>|<|=)(-?\d+(?:\.\d+)?)$")
+_PLAIN_NUMBER = re.compile(r"^-?\d+(?:\.\d+)?$")
+
+
+def _parse_numeric_filter(param: str) -> list[tuple[str, float]]:
+    """Port of senar's `L_database::filter_numeric()`: a bare number means
+    an exact match (`==`); otherwise one or more `and`-joined
+    `{operator}{number}` segments (e.g. `>=5and<=10` for a range) — a
+    *literal substring* split on `"and"`, matching PHP's `explode("and",
+    $param)` (not a regex word-boundary split). `operator` is one of `>=`,
+    `<=`, `>`, `<`, `=`, `!=`/`<>` (normalized to `==`/`!=` to match
+    `_FIELD_FILTER_OPS`'s keys). A segment that doesn't parse as
+    `{operator}{number}` is silently skipped, matching the PHP's leniency
+    (`count($split_array) == 2` check) rather than raising."""
+    param = re.sub(r"\s+", "", param)
+    if not param:
+        return []
+    if _PLAIN_NUMBER.match(param):
+        return [("==", float(param))]
+
+    conditions: list[tuple[str, float]] = []
+    for segment in param.split("and"):
+        match = _NUMERIC_FILTER_TOKEN.match(segment)
+        if not match:
+            continue
+        operator, value = match.group(1), float(match.group(2))
+        if operator == "<>":
+            operator = "!="
+        elif operator == "=":
+            operator = "=="
+        conditions.append((operator, value))
+    return conditions
+
+
+def apply_column_filters(
+    query: Query,
+    query_params,
+    column_map: Mapping[str, object],
+    numeric_fields: Sequence[str] = (),
+) -> Query:
+    """Per-column `{field}-filter` mechanism ported from senar's
+    `L_database::filter()` — every column in `column_map` gets its own
+    independently-optional filter: `LIKE '%value%'` by default, or
+    operator-syntax (`_parse_numeric_filter`) for any column named in
+    `numeric_fields`. Mirrors `filter()`'s own precedence: skipped entirely
+    if `table-keyword-filter` is also present (the free-text search and
+    the per-column filter row are mutually exclusive on the PHP side, not
+    combined) — call `apply_keyword_filter` first and only reach this
+    helper when `keyword` was blank, same ordering `apply_sort` already
+    expects relative to `apply_keyword_filter`.
+
+    `query_params` needs `.multi_items()` (FastAPI/Starlette
+    `Request.query_params`) or a plain iterable of `(key, value)` pairs —
+    like `parse_sort_fields()`, a `{field}-filter` name isn't a single,
+    individually-declared `Query(...)` param (there's one per filterable
+    column, config-driven on the frontend, not enumerable ahead of time on
+    the backend), so this reads the raw params directly rather than
+    binding each one as its own typed FastAPI parameter.
+
+    No `HAVING`/aggregate-column routing yet (senar's `$having` array) —
+    this codebase has no aggregate list screen wired onto this helper yet;
+    add that branch here if/when one needs it, same gap already noted on
+    `apply_keyword_filter`."""
+    items = (
+        query_params.multi_items()
+        if hasattr(query_params, "multi_items")
+        else list(query_params)
+    )
+
+    keyword = next((value for key, value in items if key == "table-keyword-filter"), "")
+    if keyword:
+        return query
+
+    values: dict[str, str] = {}
+    for key, value in items:
+        if not key.endswith("-filter") or key == "table-keyword-filter":
+            continue
+        field = key[: -len("-filter")]
+        if field in column_map:
+            values[field] = value
+
+    numeric_set = set(numeric_fields)
+    for field, param in values.items():
+        param = (param or "").strip()
+        if not param:
+            continue
+        column = column_map[field]
+        if field in numeric_set:
+            for operator, value in _parse_numeric_filter(param):
+                query = query.filter(_FIELD_FILTER_OPS[operator](column, value))
+        else:
+            query = query.filter(column.like(f"%{param}%"))
     return query
 
 
