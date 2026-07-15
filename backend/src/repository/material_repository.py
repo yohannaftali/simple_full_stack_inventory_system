@@ -50,14 +50,12 @@ class MaterialRepository:
         self,
         material_code: str,
         material_name: str,
-        supplier_id: Optional[int] = None,
         category_id: Optional[int] = None,
     ) -> MaterialModel:
         with SessionLocal() as session:
             material = MaterialModel(
                 material_code=material_code,
                 material_name=material_name,
-                supplier_id=supplier_id,
                 category_id=category_id,
             )
             session.add(material)
@@ -70,7 +68,6 @@ class MaterialRepository:
         material_id: int,
         material_code: str,
         material_name: str,
-        supplier_id: Optional[int] = None,
         category_id: Optional[int] = None,
     ) -> bool:
         with SessionLocal() as session:
@@ -82,7 +79,6 @@ class MaterialRepository:
 
             material.material_code = material_code
             material.material_name = material_name
-            material.supplier_id = supplier_id
             material.category_id = category_id
             session.commit()
             return True

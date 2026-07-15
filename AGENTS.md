@@ -30,7 +30,7 @@
 | #8 | feat(reports): purchase report page — total purchase by supplier and by material, date-range + supplier/material filters | closed | 2026-07-15 |
 | #9 | feat(reports): add start/end date range filter to usage_report | closed | 2026-07-15 |
 | #10 | feat(table): generic per-column filtering, ported from senar's L_database (`{field}-filter` convention) | closed | 2026-07-15 |
-| #11 | refactor(inventory): remove supplier_id from materials table | open | 2026-07-15 |
+| #11 | refactor(inventory): remove supplier_id from materials table | ready-for-review | 2026-07-15 |
 
 ## Big Picture
 
@@ -752,6 +752,13 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
   new one. `0020_seed_purchase_report_module.py` seeds the `purchase_report`
   module (assigned to the `Inventory` module group, sort 24 — right after
   `usage_report`'s 23) + `admin` grant, same pattern as `0008`/`0010`/`0018`.
+  `0021_remove_supplier_id_from_materials.py` drops `materials.supplier_id`
+  (FK + index + column, `op.batch_alter_table`) — the exact reverse of
+  `0007`'s original addition; issue #11 removed it once
+  `receiving_headers.supplier_id` (`0019`) made per-material supplier
+  tracking redundant (a material can be sourced from many suppliers over
+  time, so the FK belongs on the receiving header, not the material).
+  `downgrade()` re-adds it as nullable, same as it was originally.
 - Because `src/` code imports as top-level packages (`from models.base import
   ...`, not `from src.models.base import ...`), `Dockerfile-backend` sets
   `ENV PYTHONPATH=/usr/src/app/src` and copies `alembic.ini` +
@@ -819,18 +826,22 @@ Master data: `locations` (`LocationModel`: `code`, `name`), `suppliers`
 `name` — who consumes inventory, for usage reporting), `categories`
 (`CategoryModel`: `code`, `name`, `description` — classifies materials into
 logical groups, e.g. Raw Materials/Packaging/Tools), and `materials`
-(`MaterialModel`: `material_code`, `material_name`, `supplier_id` — nullable
-FK to `suppliers.id`, since materials created before the supplier link has
-no supplier to point to; `category_id` — nullable FK to `categories.id`,
-same reasoning), managed via the `master_location`/`master_supplier`/
+(`MaterialModel`: `material_code`, `material_name`, `category_id` — nullable
+FK to `categories.id`, since materials created before the category link has
+no category to point to), managed via the `master_location`/`master_supplier`/
 `master_department`/`master_category`/`master_material` admin modules
 (plain CRUD, same shape as `ap_module`). `master_material`'s new/edit form
-renders `supplier_id` and `category_id` as `select` fields
-(`GET C_master_material/call_supplier_id_select` /
-`call_category_id_select`), and its list/get responses include denormalized
-`supplier_name`/`category_name` for display — the same pattern as
-`stock_in`/`stock_out`'s `material_id`/`location_id` selects, just on master
-data instead of a transactional item. `UserModel` also has
+renders `category_id` as a `select` field
+(`GET C_master_material/call_category_id_select`), and its list/get
+responses include a denormalized `category_name` for display — the same
+pattern as `stock_in`/`stock_out`'s `material_id`/`location_id` selects,
+just on master data instead of a transactional item. **`materials` does
+not carry its own `supplier_id`** — a material may be sourced from many
+different suppliers over time, so supplier tracking instead lives at the
+receiving-header level (`receiving_headers.supplier_id` below); an earlier
+`materials.supplier_id` FK (added alongside `category_id`) was removed in
+issue #11 once `receiving_headers.supplier_id` (#7) made it redundant —
+see migration `0021_remove_supplier_id_from_materials.py`. `UserModel` also has
 an optional `department_id` (see Backend Architecture above) so a user can
 represent one department's requester, separately from stock-out headers
 each declaring their own department.
@@ -989,9 +1000,8 @@ Routers (all under `backend/src/routers/`, each gated by
 `master_supplier`, `master_department`, `master_category`, `master_material`,
 and `master_module_group` are plain `{index,new,edit}.py` CRUD, identical in
 shape to `ap_module` (`master_category`'s `new`/`edit` additionally carry a
-plain `description` input field; `master_material`'s `new`/`edit` carry
-`supplier_id` and `category_id` select fields, `index` read-only
-`supplier_name`/`category_name` labels).
+plain `description` input field; `master_material`'s `new`/`edit` carry a
+`category_id` select field, `index` a read-only `category_name` label).
 `ap_master_user`'s `new`/`edit` similarly carry a `department_id` select
 field (optional — blank is valid) and `index` a read-only `department_name`
 label; `stock_out`'s `new`/`edit` carry a required `department_id` select on

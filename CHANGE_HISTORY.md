@@ -435,3 +435,16 @@
 - Title: feat(frontend): client-side CSV/XLSX upload into table input fields via hamburger menu (#4)
 - Title: feat(frontend): bulk create records from CSV/XLSX on module new screens (#5)
 - Platform: GitHub
+
+## [2026-07-15] — refactor(inventory): remove supplier_id from materials table (issue #11)
+- A material can be sourced from many different suppliers over time; supplier tracking already lives at the receiving-header level (`receiving_headers.supplier_id`, added in #7), so `materials.supplier_id` (added alongside `category_id` in #6) was redundant and removed entirely
+- `models/material.py`: dropped the `supplier_id` column. New migration `0021_remove_supplier_id_from_materials.py` drops the FK/index/column (`op.batch_alter_table`, exact reverse of `0007`'s original addition); `downgrade()` re-adds it nullable
+- `repository/material_repository.py`: `create_material`/`update_material` drop the `supplier_id` parameter
+- `routers/master_material.py`: dropped `supplier_id` from `_serialize`/`submit`/`submit_bulk`, removed the now-unused `call_supplier_id_select` endpoint and the unused `SupplierRepository` import, dropped the "Supplier" export column
+- Frontend `master_material/{new,edit}.py`: removed the `supplier_id` select field; `master_material/index.py`: removed the `supplier_name` label column
+- Confirmed `receiving_headers.supplier_id` (#7) and every one of its usages (`stock_in` header form/select, `purchase_report`'s by-supplier breakdown) are completely untouched — this only removed the material-level link
+- Verified end-to-end against a real MariaDB + backend container: migration 0021 applied cleanly on a fresh boot, live schema confirms `materials.supplier_id` gone and `receiving_headers.supplier_id` intact, `call_supplier_id_select` on `master_material` now 404s, creating a material with only `category_id` works and its list/get responses carry no `supplier_id`/`supplier_name` keys, and both the `stock_in` receiving-header supplier flow and `purchase_report`'s `call_supplier_id_select` continue to work unchanged. Cleaned up test rows and tore the stack back down
+- Not verified: the Flet UI in an actual browser (no browser available in this environment) — the removed field/label mirror the already browser-verified pattern elsewhere in this module
+- Scope: backend, frontend
+- Files: backend/src/models/material.py, backend/src/repository/material_repository.py, backend/src/routers/master_material.py, backend/alembic/versions/0021_remove_supplier_id_from_materials.py (new), frontend/src/pages/modules/master_material/{new,edit,index}.py, AGENTS.md
+- Issue #11 addressed on GitHub

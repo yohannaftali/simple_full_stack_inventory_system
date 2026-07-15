@@ -30,11 +30,6 @@ class ModulePage:
                 "type": "input"
             },
             {
-                "name": "supplier_id", "label": "Supplier", "icon": ft.Icons.LOCAL_SHIPPING,
-                "row": 2, "col": {"sm": 12, "md": 6},
-                "type": "select"
-            },
-            {
                 "name": "category_id", "label": "Category", "icon": ft.Icons.CATEGORY,
                 "row": 2, "col": {"sm": 12, "md": 6},
                 "type": "select"

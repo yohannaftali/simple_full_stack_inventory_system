@@ -26,10 +26,6 @@ class ModulePage:
                 "type": "label"
             },
             {
-                "name": "supplier_name", "label": "Supplier",
-                "type": "label"
-            },
-            {
                 "name": "category_name", "label": "Category",
                 "type": "label"
             }

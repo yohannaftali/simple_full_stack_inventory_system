@@ -20,9 +20,6 @@ class MaterialModel(Base):
         String(50), unique=True, nullable=False, index=True
     )
     material_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    supplier_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("suppliers.id"), nullable=True, index=True
-    )
     category_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("categories.id"), nullable=True, index=True
     )
