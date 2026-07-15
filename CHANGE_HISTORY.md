@@ -454,3 +454,23 @@
 - Section 9 (Stock in): documented the header's **Supplier** field (added by #7), which the README had never mentioned
 - Scope: docs
 - Files: README.md
+
+## [2026-07-15] — feat(infra): add start.ps1/start.sh launcher scripts with docker/podman auto-detect
+- Issue #12 created on GitHub
+- Scope: infra
+- Labels: enhancement, infra
+
+## [2026-07-15] — chore(infra): move Dockerfile-backend/-frontend/-mariadb into their service subfolders
+- Issue #13 created on GitHub
+- Scope: infra
+- Labels: chore, infra
+
+## [2026-07-15] — feat(backend): seed default admin username/password/TOTP from .env instead of hardcoding
+- Issue #14 created on GitHub
+- Scope: backend
+- Labels: enhancement, backend
+
+## [2026-07-15] — feat(frontend): make default backend server URL configurable via .env instead of hardcoding
+- Issue #15 created on GitHub
+- Scope: frontend
+- Labels: enhancement, frontend

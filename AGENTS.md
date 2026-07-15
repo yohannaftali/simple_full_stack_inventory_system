@@ -31,6 +31,10 @@
 | #9 | feat(reports): add start/end date range filter to usage_report | closed | 2026-07-15 |
 | #10 | feat(table): generic per-column filtering, ported from senar's L_database (`{field}-filter` convention) | closed | 2026-07-15 |
 | #11 | refactor(inventory): remove supplier_id from materials table | closed | 2026-07-15 |
+| #12 | feat(infra): add start.ps1/start.sh launcher scripts with docker/podman auto-detect | open | 2026-07-15 |
+| #13 | chore(infra): move Dockerfile-backend/-frontend/-mariadb into their service subfolders | open | 2026-07-15 |
+| #14 | feat(backend): seed default admin username/password/TOTP from .env instead of hardcoding | open | 2026-07-15 |
+| #15 | feat(frontend): make default backend server URL configurable via .env instead of hardcoding | open | 2026-07-15 |
 
 ## Big Picture
 
