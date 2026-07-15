@@ -392,3 +392,13 @@
 - Scope: backend, frontend
 - Files: backend/src/core/table_query.py, backend/src/repository/purchase_report_repository.py (new), backend/src/routers/purchase_report.py (new), backend/alembic/versions/0020_seed_purchase_report_module.py (new), backend/src/main.py, frontend/src/pages/modules/purchase_report/{__init__,index}.py (new), AGENTS.md
 - Issue #8 addressed on GitHub
+
+## [2026-07-15] — feat(reports): add start/end date range filter to usage_report (issue #9)
+- Reused #8's `core/table_query.py::apply_field_filters` convention verbatim, no new helper needed: `usage_report_repository.py::list_usage_by_department` gained `start_date`/`end_date` params, filtering `StockOutHeaderModel.date` via `apply_field_filters(query, [(date, ">=", start_date), (date, "<=", end_date)])`, applied after the existing `apply_keyword_filter`
+- `routers/usage_report.py`: both `get_detail` and its `export_detail` twin now accept `start_date-filter`/`end_date-filter` (same `_parse_date` blank/invalid-tolerant parsing as `purchase_report.py`), so a filtered report exports exactly what's on screen — matching the Table export convention's existing behavior for `table-keyword-filter`/sort
+- `usage_report/index.py` gained the same two-standalone-`DateForm` + toolbar "Apply Filters" button pattern #8 introduced (minus the dropdowns/second table, since this report has no supplier/material scoping filter, out of scope per the issue) — reads both date values, sets the single `Table`'s `custom_param`, resets to page 1, refetches
+- Verified end-to-end against a real MariaDB + backend container: created one department, one material, received 100 units, then issued 10 units on 2026-01-15 and 5 units on 2026-03-15 under that department. Confirmed by hand-calculation: unfiltered totals (qty15/cost45) correct; both-bound Jan-only range narrows to qty10/cost30; open-ended `start_date-filter` (>=Feb) narrows to qty5/cost15 (excludes Jan); open-ended `end_date-filter` (<=Jan 31) narrows to qty10/cost30 (excludes March); a range excluding both transactions returns no row for that department; `export_detail` with the same Jan filter produces a CSV with exactly the filtered row. Cleaned up all test rows and tore the stack back down
+- Not verified: the Flet UI in an actual browser (no browser available in this environment) — the added `DateForm`/toolbar-button UI mirrors #8's already-hand-verified `purchase_report` pattern exactly
+- Scope: backend, frontend
+- Files: backend/src/repository/usage_report_repository.py, backend/src/routers/usage_report.py, frontend/src/pages/modules/usage_report/index.py, AGENTS.md
+- Issue #9 addressed on GitHub

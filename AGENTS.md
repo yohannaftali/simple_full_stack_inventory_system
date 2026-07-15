@@ -28,7 +28,7 @@
 | #6 | feat(inventory): create master category table and link to materials | closed | 2026-07-15 |
 | #7 | feat(receiving): add supplier tracking to receiving headers | closed | 2026-07-15 |
 | #8 | feat(reports): purchase report page — total purchase by supplier and by material, date-range + supplier/material filters | closed | 2026-07-15 |
-| #9 | feat(reports): add start/end date range filter to usage_report | open | 2026-07-14 |
+| #9 | feat(reports): add start/end date range filter to usage_report | ready-for-review | 2026-07-15 |
 | #10 | feat(table): generic per-column filtering, ported from senar's L_database (`{field}-filter` convention) | open | 2026-07-14 |
 
 ## Big Picture
@@ -228,8 +228,11 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
     `routers/purchase_report.py` — `start_date-filter`/`end_date-filter`
     (inclusive date range, each bound independently optional) plus a
     single-FK scoping filter per table (`supplier_id-filter` /
-    `material_id-filter`). Not yet rolled out elsewhere; #9 plans to reuse
-    the same `start_date-filter`/`end_date-filter` pair on `usage_report`.
+    `material_id-filter`). The same `start_date-filter`/`end_date-filter`
+    pair was reused as-is (no FK scoping filter, out of scope for that
+    report) on `usage_report_repository.py::list_usage_by_department` +
+    `routers/usage_report.py` (issue #9) — the second consumer, confirming
+    the helper generalizes rather than being purchase-report-specific.
   - **Multi-column sort** (ported from the same original app's
     `y.form.js`/`y.panel.js` sortable-header UI, ADR discussion 2026-07-13):
     `table_query.py::parse_sort_fields(request.query_params)` parses
@@ -817,7 +820,12 @@ Routers (all under `backend/src/routers/`, each gated by
   `stock_out_repository.py`, which owns header CRUD + item reads, not
   reporting). `total_cost` sums each item's already-captured `total_value`
   (the MAP at time of issue), so the report reflects historical cost, not
-  today's MAP.
+  today's MAP. Also accepts `start_date-filter`/`end_date-filter` (inclusive,
+  independently optional — reusing #8's `apply_field_filters` convention on
+  `stock_out_headers.date`, issue #9), honored by both `get_detail` and its
+  `export_detail` twin so a filtered report exports exactly what's on
+  screen. No supplier/material scoping filter here (out of scope for this
+  report, unlike `purchase_report`) — date range only.
 - `purchase_report.py`: read-only, two independent aggregate tables —
   `GET C_purchase_report/get_by_supplier` (total qty received + total
   purchase value per supplier) and `get_by_material` (same, per material) —
@@ -893,7 +901,10 @@ hook, so filters apply on demand via a toolbar "Apply Filters" button
 (`ModuleToolbar.add_button`) rather than live per-keystroke/per-select —
 reads the current date-form values + both dropdowns, sets each table's
 `custom_param` to the matching `{field}-filter` keys, resets `page_number`
-to 1, and calls `get_data()` on both.
+to 1, and calls `get_data()` on both. `usage_report/index.py` (issue #9)
+gained the same two standalone `DateForm`s + "Apply Filters" toolbar
+button pattern, minus the dropdowns/second table — its single `Table`'s
+`custom_param` gets just `start_date-filter`/`end_date-filter`.
 
 `master_config` and `mail_config` are a **different, simpler shape**: a
 **singleton settings screen**, not list+CRUD. Each is just one

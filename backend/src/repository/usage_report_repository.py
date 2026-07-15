@@ -7,9 +7,12 @@ query, kept in its own repository rather than bolted onto
 aggregate reporting).
 """
 
+from datetime import date as date_type
+from typing import Optional
+
 from sqlalchemy import func
 
-from core.table_query import Pagination, apply_keyword_filter, paginate
+from core.table_query import Pagination, apply_field_filters, apply_keyword_filter, paginate
 from models.base import SessionLocal
 from models.department import DepartmentModel
 from models.material import MaterialModel
@@ -21,10 +24,18 @@ class UsageReportRepository:
     """Repository class for the department x material usage/cost report."""
 
     def list_usage_by_department(
-        self, keyword: str = "", limit: int = 20, page: int = 1, offset: int = 0
+        self,
+        keyword: str = "",
+        start_date: Optional[date_type] = None,
+        end_date: Optional[date_type] = None,
+        limit: int = 20,
+        page: int = 1,
+        offset: int = 0,
     ) -> tuple[list[dict], Pagination]:
         """Total qty issued + total cost per (department, material), summed
-        across every stock-out item ever issued under that department."""
+        across every stock-out item ever issued under that department,
+        optionally narrowed to an inclusive `stock_out_headers.date` range
+        (each bound independently optional - see issue #9)."""
         with SessionLocal() as session:
             query = (
                 session.query(
@@ -54,6 +65,13 @@ class UsageReportRepository:
                     MaterialModel.material_name,
                 ],
                 keyword,
+            )
+            query = apply_field_filters(
+                query,
+                [
+                    (StockOutHeaderModel.date, ">=", start_date),
+                    (StockOutHeaderModel.date, "<=", end_date),
+                ],
             )
             query = query.order_by(DepartmentModel.code, MaterialModel.material_code)
             rows, pagination = paginate(query, limit=limit, page=page, offset=offset)
