@@ -16,6 +16,17 @@ services:
     volumes:
       - ./database:/var/lib/mysql
       - ./logs/database:/var/log/mysql:rw
+    healthcheck:
+      # The image's own healthcheck.sh assumes unix-socket auth for
+      # root@localhost, but this compose file gives root a real password
+      # (MARIADB_ROOT_PASSWORD) instead - healthcheck.sh's socket-protocol
+      # queries get "Access denied" and it never reports healthy. Ping
+      # directly with those same credentials instead.
+      test: ["CMD-SHELL", "mariadb-admin ping -h 127.0.0.1 -uroot -p\"$MARIADB_ROOT_PASSWORD\" --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
   backend:
     container_name: sfsis-backend
     build:
@@ -44,7 +55,18 @@ services:
       - /usr/src/app/.venv
       - ./logs/backend:/usr/src/app/logs:rw
     depends_on:
-      - database
+      database:
+        condition: service_healthy
+    healthcheck:
+      # Plain HTTP root ("/") needs no auth/cookies and returns
+      # {"status": "ok"} once alembic has finished and uvicorn is serving -
+      # python3/urllib is stdlib, so no extra package install needed just
+      # for the healthcheck.
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:${UVICORN_PORT}/', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
   frontend:
     container_name: sfsis-frontend
     build:
@@ -64,4 +86,11 @@ services:
       - /usr/src/app/.venv
       - ./logs/frontend:/usr/src/app/logs:rw
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:${FRONTEND_PORT}/', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s

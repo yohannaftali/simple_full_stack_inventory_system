@@ -625,11 +625,24 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
   2. Runs `alembic upgrade head` — so every container start (including
      `podman compose restart` / `restart: always` recovery) applies any
      pending migrations automatically; no manual step needed after pulling
-     schema changes. If MariaDB isn't accepting connections yet when the
-     backend container starts, this fails, the container exits, and
-     `restart: always` retries — a crash-loop that self-heals once the DB
-     is up, since `compose.yml`'s `depends_on` only orders container
-     *start*, not DB readiness.
+     schema changes. `compose.yml`'s `database`/`backend`/`frontend` services
+     each carry a `healthcheck` (`database`: `mariadb-admin ping` with the
+     root credentials — the image's own bundled `healthcheck.sh` assumes
+     unix-socket auth for `root@localhost`, but this compose file gives root
+     a real password, so that script's socket-protocol queries get "Access
+     denied" and it never reports healthy; `backend`/`frontend`: a
+     `python3 -c "urllib.request.urlopen(...)"` hit against their own plain
+     HTTP root, since neither image has `curl` installed but both have
+     Python's stdlib), and `backend`/`frontend` each `depends_on` the
+     previous service with `condition: service_healthy` — so `backend`
+     doesn't even start until `database` is actually accepting connections,
+     and `frontend` doesn't start until `backend` is actually serving. This
+     removed the previous crash-loop-on-first-boot (backend starting before
+     MariaDB was ready, `alembic upgrade head` failing with connection
+     refused, `restart: always` retrying until the DB caught up) — verified
+     via a fresh `podman compose up -d` showing `mariadb Healthy` ->
+     `backend Starting` -> `backend Healthy` -> `frontend Starting` in strict
+     order, no failed-connection tracebacks in the backend log at all.
   3. Starts **two** Uvicorn processes in the background and `wait -n`s on
      either: plain HTTP on `UVICORN_PORT` (5000) and HTTPS (using the
      generated cert) on `UVICORN_PORT_SSL` (5443) — both env vars come from
