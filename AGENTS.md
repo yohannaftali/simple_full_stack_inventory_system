@@ -25,7 +25,7 @@
 | #3 | feat(frontend): add multi-format export menu to shared Table toolbar | closed | 2026-07-14 |
 | #4 | feat(frontend): client-side CSV/XLSX upload into table input fields via hamburger menu | ready-for-review | 2026-07-14 |
 | #5 | feat(frontend): bulk create records from CSV/XLSX on module new screens | ready-for-review | 2026-07-14 |
-| #6 | feat(inventory): create master category table and link to materials | ready-for-review | 2026-07-15 |
+| #6 | feat(inventory): create master category table and link to materials | closed | 2026-07-15 |
 | #7 | feat(receiving): add supplier tracking to receiving headers | open | 2026-07-14 |
 | #8 | feat(reports): purchase report page — total purchase by supplier and by material, date-range + supplier/material filters | open | 2026-07-14 |
 | #9 | feat(reports): add start/end date range filter to usage_report | open | 2026-07-14 |
