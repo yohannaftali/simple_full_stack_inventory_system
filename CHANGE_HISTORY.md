@@ -474,3 +474,41 @@
 - Issue #15 created on GitHub
 - Scope: frontend
 - Labels: enhancement, frontend
+
+## [2026-07-15] — chore(infra): move Dockerfile-backend/-frontend/-mariadb into their service subfolders (issue #13)
+- Moved `Dockerfile-backend` → `backend/Dockerfile`, `Dockerfile-frontend` → `frontend/Dockerfile`, `Dockerfile-mariadb` → `database/Dockerfile` (`git mv`, preserving history)
+- `compose.yml`'s three `build.dockerfile` paths updated to match; `build.context` stays `.` (repo root) for all three since each Dockerfile's `COPY` instructions already reference `backend/...`/`frontend/...`/`database/...` relative to that context — no COPY paths needed to change
+- Updated every `AGENTS.md` reference to the old root-level filenames
+- Verified: `podman compose -f compose.yml build` rebuilt all three images successfully from the new paths (cache hits confirm identical build content, just relocated)
+- Scope: infra
+- Files: backend/Dockerfile (moved), frontend/Dockerfile (moved), database/Dockerfile (moved), compose.yml, AGENTS.md
+- Issue #13 addressed on GitHub
+
+## [2026-07-15] — feat(infra): add start.ps1/start.sh launcher scripts with docker/podman auto-detect (issue #12)
+- Added `start.sh` (POSIX) and `start.ps1` (PowerShell): both detect `podman` first, falling back to `docker` if podman isn't on PATH, then run `<engine> compose -f compose.yml up -d --build`; exit with a clear error if neither is found
+- `README.md`'s "Start the stack" section now leads with `./start.sh`/`.\start.ps1`, keeping the raw `podman compose ...` command documented as what the script runs under the hood
+- Verified: ran both `./start.sh` and `.\start.ps1` against the real local Podman install — both correctly detected `podman`, built all three images, and brought the stack up healthy (`sfsis-mariadb`/`sfsis-backend` confirmed `Healthy`, backend/frontend HTTP roots returned 200)
+- Scope: infra
+- Files: start.sh (new), start.ps1 (new), README.md
+- Issue #12 addressed on GitHub
+
+## [2026-07-15] — feat(backend): seed default admin username/password/TOTP from .env instead of hardcoding (issue #14)
+- `core/config.py` gained `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_TOTP_SECRET`, read from env with the original hardcoded values (`admin`/`admin1234#`/empty) as fallback defaults
+- `0004_seed_default_superuser.py` now seeds from these instead of hardcoded module-level constants, and seeds `users.totp_secret` from `ADMIN_TOTP_SECRET` when set (previously always seeded as `""`)
+- Every later migration that grants built-in module access to the seeded admin by username (`0006`, `0008`, `0010`, `0011`, `0014`, `0015`, `0016`, `0018`, `0020`) now resolves `config.ADMIN_USERNAME` instead of a hardcoded `"admin"` literal, so a custom `ADMIN_USERNAME` still receives every grant
+- `compose.yml`'s `backend` service `environment:` block passes through `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_TOTP_SECRET`; `example.env`/`.env` already declared these (added ahead of this issue) — now actually wired up
+- `README.md`/`AGENTS.md` updated: `.env` fields table, login walkthrough, and the Bootstrap/migration-0004 description now describe env-driven seeding instead of a fixed `admin`/`admin1234#`. Documented explicitly that these vars only take effect on a fresh database (first `alembic upgrade head`), not on an already-seeded install
+- Verified end-to-end against a real, fully fresh MariaDB (isolated bind mount, not the persistent dev `./database` — that data was left untouched) with `ADMIN_USERNAME=testadmin`/`ADMIN_PASSWORD=TestPass123!`: `testadmin` logged in successfully (200) and had every expected module tile on its home screen (confirming grants from 0006/0008/etc. followed the custom username); the old hardcoded `admin`/`admin1234#` login correctly failed (401, no such user seeded)
+- Scope: backend
+- Files: backend/src/core/config.py, backend/alembic/versions/{0004_seed_default_superuser,0006_seed_default_modules_and_permissions,0008_seed_master_supplier_module,0010_seed_master_department_module,0011_seed_usage_report_module,0014_seed_master_module_group_module,0015_create_mail_config_table,0016_create_app_config_table,0018_seed_master_category_module,0020_seed_purchase_report_module}.py, compose.yml, README.md, AGENTS.md
+- Issue #14 addressed on GitHub
+
+## [2026-07-15] — feat(frontend): make default backend server URL configurable via .env instead of hardcoding (issue #15)
+- `frontend/src/repository/server_url.py`'s `DEFAULT_SERVER_URL` now reads from `FRONTEND_DEFAULT_SERVER_URL` at import time (`os.getenv`), falling back to the existing `"http://backend:5000"` literal if unset — behavior unchanged for anyone not using the new var
+- `compose.yml`'s `frontend` service `environment:` block passes through `${FRONTEND_DEFAULT_SERVER_URL:-http://backend:5000}` (inline compose-level default, so existing `.env` files without the var still work); added to `example.env`/`.env`
+- The existing `ServerURL.is_configured()` "never configured vs. genuinely saved" tracking is untouched by this change — it only affects what the *default* resolves to
+- `AGENTS.md`'s repository/persistence and "Networking / server address handling" sections updated to document the override
+- Verified inside the running `sfsis-frontend` container: with `FRONTEND_DEFAULT_SERVER_URL=http://custom-backend:9999` injected, `DEFAULT_SERVER_URL` resolved to that value; with the var unset, it correctly fell back to `http://backend:5000`
+- Scope: frontend
+- Files: frontend/src/repository/server_url.py, compose.yml, example.env, AGENTS.md
+- Issue #15 addressed on GitHub

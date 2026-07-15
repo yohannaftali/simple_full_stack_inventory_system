@@ -97,7 +97,16 @@ cp example.env .env
 | `UVICORN_HOST`           | Backend bind host (leave as `127.0.0.1`/`0.0.0.0`, don't change unless you know why) |
 | `UVICORN_PORT` / `UVICORN_PORT_SSL` | Backend HTTP/HTTPS ports (defaults `5000`/`5443`)        |
 | `FRONTEND_PORT` / `FRONTEND_PORT_SSL` | Frontend HTTP/HTTPS ports (defaults `8000`/`8443`) |
+| `ADMIN_USERNAME`         | Username for the seeded bootstrap superuser (default `admin`)      |
+| `ADMIN_PASSWORD`         | Password for the seeded bootstrap superuser (default `admin1234#` — change this before deploying anywhere real) |
+| `ADMIN_TOTP_SECRET`      | Optional — pre-provision the bootstrap superuser's TOTP secret so 2FA is already enrolled on first boot. Leave blank to enroll via the UI instead (see [Setting up TOTP](#4-setting-up-totp-2fa)) |
 | `GITHUB_TOKEN`           | Optional — only used by this repo's AI coding-agent skills to read/write GitHub issues, not needed to run the app |
+
+`ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_TOTP_SECRET` only take effect the
+*first* time the backend's `alembic upgrade head` runs (i.e. on a fresh
+database) — they seed the initial superuser row, they don't update an
+existing one. Changing them in `.env` later has no effect until you drop
+the `users` table or start from a fresh database volume.
 
 **Generate a `JWT_SECRET`** (any long random string works — this is what
 signs the login session cookie, so treat it like a password):
@@ -115,6 +124,25 @@ Paste the result into `.env` as `JWT_SECRET=...`. Pick a strong password for
 gitignored).
 
 ### 1.4 Start the stack
+
+Run the launcher script for your platform — it detects whether you have
+Podman or Docker installed (preferring Podman) and runs the matching
+`compose up -d --build` for you, so you don't need to remember which engine
+command to type:
+
+```bash
+# Linux/macOS
+./start.sh
+```
+
+```powershell
+# Windows
+.\start.ps1
+```
+
+Under the hood this just runs `<engine> compose -f compose.yml up -d
+--build` with whichever of `podman`/`docker` it found on `PATH` — you can
+always run that command directly instead if you prefer:
 
 ```bash
 podman compose -f compose.yml up -d
@@ -204,11 +232,12 @@ inside the frontend container refers to the frontend container itself.
 
 On the login screen, fill in:
 
-- **Username**: `admin`
-- **Password**: `admin1234#`
-- **Authenticator**: a 6-digit code — since the seeded admin account has no
-  TOTP secret set up yet, any 6-digit value is accepted the first time, e.g.
-  `000000`
+- **Username**: your `.env`'s `ADMIN_USERNAME` (default `admin`)
+- **Password**: your `.env`'s `ADMIN_PASSWORD` (default `admin1234#`)
+- **Authenticator**: a 6-digit code — if you left `ADMIN_TOTP_SECRET` blank
+  in `.env`, the seeded admin account has no TOTP secret set up yet, so any
+  6-digit value is accepted the first time, e.g. `000000`. If you set
+  `ADMIN_TOTP_SECRET`, enter the real current code from that secret instead.
 
 Click **Login**.
 

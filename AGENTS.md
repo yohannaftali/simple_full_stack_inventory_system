@@ -31,23 +31,23 @@
 | #9 | feat(reports): add start/end date range filter to usage_report | closed | 2026-07-15 |
 | #10 | feat(table): generic per-column filtering, ported from senar's L_database (`{field}-filter` convention) | closed | 2026-07-15 |
 | #11 | refactor(inventory): remove supplier_id from materials table | closed | 2026-07-15 |
-| #12 | feat(infra): add start.ps1/start.sh launcher scripts with docker/podman auto-detect | open | 2026-07-15 |
-| #13 | chore(infra): move Dockerfile-backend/-frontend/-mariadb into their service subfolders | open | 2026-07-15 |
-| #14 | feat(backend): seed default admin username/password/TOTP from .env instead of hardcoding | open | 2026-07-15 |
-| #15 | feat(frontend): make default backend server URL configurable via .env instead of hardcoding | open | 2026-07-15 |
+| #12 | feat(infra): add start.ps1/start.sh launcher scripts with docker/podman auto-detect | ready-for-review | 2026-07-15 |
+| #13 | chore(infra): move Dockerfile-backend/-frontend/-mariadb into their service subfolders | ready-for-review | 2026-07-15 |
+| #14 | feat(backend): seed default admin username/password/TOTP from .env instead of hardcoding | ready-for-review | 2026-07-15 |
+| #15 | feat(frontend): make default backend server URL configurable via .env instead of hardcoding | ready-for-review | 2026-07-15 |
 
 ## Big Picture
 
 **SFSIS** is a full-stack inventory system with three services, orchestrated
 locally via Podman:
 
-- **database** — MariaDB (`Dockerfile-mariadb`), data volume mounted at
+- **database** — MariaDB (`database/Dockerfile`), data volume mounted at
   `./database`, logs at `./logs/database`.
-- **backend** — FastAPI served by Uvicorn (`Dockerfile-backend`), source in
+- **backend** — FastAPI served by Uvicorn (`backend/Dockerfile`), source in
   `./backend`. Talks to MariaDB. Exposes the HTTP API the frontend consumes
   (endpoints referenced by the frontend follow a `C_<module>` naming
   convention, e.g. `C_home/home`, `C_{module}`).
-- **frontend** — a Flet desktop/web/mobile app (`Dockerfile-frontend`),
+- **frontend** — a Flet desktop/web/mobile app (`frontend/Dockerfile`),
   source in `./frontend/src`, served as a web app on `FRONTEND_PORT` (8000,
   plain HTTP) and `FRONTEND_PORT_SSL` (8443, self-signed HTTPS). Unlike the
   backend, `flet run --web` has no built-in TLS support (no `--ssl-*`
@@ -81,7 +81,7 @@ Starlette `SessionMiddleware` (signed cookie, needs `itsdangerous`) for
 login sessions, `python-multipart` for form-encoded request bodies.
 Dependencies are managed via `backend/pyproject.toml` + `backend/uv.lock`
 (uv — same tooling as the frontend, see Frontend Architecture below).
-`Dockerfile-backend` installs `uv` then runs `uv sync --locked --no-dev`;
+`backend/Dockerfile` installs `uv` then runs `uv sync --locked --no-dev`;
 `entrypoint.sh` runs `alembic`/`uvicorn` via `uv run` rather than invoking
 them directly, so the venv is created/kept in sync with the lockfile even
 though `compose.yml` bind-mounts `./backend` over `/usr/src/app` in dev
@@ -688,10 +688,19 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
   modules so `Base.metadata` is fully populated, then runs online/offline
   migrations against it. Run from `backend/`:
   `alembic revision --autogenerate -m "..."` / `alembic upgrade head`.
-  `0004_seed_default_superuser.py` seeds a bootstrap superuser (`admin` /
-  `admin1234#` — **change this password after first login**; the migration
-  is idempotent, it no-ops if a user named `admin` already exists, and
-  `downgrade()` removes exactly that seeded row).
+  `0004_seed_default_superuser.py` seeds a bootstrap superuser from
+  `core.config.ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_TOTP_SECRET` (issue
+  #14 — sourced from `.env`, falling back to `admin`/`admin1234#`/empty if
+  unset — **change the password after first login** if you kept the
+  default; the migration is idempotent, it no-ops if a user with that
+  username already exists, and `downgrade()` removes exactly that seeded
+  row). Every later migration that grants module access to the seeded
+  admin (`0006`, `0008`, `0010`, `0011`, `0014`, `0015`, `0016`, `0018`,
+  `0020`) resolves the same `config.ADMIN_USERNAME` rather than a
+  hardcoded `"admin"`, so a custom `ADMIN_USERNAME` still gets every
+  built-in module grant. **These env vars only take effect on a fresh
+  database** — they seed the initial row on first `alembic upgrade head`,
+  they don't update an already-seeded admin.
   `0006_seed_default_modules_and_permissions.py` seeds the 7 built-in
   `modules` rows (`ap_module`, `ap_master_user`, `master_location`,
   `master_material`, `stock_in`, `stock_out`, `stock_browse` — name/label/
@@ -764,10 +773,10 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
   time, so the FK belongs on the receiving header, not the material).
   `downgrade()` re-adds it as nullable, same as it was originally.
 - Because `src/` code imports as top-level packages (`from models.base import
-  ...`, not `from src.models.base import ...`), `Dockerfile-backend` sets
+  ...`, not `from src.models.base import ...`), `backend/Dockerfile` sets
   `ENV PYTHONPATH=/usr/src/app/src` and copies `alembic.ini` +
   `alembic/` into the image alongside `src/`.
-- `Dockerfile-backend`'s `CMD` is `backend/entrypoint.sh` (copied to
+- `backend/Dockerfile`'s `CMD` is `backend/entrypoint.sh` (copied to
   `/usr/local/bin/` — outside `/usr/src/app` so it survives the dev bind
   mount, which otherwise hides anything installed only under `WORKDIR`).
   Each container start, it:
@@ -806,10 +815,12 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
      `https://` server address still needs a real TLS listener behind it —
      point the Server Config page at `https://<host>:5443` (or
      `http://<host>:5000` if you don't need TLS).
-- **Bootstrap**: `alembic upgrade head` seeds `admin`/`admin1234#` as an
-  active superuser (`0004`) *and* the built-in modules + grants every one
-  to that account (`0006` for the original 7, `0008` for `master_supplier`)
-  — a fresh instance has working home screen tiles and full admin access
+- **Bootstrap**: `alembic upgrade head` seeds the env-configurable admin
+  (`ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_TOTP_SECRET`, default
+  `admin`/`admin1234#`/empty — see `0004` above) as an active superuser
+  *and* the built-in modules + grants every one to that account (`0006` for
+  the original 7, `0008` for `master_supplier`) — a fresh instance has
+  working home screen tiles and full admin access
   with zero manual steps. `require_module_access`'s superuser bypass still
   matters for any *new* module you add by hand later (e.g. via
   `/modules/ap_module/new`) — that account can use the module admin/
@@ -1372,8 +1383,10 @@ managed via `pyproject.toml` (uv/Poetry).
   wraps `page.data` (in-memory cache) plus an optional persistence `store`.
   - Persistent (loaded once at boot via `Storage.load_persistent()`):
     `server_url.py` (`ServerURL`, key `"server_url"`, default
-    `DEFAULT_SERVER_URL = "http://backend:5000"` — the compose network
-    address, so the containerized frontend works out of the box without a
+    `DEFAULT_SERVER_URL` — read from the `FRONTEND_DEFAULT_SERVER_URL` env
+    var (issue #15, see `compose.yml`'s `frontend` service/`example.env`),
+    falling back to `"http://backend:5000"` (the compose network address)
+    if unset, so the containerized frontend works out of the box without a
     manual Server Config step; see the container networking gotcha below),
     `http_cookies.py`, `user_session.py`, `theme_mode.py`.
   - Non-persistent (in-memory, cleared on route change): `client_data.py`,
@@ -1451,10 +1464,13 @@ managed via `pyproject.toml` (uv/Poetry).
     `http://localhost:5000` / `https://localhost:5443` only work for a
     client connecting from the Windows host directly (e.g. a native desktop
     Flet build, or `curl` from the host) — those aren't equivalent addresses.
-    `DEFAULT_SERVER_URL` is now `http://backend:5000` specifically so a
-    fresh containerized frontend gets this right automatically, without
-    anyone having to rediscover the gotcha above via the Server Config page.
-    It is deliberately **not** used as a "never configured" sentinel
+    `DEFAULT_SERVER_URL` defaults to `http://backend:5000` (overridable via
+    `FRONTEND_DEFAULT_SERVER_URL` in `.env`/`compose.yml` — issue #15, e.g.
+    for a deployment where the backend isn't reachable at that compose
+    network name) specifically so a fresh containerized frontend gets this
+    right automatically, without anyone having to rediscover the gotcha
+    above via the Server Config page. It is deliberately **not** used as a
+    "never configured" sentinel
     anymore — `ServerURL.is_configured()` tracks that explicitly, because a
     containerized user's genuinely-saved address equals the default and the
     old value comparison couldn't tell the two apart (see Boot logic above).

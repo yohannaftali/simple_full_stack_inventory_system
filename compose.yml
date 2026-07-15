@@ -6,7 +6,7 @@ services:
     container_name: sfsis-mariadb
     build:
       context: .
-      dockerfile: Dockerfile-mariadb
+      dockerfile: database/Dockerfile
     restart: always
     environment:
       MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
@@ -31,7 +31,7 @@ services:
     container_name: sfsis-backend
     build:
       context: .
-      dockerfile: Dockerfile-backend
+      dockerfile: backend/Dockerfile
     restart: always
     environment:
       JWT_SECRET: ${JWT_SECRET}
@@ -41,6 +41,9 @@ services:
       MARIADB_DATABASE: ${MARIADB_DATABASE}
       MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
       DATABASE_HOST: database
+      ADMIN_USERNAME: ${ADMIN_USERNAME}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      ADMIN_TOTP_SECRET: ${ADMIN_TOTP_SECRET}
     ports:
       - "${UVICORN_PORT}:${UVICORN_PORT}"
       - "${UVICORN_PORT_SSL}:${UVICORN_PORT_SSL}"
@@ -71,12 +74,13 @@ services:
     container_name: sfsis-frontend
     build:
       context: .
-      dockerfile: Dockerfile-frontend
+      dockerfile: frontend/Dockerfile
     restart: always
     environment:
       FRONTEND_HOST: 0.0.0.0
       FRONTEND_PORT: ${FRONTEND_PORT}
       FRONTEND_PORT_SSL: ${FRONTEND_PORT_SSL}
+      FRONTEND_DEFAULT_SERVER_URL: ${FRONTEND_DEFAULT_SERVER_URL:-http://backend:5000}
     ports:
       - "${FRONTEND_PORT}:${FRONTEND_PORT}"
       - "${FRONTEND_PORT_SSL}:${FRONTEND_PORT_SSL}"
