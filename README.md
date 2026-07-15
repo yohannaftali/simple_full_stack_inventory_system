@@ -273,8 +273,12 @@ Open the **Materials** module. Click **Add New** and fill in:
 
 - **Code** — a unique material code
 - **Name** — the material's display name
-- **Supplier** — optional, pick from your suppliers list (set up suppliers
-  first via the **Suppliers** module if you want to link one)
+- **Category** — optional, pick from your categories list (set up
+  categories first via the **Categories** module if you want to link one)
+
+Materials don't carry their own supplier — a material can come from many
+different suppliers over time, so supplier is instead recorded per
+receiving batch (see [Stock in](#9-stock-in-receiving) below).
 
 Click **Submit**. Edit or delete existing materials from the list the same
 way as users. A material can't be deleted once it has any receiving/stock/
@@ -296,8 +300,9 @@ usage reporting). Click **Add New**, fill in **Code** and **Name**, then
 ## 9. Stock in (receiving)
 
 1. Open the **Stock In** module and click **Add New**. Fill in the header:
-   **Date** and **Description** (e.g. a PO/DO reference), then **Submit** —
-   this takes you to the header's edit screen.
+   **Date**, **Description** (e.g. a PO/DO reference), and **Supplier**
+   (optional, pick from your suppliers list), then **Submit** — this takes
+   you to the header's edit screen.
 2. On that screen, under **Items**, click the **+** button to add a
    receiving line. Fill in:
    - **Material** (select)

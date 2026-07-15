@@ -448,3 +448,9 @@
 - Scope: backend, frontend
 - Files: backend/src/models/material.py, backend/src/repository/material_repository.py, backend/src/routers/master_material.py, backend/alembic/versions/0021_remove_supplier_id_from_materials.py (new), frontend/src/pages/modules/master_material/{new,edit,index}.py, AGENTS.md
 - Issue #11 addressed on GitHub
+
+## [2026-07-15] — docs: sync README.md with issue #11 (materials no longer carry supplier_id)
+- Section 6 (Setting up master material): swapped the stale "Supplier" field bullet for "Category" (the field that actually exists on the form since #6), and added a note pointing to per-receiving-batch supplier tracking
+- Section 9 (Stock in): documented the header's **Supplier** field (added by #7), which the README had never mentioned
+- Scope: docs
+- Files: README.md
