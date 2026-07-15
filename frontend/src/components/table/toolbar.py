@@ -16,12 +16,16 @@ class TableToolbar:
 
         Args:
             page: The Flet page
+            parent: The calling module parent class reference
+            left: Controls pushed to the absolute left boundary
+            right: Controls pushed to the absolute right boundary
+            controls: List of middleware controls (e.g., Search Bar field)
         """
         self.page = page
         self.parent = parent
+        self.left = left if left is not None else []
+        self.right = right if right is not None else []
         self.controls = controls if controls is not None else []
-        self.left = left
-        self.right = right
 
     def build(self):
         """Build and return the toolbar component"""
@@ -29,29 +33,35 @@ class TableToolbar:
         if hasattr(self.parent, "export_menu") and self.parent.export_menu:
             right_controls.append(self.parent.export_menu.build())
 
-        if self.left is None and not right_controls and not self.controls:
+        if not self.left and not right_controls and not self.controls:
             return ft.Container()
 
         return ft.Container(
+            height=48,  # Forces layout boundary limits to match precise M3 standards
+            padding=ft.Padding.symmetric(horizontal=16, vertical=8),
+            bgcolor=ft.Colors.SURFACE_CONTAINER_LOW,
+            border=ft.Border.only(bottom=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
             content=ft.Row(
-                [
-                    ft.Container(content=ft.Row(controls=self.left))
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    # Left-aligned controls
+                    ft.Row(controls=self.left, spacing=8)
                     if self.left
                     else ft.Container(),
+                    # Middle-expanded custom layout track (Houses your compact search bar)
                     ft.Row(
                         controls=self.controls,
                         expand=True,
                         alignment=ft.MainAxisAlignment.END,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
-                    ft.Container(content=ft.Row(controls=right_controls))
+                    # Right-aligned actions
+                    ft.Row(controls=right_controls, spacing=8)
                     if right_controls
                     else ft.Container(),
                 ],
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
-            padding=ft.Padding.all(10),
-            bgcolor=ft.Colors.SURFACE_CONTAINER_LOW,
         )
 
     def add_button(
@@ -60,21 +70,33 @@ class TableToolbar:
         callback,
         icon=ft.Icons.ABC,
         tooltip="",
-        icon_color=ft.Colors.ON_PRIMARY_CONTAINER,
+        bgcolor=None,
+        icon_color=None,
     ):
         """Return an button"""
+        # Maintain design continuity utilizing your custom standard token mappings
+        btn_bg = bgcolor if bgcolor is not None else ft.Colors.ON_SURFACE
+        btn_fg = (
+            icon_color if icon_color is not None else ft.Colors.SURFACE_CONTAINER_HIGH
+        )
+
         button = ft.IconButton(
             icon=icon,
-            icon_color=icon_color,
+            icon_color=btn_fg,
             tooltip=tooltip,
             on_click=callback,
+            height=32,
+            width=32,
+            style=ft.ButtonStyle(
+                bgcolor=btn_bg,
+                padding=0,  # Forces graphic straight to geometric center
+                shape=ft.RoundedRectangleBorder(radius=16),
+            ),
         )
         if position == "right":
-            self.right = [] if self.right is None else self.right
             self.right.append(button)
             return
         if position == "left":
-            self.left = [] if self.left is None else self.left
             self.left.append(button)
             return
 
@@ -83,14 +105,16 @@ class TableToolbar:
         callback,
         icon=ft.Icons.ADD,
         tooltip="Add New",
-        icon_color=ft.Colors.ON_PRIMARY_CONTAINER,
+        bgcolor=None,
+        icon_color=None,
     ):
-        """Add a new button to the toolbar"""
+        """Add a compact new button to the toolbar"""
         self.add_button(
             position="right",
             callback=callback,
             icon=icon,
             tooltip=tooltip,
+            bgcolor=bgcolor,
             icon_color=icon_color,
         )
 
@@ -99,7 +123,8 @@ class TableToolbar:
         callback,
         icon=ft.Icons.SAVE,
         tooltip="Save",
-        icon_color=ft.Colors.ON_PRIMARY_CONTAINER,
+        bgcolor=None,
+        icon_color=None,
     ):
         """Return an 'Add Save' button"""
         self.add_button(
@@ -107,5 +132,6 @@ class TableToolbar:
             callback=callback,
             icon=icon,
             tooltip=tooltip,
+            bgcolor=bgcolor,
             icon_color=icon_color,
         )

@@ -1,11 +1,12 @@
 """
 Theme Mode class for managing theme mode data
 """
+
 import flet as ft
 
-from utils.storage_compat import unwrap_legacy_value
-from themes.light_theme import LightTheme
 from themes.dark_theme import DarkTheme
+from themes.light_theme import LightTheme
+from utils.storage_compat import unwrap_legacy_value
 
 
 class ThemeMode:
@@ -29,6 +30,10 @@ class ThemeMode:
         self.page.theme = LightTheme.get_theme()
         self.page.dark_theme = DarkTheme.get_theme()
 
+        # fallback to default theme mode if not set
+        current_cached = self.page.data.get("theme_mode", "light")
+        self.apply(current_cached if current_cached != "" else "light")
+
     def set(self, value: str):
         """
         Store theme mode value
@@ -37,7 +42,11 @@ class ThemeMode:
         """
         self.page.data["theme_mode"] = value
         self.apply(value)
-        self.store.persist("theme_mode", value)
+
+        self.page.update()
+
+        if self.store:
+            self.store.persist("theme_mode", value)
 
     def get(self) -> str:
         """
@@ -60,15 +69,18 @@ class ThemeMode:
             self.page.data = {}
         self.page.data["theme_mode"] = ""
 
-        self.store.forget("theme_mode")
+        if self.store:
+            self.store.forget("theme_mode")
 
     async def load(self):
         """Load the persisted theme mode from the session store (async)"""
         theme_mode = None
-        try:
-            theme_mode = await self.store.load("theme_mode")
-        except Exception as e:
-            print(f"Could not load theme_mode from session store: {e}")
+
+        if self.store:
+            try:
+                theme_mode = await self.store.load("theme_mode")
+            except Exception as e:
+                print(f"Could not load theme_mode from session store: {e}")
 
         theme_mode = unwrap_legacy_value(theme_mode)
         if theme_mode and theme_mode != "":
@@ -77,6 +89,8 @@ class ThemeMode:
             self.page.data["theme_mode"] = "light"
 
         self.apply(self.page.data["theme_mode"])
+
+        self.page.update()
         print(f"Theme mode: {self.page.data['theme_mode']}")
 
     def apply(self, theme_mode: str):

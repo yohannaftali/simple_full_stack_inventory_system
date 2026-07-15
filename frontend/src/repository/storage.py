@@ -2,13 +2,13 @@ import asyncio
 
 import flet as ft
 
-from repository.module_history import ModuleHistory
-from repository.home_search import HomeSearch
-from repository.table_search import TableSearch
-from repository.http_cookies import HttpCookies
-from repository.theme_mode import ThemeMode
-from repository.server_url import ServerURL
 from repository.client_data import ClientData
+from repository.home_search import HomeSearch
+from repository.http_cookies import HttpCookies
+from repository.module_history import ModuleHistory
+from repository.server_url import ServerURL
+from repository.table_search import TableSearch
+from repository.theme_mode import ThemeMode
 from repository.user_session import UserSession
 from utils.persistence import make_session_store
 
@@ -105,14 +105,23 @@ class Storage:
         `page.data["storage"]` itself intact, so the rest of the running
         app keeps working and can navigate to /login normally afterwards."""
         try:
-            await self.sp.clear()
+            if self.sp:
+                await self.sp.clear()
         except Exception as e:
             print(f"Could not clear SharedPreferences: {e}")
 
         self.user_session.clear()
         self.client_data.clear()
         self.http_cookies.clear()
+
+        # Clear the in-memory mirrors of the other persistent keys too, so
+        # the app doesn't keep using stale values after the SharedPreferences
         self.theme_mode.clear()
+
+        self.theme_mode.apply("light")  # Reset to default theme after clearing
+        self.page.update()  # Ensure the theme change is reflected immediately
+
+        # Clear the non-persistent keys too, so the app is fully reset to a clean state
         self.server_url.clear()
         self.module_history.clear()
         self.home_search.clear()
@@ -120,8 +129,7 @@ class Storage:
 
     def reset(self):
         """Clear all data except storage"""
-        keys_to_remove = [
-            k for k in self.page.data.keys() if k != "storage"]
+        keys_to_remove = [k for k in self.page.data.keys() if k != "storage"]
         for key in keys_to_remove:
             self.page.data.pop(key, None)
 

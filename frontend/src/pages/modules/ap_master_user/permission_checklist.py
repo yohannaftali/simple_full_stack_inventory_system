@@ -37,7 +37,7 @@ class PermissionChecklist:
                 ],
                 spacing=10,
             ),
-            padding=ft.Padding.symmetric(horizontal=20, vertical=10),
+            padding=ft.Padding.Symmetric(horizontal=20, vertical=10),
         )
 
     def _load(self):
@@ -51,7 +51,9 @@ class PermissionChecklist:
         if isinstance(granted_response, dict) and isinstance(
             granted_response.get("module_ids"), list
         ):
-            granted_ids = {str(module_id) for module_id in granted_response["module_ids"]}
+            granted_ids = {
+                str(module_id) for module_id in granted_response["module_ids"]
+            }
 
         self.checkboxes = {}
         self.list_column.controls = []
@@ -75,7 +77,9 @@ class PermissionChecklist:
 
     def on_save_click(self, e):
         selected_ids = [
-            module_id for module_id, checkbox in self.checkboxes.items() if checkbox.value
+            module_id
+            for module_id, checkbox in self.checkboxes.items()
+            if checkbox.value
         ]
         client = HttpClient(self.page)
         response = client.post(

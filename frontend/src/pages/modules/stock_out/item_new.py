@@ -26,7 +26,9 @@ class ModulePage:
     location, each deducted FIFO within that location.
     """
 
-    def __init__(self, page: ft.Page, module: str, screen=str, record_id: str | int = None):
+    def __init__(
+        self, page: ft.Page, module: str, screen=str, record_id: str | int = None
+    ):
         self.page = page
         self.module = module
         self.screen = screen
@@ -50,11 +52,18 @@ class ModulePage:
                 {"name": "location_name", "label": "Location"},
                 {"name": "qty", "label": "Qty Stock", "format": "number"},
                 {
-                    "name": "qty_issue", "label": "Qty Issue",
-                    "type": "input", "hint_text": "0",
+                    "name": "qty_issue",
+                    "label": "Qty Issue",
+                    "type": "input",
+                    "hint_text": "0",
                     "keyboard_type": ft.KeyboardType.NUMBER,
                 },
-                {"name": "remarks", "label": "Remarks", "type": "input", "hint_text": "Optional"},
+                {
+                    "name": "remarks",
+                    "label": "Remarks",
+                    "type": "input",
+                    "hint_text": "Optional",
+                },
             ],
             endpoint=f"C_{module}/get_stock_by_material",
             # Nothing to fetch until a material is picked - see

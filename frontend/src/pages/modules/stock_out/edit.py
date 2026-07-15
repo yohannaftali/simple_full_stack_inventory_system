@@ -1,14 +1,16 @@
 import flet as ft
 
-from components.module.view import ModuleView
 from components.form.form import Form
+from components.module.view import ModuleView
 from pages.modules.stock_out.item_table import ItemTable
 
 
 class ModulePage:
     """Module screen class"""
 
-    def __init__(self, page: ft.Page, module: str, screen=str, record_id: str | int = None):
+    def __init__(
+        self, page: ft.Page, module: str, screen=str, record_id: str | int = None
+    ):
         self.page = page
         self.module = module
         self.screen = screen
@@ -16,32 +18,37 @@ class ModulePage:
 
         self.fields = [
             {
-                "name": "id", "type": "hidden",
+                "name": "id",
+                "type": "hidden",
                 "key": True,
             },
             {
-                "name": "date", "label": "Date", "icon": ft.Icons.EVENT,
-                "row": 1, "col": {"sm": 12, "md": 6},
-                "type": "date", "autofocus": True
+                "name": "date",
+                "label": "Date",
+                "icon": ft.Icons.EVENT,
+                "row": 1,
+                "col": {"sm": 12, "md": 6},
+                "type": "date",
+                "autofocus": True,
             },
             {
-                "name": "department_id", "label": "Department", "icon": ft.Icons.APARTMENT,
-                "row": 1, "col": {"sm": 12, "md": 6},
-                "type": "select"
+                "name": "department_id",
+                "label": "Department",
+                "icon": ft.Icons.APARTMENT,
+                "row": 1,
+                "col": {"sm": 12, "md": 6},
+                "type": "select",
             },
             {
-                "name": "description", "label": "Description", "icon": ft.Icons.NOTES,
+                "name": "description",
+                "label": "Description",
+                "icon": ft.Icons.NOTES,
                 "row": 2,
-                "type": "input"
-            }
+                "type": "input",
+            },
         ]
 
-        self.form = Form(
-            page=page,
-            parent=self,
-            name="edit",
-            fields=self.fields
-        )
+        self.form = Form(page=page, parent=self, name="edit", fields=self.fields)
 
         self.view = ModuleView(page, module, screen)
         self.view.header.set_title("Edit Stock Out")

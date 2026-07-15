@@ -4,7 +4,7 @@ from repository.storage import Storage
 
 
 class TableSearchBar:
-    """Table search bar component"""
+    """Table search bar component built for compact 32dp layout bars"""
 
     def __init__(
         self,
@@ -18,8 +18,11 @@ class TableSearchBar:
         Initialize table search bar
 
         Args:
-            on_search_change: Callback function when search value changes
+            page: The Flet page
+            parent: The calling module parent reference
+            on_filter_change: Callback function when search value changes
             on_submit: Callback function when Enter key is pressed
+            initial_value: Initial seed text string
         """
         self.page = page
         self.storage: Storage = page.data["storage"]
@@ -27,61 +30,42 @@ class TableSearchBar:
         self.on_filter_change = on_filter_change
         self.on_submit = on_submit
 
-        # Search bar
-        # Persisted starting value
-        self.search_bar = ft.SearchBar(
-            view_elevation=4,
-            divider_color=ft.Colors.TERTIARY,
-            bar_hint_text="Search in table...",
-            view_hint_text="Choose an option from filter...",
+        # Compact Text Field Configuration replacing the rigid 56dp ft.SearchBar
+        self.search_bar = ft.TextField(
+            value=initial_value,
+            hint_text="Search in table...",
+            height=32,  # Hard-locked compact dimension profile
+            text_size=13,  # Scaled down to prevent text vertical wrapping
             on_change=self.on_search_change,
             on_submit=self.on_submit,
-            value=initial_value,
-            # Material 3 Search bar spec: surfaceContainerHigh background,
-            # onSurface content - a subtly-elevated neutral container, not a
-            # colored accent (that's the older M2 convention).
-            bar_bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
-            bar_text_style=ft.TextStyle(color=ft.Colors.ON_SURFACE, size=14),
-            # A ControlState dict of low-opacity tints (the M3 "state layer"
-            # convention), not a single solid color: passing a plain color
-            # here replaces the whole bar background on hover/focus/press
-            # instead of tinting it, which is why the bar used to turn
-            # solid near-black in light mode / near-white in dark mode
-            # (on_surface at full opacity) with same-colored, invisible text
-            # on top.
-            bar_overlay_color={
-                ft.ControlState.HOVERED: ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE),
-                ft.ControlState.FOCUSED: ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
-                ft.ControlState.PRESSED: ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
-            },
-            bar_leading=ft.Icon(ft.Icons.SEARCH, color=ft.Colors.ON_SURFACE, size=14),
-            view_leading=ft.Icon(ft.Icons.SEARCH, color=ft.Colors.ON_SURFACE, size=14),
-            bar_trailing=[
-                ft.IconButton(
-                    icon=ft.Icons.CLEAR,
-                    icon_color=ft.Colors.ON_SURFACE,
-                    icon_size=14,
-                    on_click=self.clear_search,
-                )
-            ],
-            view_trailing=[
-                ft.IconButton(
-                    icon=ft.Icons.CLEAR,
-                    icon_color=ft.Colors.ON_SURFACE,
-                    icon_size=14,
-                    on_click=self.clear_search,
-                )
-            ],
+            # Material 3 Styling mapping to your exact Theme values
+            bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
+            color=ft.Colors.ON_SURFACE,
+            border_radius=8,
+            # Low opacity state-layer boundaries matching your architectural commentary
+            border_color=ft.Colors.OUTLINE_VARIANT,
+            focused_border_color=ft.Colors.TERTIARY,
+            # Content padding adjustment prevents the text block from drifting out of alignment
+            content_padding=ft.Padding.symmetric(horizontal=10, vertical=0),
+            # Functional Iconography alignments scaled down to match the 32dp boundary constraints
+            prefix=ft.Icon(ft.Icons.SEARCH, color=ft.Colors.ON_SURFACE, size=14),
+            suffix=ft.IconButton(
+                icon=ft.Icons.CLEAR,
+                icon_color=ft.Colors.ON_SURFACE,
+                icon_size=14,
+                width=24,  # Constrained icon button envelope bounds
+                height=24,
+                padding=0,  # Absolute graphic centering
+                on_click=self.clear_search,
+                tooltip="Clear text",
+            ),
         )
 
-        # No `alignment` here deliberately: a Container with `alignment` set
-        # gives its child loose constraints (size yourself, then I'll
-        # position you), so SearchBar - which has no `expand` of its own
-        # (it's a LayoutControl, not a ConstrainedControl) - shrinks to its
-        # own intrinsic width and gets centered instead of filling the row.
-        # Without `alignment`, the container passes its own (expanded) size
-        # to the child directly, forcing it full width on every screen size.
-        self.container = ft.Container(content=self.search_bar, padding=0, expand=True)
+        self.container = ft.Container(
+            content=self.search_bar,
+            padding=0,
+            expand=True,
+        )
 
     def build(self):
         """Build and return the search bar control"""

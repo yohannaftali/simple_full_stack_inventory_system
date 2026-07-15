@@ -51,9 +51,9 @@ class Rows:
         # determine key field name (field with 'key': True)
         key_field = None
         try:
-            for f in getattr(self.columns, 'fields', []):
-                if f.get('key'):
-                    key_field = f.get('name')
+            for f in getattr(self.columns, "fields", []):
+                if f.get("key"):
+                    key_field = f.get("name")
                     break
         except Exception:
             key_field = None
@@ -65,10 +65,10 @@ class Rows:
             on_tap_handler = None
             if key_field is not None:
                 module = None
-                if hasattr(self, 'parent') and getattr(self.parent, 'module', None):
-                    module = getattr(self.parent, 'module')
-                elif hasattr(self.page, 'data') and isinstance(self.page.data, dict):
-                    module = self.page.data.get('module')
+                if hasattr(self, "parent") and getattr(self.parent, "module", None):
+                    module = getattr(self.parent, "module")
+                elif hasattr(self.page, "data") and isinstance(self.page.data, dict):
+                    module = self.page.data.get("module")
 
                 if module:
                     # Table's own `edit_screen` (default "edit") lets a
@@ -81,9 +81,13 @@ class Rows:
                         # Use path parameter for id: /modules/<module>/<screen>/<id>
                         if kv is None:
                             return lambda e: None
-                        return lambda e: self.page.run_task(self.page.push_route, f"/modules/{mod}/{screen}/{kv}")
+                        return lambda e: self.page.run_task(
+                            self.page.push_route, f"/modules/{mod}/{screen}/{kv}"
+                        )
 
-                    on_tap_handler = _make_tap(key_field, key_value, module, edit_screen)
+                    on_tap_handler = _make_tap(
+                        key_field, key_value, module, edit_screen
+                    )
 
             cells = []
             row_inputs: dict = {}
@@ -169,7 +173,9 @@ class Rows:
             self.input_controls.append(row_inputs)
             row += 1
 
-    def _build_editable_cell(self, field_type: str, field: dict, name: str, raw_value, width):
+    def _build_editable_cell(
+        self, field_type: str, field: dict, name: str, raw_value, width
+    ):
         """Build one editable table cell.
 
         Returns (control, value_holder): `control` is what goes in the
@@ -192,8 +198,10 @@ class Rows:
             return control, control
 
         if field_type == "checkbox":
-            value = raw_value if isinstance(raw_value, bool) else str(raw_value).strip().lower() in (
-                "1", "true", "yes"
+            value = (
+                raw_value
+                if isinstance(raw_value, bool)
+                else str(raw_value).strip().lower() in ("1", "true", "yes")
             )
             control = ft.Checkbox(value=value)
             return control, control
@@ -207,7 +215,8 @@ class Rows:
             control = ft.Dropdown(
                 options=[
                     ft.DropdownOption(
-                        key=opt.get("value", ""), text=opt.get("label", opt.get("value", ""))
+                        key=opt.get("value", ""),
+                        text=opt.get("label", opt.get("value", "")),
                     )
                     for opt in options
                 ],
@@ -249,7 +258,9 @@ class Rows:
             return self._select_options_cache[name]
 
         module = getattr(self.parent, "module", None)
-        endpoint = field.get("endpoint") or (f"C_{module}/call_{name}_select" if module else None)
+        endpoint = field.get("endpoint") or (
+            f"C_{module}/call_{name}_select" if module else None
+        )
         options: list[dict] = []
         if endpoint:
             response = HttpClient(self.page).get(endpoint)

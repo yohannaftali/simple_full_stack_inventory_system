@@ -48,9 +48,7 @@ class ModuleContainer:
             bgcolor=ft.Colors.SURFACE,
             padding=ft.Padding.symmetric(horizontal=10, vertical=10),
             margin=ft.Margin.only(bottom=5),
-            border=ft.Border.only(
-                bottom=ft.BorderSide(2, ft.Colors.OUTLINE)
-            ),
+            border=ft.Border.only(bottom=ft.BorderSide(2, ft.Colors.OUTLINE)),
         )
 
     def update(self, modules: list = None):
@@ -76,15 +74,15 @@ class ModuleContainer:
         # Build UI for each group
         for group_name, group_modules in grouped.items():
             # Group header
-            self.container.controls.append(
-                self.group_container(group_name)
-            )
+            self.container.controls.append(self.group_container(group_name))
 
             # Create grid of module cards
             grid_items = []
             for module in group_modules:
                 card = ModuleCard(
-                    page=self.page, module=module,)
+                    page=self.page,
+                    module=module,
+                )
                 module_card = card.build()
                 grid_items.append(module_card)
 

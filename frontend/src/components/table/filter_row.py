@@ -58,9 +58,7 @@ class FilterRow:
                 or field.get("is_numeric")
                 or field.get("format") == "number"
             )
-            hint_text = (
-                "e.g. >=5and<=10" if is_numeric else f"Filter {label}"
-            )
+            hint_text = "e.g. >=5and<=10" if is_numeric else f"Filter {label}"
             text_field = ft.TextField(
                 label=label,
                 hint_text=hint_text,

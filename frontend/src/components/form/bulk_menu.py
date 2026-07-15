@@ -40,6 +40,11 @@ class BulkMenu:
         self.menu = ft.PopupMenuButton(
             icon=ft.Icons.MENU,
             tooltip="Bulk upload",
+            height=32,
+            width=32,
+            style=ft.ButtonStyle(
+                padding=0,  # Forces the icon inside the popup boundary to hit absolute center
+            ),
             items=[
                 ft.PopupMenuItem(
                     content="Upload bulk from CSV",
@@ -119,9 +124,7 @@ class BulkMenu:
         if isinstance(response, dict):
             message = str(response.get("message", ""))
         self._show_success(message or "Bulk upload completed.")
-        self.page.run_task(
-            self.page.push_route, f"/modules/{self.parent.module}/index"
-        )
+        self.page.run_task(self.page.push_route, f"/modules/{self.parent.module}/index")
 
     def _build_payload(self, rows: list[list[str]]) -> dict | None:
         """File rows -> repeated-form-field payload for submit_bulk.

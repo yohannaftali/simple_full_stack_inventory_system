@@ -57,7 +57,9 @@ class Columns:
     def __init__(self, page: ft.Page, fields: list):
         self.page = page
         self.fields = fields
-        self.fields_by_name = {f.get("name"): f for f in fields if f.get("name") is not None}
+        self.fields_by_name = {
+            f.get("name"): f for f in fields if f.get("name") is not None
+        }
         self.columns: list = []
         self.index = []
         self.widths: list[int] | None = None
@@ -273,7 +275,9 @@ class Columns:
             if is_sortable and show_label:
                 sort_icon = self._build_sort_icon(field["name"])
                 label_content = ft.Row(
-                    [left_content, sort_icon] if left_content is not None else [sort_icon],
+                    [left_content, sort_icon]
+                    if left_content is not None
+                    else [sort_icon],
                     alignment=(
                         ft.MainAxisAlignment.SPACE_BETWEEN
                         if left_content is not None
@@ -632,7 +636,9 @@ class Columns:
 
         return widths
 
-    def _get_initial_widths(self, data: list, min_widths: list[int]) -> tuple[list[int], int]:
+    def _get_initial_widths(
+        self, data: list, min_widths: list[int]
+    ) -> tuple[list[int], int]:
         # Calculate initial widths based on content
         content_widths: list[int] = []
         total_content_width: int = 0
