@@ -22,6 +22,10 @@ class Form:
         endpoint_get: str | None = None,
         endpoint_submit: str | None = None,
         start_blank: bool = False,
+        bulk_input: bool = False,
+        bulk_endpoint: str | None = None,
+        bulk_extra_fields: dict | None = None,
+        bulk_redirect: str | None = None,
     ):
         """
         Initialize Table
@@ -32,6 +36,21 @@ class Form:
             name (str): The name of the table
             fields (list): The list of fields for the table
             endpoint (str, optional): The API endpoint for data fetching. Defaults to None.
+            bulk_input (bool, optional): Explicitly opt this screen into the
+                CSV/XLSX bulk-upload hamburger menu (issue #5/#24/#25) -
+                replaces the old implicit "attach whenever screen == 'new'"
+                guard, which silently broke on any `new` screen whose
+                backend router has no `submit_bulk` endpoint (e.g.
+                `ap_config`) and couldn't be used at all for non-`new`
+                screens with their own bulk-eligible flow (e.g. stock_in's
+                `item_new`). Defaults to False - every screen must opt in.
+            bulk_endpoint (str, optional): Override the endpoint the bulk
+                upload POSTs to. Defaults to `C_{module}/submit_bulk`.
+            bulk_extra_fields (dict, optional): Static fields merged into
+                every row's payload (e.g. `{"receiving_header_id": "3"}` for
+                an item-level bulk upload scoped to one header).
+            bulk_redirect (str, optional): Route to navigate to after a
+                successful bulk upload. Defaults to `/modules/{module}/index`.
         """
         self.page = page
         self.parent = parent  # ModulePage
@@ -39,6 +58,10 @@ class Form:
         self.fields = fields
         self.record_key = "id"
         self.record_id = parent.record_id
+        self.bulk_input = bulk_input
+        self.bulk_endpoint = bulk_endpoint
+        self.bulk_extra_fields = bulk_extra_fields
+        self.bulk_redirect = bulk_redirect
 
         self.index = []
 
@@ -114,15 +137,17 @@ class Form:
         return self.form_container
 
     def _attach_bulk_menu(self):
-        """Give every module `new` screen a bulk-upload hamburger menu at
-        the far right of its ModuleToolbar (issue #5) - zero per-module
-        wiring. Runs in build() (not __init__) deliberately: new.py screens
-        add their submit button between Form construction and body()/
-        build(), so appending here lands the menu rightmost. `screen`
-        guards it to create screens only (edit targets one record;
-        item_new/index/modals have their own flows), and the double-attach
-        flag covers any repeated build() call."""
-        if self.screen != "new" or getattr(self, "_bulk_menu_attached", False):
+        """Give a screen a bulk-upload hamburger menu at the far right of
+        its ModuleToolbar (issue #5/#24/#25) whenever it opted in via
+        `bulk_input=True` - explicit per-screen, not inferred from `screen
+        == "new"` (that guessed wrong for `ap_config`, whose backend router
+        has no `submit_bulk` endpoint, and couldn't be used at all for a
+        bulk-eligible non-`new` screen like stock_in's `item_new`). Runs in
+        build() (not __init__) deliberately: new.py/item_new.py screens add
+        their submit button between Form construction and body()/build(),
+        so appending here lands the menu rightmost. The double-attach flag
+        covers any repeated build() call."""
+        if not self.bulk_input or getattr(self, "_bulk_menu_attached", False):
             return
         view = getattr(self.parent, "view", None)
         if view is None or not hasattr(view, "toolbar"):
@@ -130,7 +155,13 @@ class Form:
 
         from components.form.menu import MenuForm
 
-        self.bulk_menu = MenuForm(page=self.page, form=self)
+        self.bulk_menu = MenuForm(
+            page=self.page,
+            form=self,
+            endpoint=self.bulk_endpoint,
+            extra_fields=self.bulk_extra_fields,
+            redirect_route=self.bulk_redirect,
+        )
         if view.toolbar.right is None:
             view.toolbar.right = []
         view.toolbar.right.append(self.bulk_menu.build())

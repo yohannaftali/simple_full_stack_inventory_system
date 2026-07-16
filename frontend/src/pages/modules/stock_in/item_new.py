@@ -13,6 +13,16 @@ class ModulePage:
     only ever creates. No hidden "id" field is declared below, so
     Form.serialize() never tries to inject a record key; the header id is
     sent explicitly as `receiving_header_id` in callback_submit instead.
+
+    Also opts into the bulk-upload hamburger menu (issue #24) via
+    `Form(bulk_input=True, ...)` — unlike the plain `Form(bulk_input=True)`
+    every other module `new` screen uses, this one overrides `bulk_endpoint`
+    (posts to `submit_bulk_item`, not the default `submit_bulk`),
+    `bulk_extra_fields` (carries this screen's own `receiving_header_id` on
+    every uploaded row, the same value `callback_submit` already sends for
+    a single-item submit), and `bulk_redirect` (back to the header's edit
+    screen, not `/modules/{module}/index` — there is no bare "index" for an
+    item, only its owning header).
     """
 
     def __init__(self, page: ft.Page, module: str, screen=str, record_id: str | int = None):
@@ -55,7 +65,11 @@ class ModulePage:
             parent=self,
             name="new",
             fields=self.fields,
-            start_blank=True
+            start_blank=True,
+            bulk_input=True,
+            bulk_endpoint=f"C_{module}/submit_bulk_item",
+            bulk_extra_fields={"receiving_header_id": str(self.header_id)},
+            bulk_redirect=f"/modules/{module}/edit/{self.header_id}",
         )
 
         self.view = ModuleView(page, module, screen)

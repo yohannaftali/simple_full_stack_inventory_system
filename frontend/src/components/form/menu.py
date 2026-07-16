@@ -1,16 +1,26 @@
-"""Hamburger-icon bulk-upload menu for module `new` screens (issue #5).
+"""Hamburger-icon bulk-upload menu for module `new`/`item_new`-style screens
+that opt in via `Form(..., bulk_input=True)` (issue #5/#24/#25).
 
 Attached automatically by `Form.build()` to the far right of the screen's
-`ModuleToolbar` whenever `parent.screen == "new"` - no per-module wiring.
-Offers "Upload bulk from CSV" / "Upload bulk from XLSX": the file is parsed
+`ModuleToolbar` whenever the owning `Form` was constructed with
+`bulk_input=True` - no per-module wiring beyond that one flag. Offers
+"Upload bulk from CSV" / "Upload bulk from XLSX": the file is parsed
 client-side (reusing `components/table/menu.py`'s byte parsers, so the same
 delimiter sniffing and blank-row skipping apply), headers are matched to
 the form's fields by visible label or field name (case-insensitive,
 unknown columns ignored), `select` cells are resolved against the field's
 option list (by option label or value), and every row is submitted in ONE
-`POST C_{module}/submit_bulk` - the backend wraps the batch in a single
-transaction, so a failure at any row creates nothing and returns
-`Row N: <the same message a manual submit would give>`.
+`POST` to `endpoint` (defaults to `C_{module}/submit_bulk`, overridable via
+`Form(bulk_endpoint=...)` for a screen posting somewhere else, e.g.
+stock_in's `item_new` posting to `submit_bulk_item`) - the backend wraps
+the batch in a single transaction, so a failure at any row creates nothing
+and returns `Row N: <the same message a manual submit would give>`.
+`extra_fields` (via `Form(bulk_extra_fields=...)`) are merged into the
+payload as constant, non-repeated form fields on every request - e.g.
+`{"receiving_header_id": "3"}` scoping an item-level bulk upload to one
+header, the same way `item_new.py`'s own single-item submit already sends
+it. `redirect_route` (via `Form(bulk_redirect=...)`) overrides where a
+successful upload navigates to, defaulting to `/modules/{module}/index`.
 
 Row numbers count the header as row 1 among the file's non-blank rows
 (blank rows are skipped by the parsers and don't consume a number).
@@ -31,11 +41,21 @@ _UPLOADABLE_TYPES = {"input", "date", "select"}
 
 
 class MenuForm:
-    def __init__(self, page: ft.Page, form):
+    def __init__(
+        self,
+        page: ft.Page,
+        form,
+        endpoint: str | None = None,
+        extra_fields: dict | None = None,
+        redirect_route: str | None = None,
+    ):
         self.page = page
         self.form = form  # components/form/form.py Form
         self.parent = form.parent  # ModulePage (module, view)
         self.file_picker: ft.FilePicker | None = None
+        self.endpoint = endpoint or f"C_{self.parent.module}/submit_bulk"
+        self.extra_fields = extra_fields or {}
+        self.redirect_route = redirect_route or f"/modules/{self.parent.module}/index"
 
         self.menu = ft.PopupMenuButton(
             icon=ft.Icons.MENU,
@@ -115,7 +135,7 @@ class MenuForm:
             return  # _build_payload already surfaced the error
 
         client = HttpClient(self.page)
-        response = client.post(f"C_{self.parent.module}/submit_bulk", data=payload)
+        response = client.post(self.endpoint, data=payload)
 
         if isinstance(response, dict) and "error" in response:
             self._show_error(response["error"])
@@ -124,7 +144,7 @@ class MenuForm:
         if isinstance(response, dict):
             message = str(response.get("message", ""))
         self._show_success(message or "Bulk upload completed.")
-        self.page.run_task(self.page.push_route, f"/modules/{self.parent.module}/index")
+        self.page.run_task(self.page.push_route, self.redirect_route)
 
     def _build_payload(self, rows: list[list[str]]) -> dict | None:
         """File rows -> repeated-form-field payload for submit_bulk.
@@ -213,6 +233,7 @@ class MenuForm:
 
         payload: dict = {"row_number": row_numbers}
         payload.update(lists)
+        payload.update(self.extra_fields)
         return payload
 
     def _show_error(self, message: str):

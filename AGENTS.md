@@ -43,7 +43,7 @@
 | #21 | chore(frontend): extract shared Button component to DRY up toolbar add_*_button methods | closed | 2026-07-16 |
 | #22 | fix(frontend): hide CSV/XLSX upload menu items on tables with no editable columns | closed | 2026-07-16 |
 | #23 | chore(frontend): rename table/form component files and classes for clearer, unambiguous naming | closed | 2026-07-16 |
-| #24 | feat(stock_in): bulk CSV/XLSX upload for receiving items on item_new | open | 2026-07-16 |
+| #24 | feat(stock_in): bulk CSV/XLSX upload for receiving items on item_new | ready-for-review | 2026-07-16 |
 
 ## Big Picture
 
@@ -539,23 +539,42 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
   `upload_dir` wiring in `asgi.py`/`entrypoint.sh` remains for any
   future feature that genuinely needs server-side files.
 
-  **Bulk create convention** (issue #5, 2026-07-14, ALL OR NOTHING):
-  every module `new` screen gets a second hamburger menu at the far right
-  of its `ModuleToolbar` — "Upload bulk from CSV/XLSX" — attached
-  automatically by `Form.build()` via
-  `components/form/menu.py::MenuForm` when `parent.screen == "new"`
-  (zero per-module wiring; runs in `build()` rather than `__init__` so it
-  lands *after* the screen's own submit button, i.e. rightmost, and obeys
-  the same three Flet invariants as the table menu above). The file is
-  parsed client-side with the same `parse_csv_bytes`/`parse_xlsx_bytes`,
-  headers matched to form fields by label or name (case-insensitive,
-  unknown columns ignored, blank rows skipped), `select` cells resolved
-  against `call_{name}_select` options by label or value (an unresolvable
-  cell aborts the whole upload client-side with `Row N: unknown <label>
-  '<value>'`), then **every row goes in ONE
-  `POST C_{module}/submit_bulk`** (repeated form fields plus a parallel
-  `row_number` list carrying the file's own numbering — header counts as
-  row 1 among non-blank rows). Backend:
+  **Bulk create convention** (issue #5, 2026-07-14, ALL OR NOTHING;
+  revised issue #24/#25, 2026-07-16): a screen gets a bulk-upload
+  hamburger menu at the far right of its `ModuleToolbar` — "Upload bulk
+  from CSV/XLSX" — whenever it explicitly opts in via
+  `Form(..., bulk_input=True)`; `Form.build()` then attaches
+  `components/form/menu.py::MenuForm` for it (runs in `build()` rather
+  than `__init__` so it lands *after* the screen's own submit button, i.e.
+  rightmost, and obeys the same three Flet invariants as the table menu
+  above). **`bulk_input` replaced an earlier implicit `parent.screen ==
+  "new"` guard** — that guessed wrong in two ways: it silently attached a
+  menu to `ap_config/new.py` even though that module's backend router has
+  no `submit_bulk` endpoint at all (clicking upload there just errors),
+  and it couldn't be used for a bulk-eligible screen whose route isn't
+  literally `"new"` (stock_in's `item_new`, see below). Every module
+  `new.py` that has a real `submit_bulk` backend endpoint now passes
+  `bulk_input=True` explicitly; `ap_config/new.py` deliberately does not
+  (no backend support — the old implicit menu there was a latent, unused
+  bug, not a feature, and is gone now).
+
+  The file is parsed client-side with the same `parse_csv_bytes`/
+  `parse_xlsx_bytes`, headers matched to form fields by label or name
+  (case-insensitive, unknown columns ignored, blank rows skipped),
+  `select` cells resolved against `call_{name}_select` options by label or
+  value (an unresolvable cell aborts the whole upload client-side with
+  `Row N: unknown <label> '<value>'`), then **every row goes in ONE POST**
+  to `endpoint` — `MenuForm(page, form, endpoint=None, extra_fields=None,
+  redirect_route=None)` defaults `endpoint` to `C_{module}/submit_bulk`
+  and `redirect_route` to `/modules/{module}/index`, both overridable via
+  `Form(bulk_endpoint=..., bulk_redirect=...)` for a screen posting
+  somewhere else (see the item-level case below); `extra_fields` (via
+  `Form(bulk_extra_fields={...})`) are merged into the payload as
+  constant, non-repeated form fields on every request, alongside the
+  repeated per-row lists and the parallel `row_number` list carrying the
+  file's own numbering (header counts as row 1 among non-blank rows).
+
+  **Header-level bulk create** (the original #5 shape): backend
   `services/bulk_service.py::bulk_create(rows, build_instance)` owns one
   `SessionLocal()` for the whole batch (per-table repositories can't
   share a transaction — same reasoning as `inventory_service.py`), adds +
@@ -566,12 +585,46 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
   Each router supplies a small `build(row, session)` validating one row
   (e.g. `user_admin.py` reproduces "Username or email already in use" via
   a session query that also sees rows flushed earlier in the same file,
-  and bcrypt-hashes each password). Wired on all 9 new-screen routers:
-  `master_location`, `master_supplier`, `master_department`,
-  `master_material`, `master_module_group` (`module_group_admin.py`),
-  `ap_module` (`module_admin.py`), `ap_master_user` (`user_admin.py`),
-  `stock_in` and `stock_out` (headers only — items have their own
-  flows), each gated by its module's `require_module_access`.
+  and bcrypt-hashes each password). Wired (`Form(bulk_input=True)` on the
+  frontend, `POST C_{module}/submit_bulk` on the backend) on 11 module
+  `new.py` screens: `master_location`, `master_supplier`,
+  `master_department`, `master_material`, `master_category`,
+  `master_unit_of_material`, `master_module_group`
+  (`module_group_admin.py`), `ap_module` (`module_admin.py`),
+  `ap_master_user` (`user_admin.py`), `stock_in` and `stock_out` (headers
+  only), each gated by its module's `require_module_access`.
+
+  **Item-level bulk create** (issue #24, 2026-07-16 — the first,
+  currently only, per-header item bulk-create): `stock_in/item_new.py`
+  opts in with `Form(bulk_input=True, bulk_endpoint=f"C_{module}/
+  submit_bulk_item", bulk_extra_fields={"receiving_header_id":
+  str(self.header_id)}, bulk_redirect=f"/modules/{module}/edit/
+  {self.header_id}")` — the header id rides along on every uploaded row
+  the same way `callback_submit` already sends it for a single-item
+  submit, and a successful upload returns to the header's edit screen
+  (there's no bare "index" for an item, only its owning header).
+  `POST C_stock_in/submit_bulk_item` (form: `receiving_header_id` plus
+  repeated `material_id`/`location_id`/`qty_received`/`price_buy`/
+  `remarks` + `row_number`) doesn't go through `bulk_service.bulk_create`
+  — that helper's single `session.add(build_instance(row, session))`
+  shape doesn't fit a receiving item's three co-dependent writes
+  (`ReceivingItemModel` + `StockModel` + the material's
+  `InventoryValueModel` MAP update). Instead
+  `inventory_service.py::create_receiving_items_bulk(receiving_header_id,
+  rows)` is a bespoke bulk function living alongside
+  `create_receiving_item`, following the same
+  ALL-OR-NOTHING/one-`SessionLocal()`/flush-per-row convention, validating
+  each row (required fields, numeric parsing, an inactive material
+  rejected with the same `"Cannot receive: material is inactive"`
+  `submit_item`'s create path already uses) before committing once at the
+  end. Each row's MAP contribution applies against whatever
+  `InventoryValueModel` state the *previous* row in the same batch already
+  flushed — identical sequencing to calling `create_receiving_item` once
+  per row, just inside one transaction instead of one per call. Verified
+  against a real SQLite session: 2-row happy path with correct weighted
+  MAP; an inactive material in row 2 rolls back row 1 too (true
+  all-or-nothing, not partial commit); missing-required-field and
+  empty-batch rejections.
 
   **Every list endpoint `get_{name}` gets an export twin
   `export_{name}`** — the table *name* is part of the contract because

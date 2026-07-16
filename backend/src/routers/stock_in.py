@@ -28,6 +28,16 @@ screen (material/location are then read-only — see inventory_service).
   #17) with `{"error": "Cannot receive: material is inactive"}` - editing an
   existing item (id present) is unaffected, since that material was already
   receivable at the time it was first received.
+- POST C_stock_in/submit_bulk_item (form: receiving_header_id, repeated
+  material_id/location_id/qty_received/price_buy/remarks + row_number,
+  same wire shape as submit_bulk) -> ALL OR NOTHING bulk item creation via
+  `inventory_service.create_receiving_items_bulk` (issue #24) - unlike the
+  header-level `submit_bulk` above, this doesn't go through
+  `bulk_service.bulk_create` (whose single `session.add(build_instance(...))`
+  shape doesn't fit a receiving item's three co-dependent writes), it's a
+  bespoke bulk function living in `inventory_service.py` alongside
+  `create_receiving_item`, following the same ALL-OR-NOTHING/one-session
+  convention.
 - GET  C_stock_in/call_material_id_select, call_location_id_select -> options
   for the item form's `select` fields.
 - GET  C_stock_in/call_supplier_id_select -> options for the header form's
@@ -305,6 +315,19 @@ def submit_item(
         remarks=remarks,
     )
     return {"message": "Receiving item added successfully"}
+
+
+@router.post("/submit_bulk_item")
+async def submit_bulk_item(
+    request: Request,
+    receiving_header_id: str = Form(...),
+    user: UserModel = Depends(_require_access),
+) -> dict:
+    form = await request.form()
+    rows = parse_bulk_rows(
+        form, ["material_id", "location_id", "qty_received", "price_buy", "remarks"]
+    )
+    return inventory_service.create_receiving_items_bulk(int(receiving_header_id), rows)
 
 
 @router.get("/call_material_id_select")

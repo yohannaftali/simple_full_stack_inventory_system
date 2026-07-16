@@ -23,13 +23,16 @@ average. Acceptable simplification for a "simple" inventory system; a real
 lot-costing ledger would be needed to do this perfectly.
 """
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from models.base import SessionLocal
 from models.inventory_value import InventoryValueModel
+from models.location import LocationModel
+from models.material import MaterialModel
 from models.receiving_item import ReceivingItemModel
 from models.stock import StockModel
 from models.stock_out_item import StockOutItemModel
+from services.bulk_service import BulkRowError
 
 
 class InsufficientStockError(Exception):
@@ -107,6 +110,98 @@ def create_receiving_item(
         session.commit()
         session.refresh(item)
         return item
+
+
+def create_receiving_items_bulk(receiving_header_id: int, rows: list[dict]) -> dict:
+    """ALL OR NOTHING bulk version of `create_receiving_item` (issue #24) -
+    same convention as `services/bulk_service.py::bulk_create`, but that
+    helper's single `session.add(build_instance(row, session))` shape
+    doesn't fit here: one receiving item is three co-dependent writes
+    (`ReceivingItemModel` + `StockModel` + the material's `InventoryValueModel`
+    MAP update), not one. Owns its own `SessionLocal()` for the whole batch,
+    flushing after each row's writes (surfacing FK/constraint errors
+    attributed to that row) and committing once only if every row succeeds.
+
+    Each row applies its MAP contribution against whatever `InventoryValueModel`
+    state the *previous* row in this same batch already flushed - identical
+    sequencing to calling `create_receiving_item` once per row, just inside
+    one transaction instead of one per call.
+    """
+    if not rows:
+        return {"error": "No rows to import"}
+
+    with SessionLocal() as session:
+        current_row = rows[0]["_row"]
+        try:
+            for row in rows:
+                current_row = row["_row"]
+
+                material_raw = str(row.get("material_id", "")).strip()
+                location_raw = str(row.get("location_id", "")).strip()
+                if not material_raw or not location_raw:
+                    raise BulkRowError(current_row, "Material and Location are required")
+                try:
+                    material_id = int(material_raw)
+                    location_id = int(location_raw)
+                except ValueError:
+                    raise BulkRowError(current_row, "Invalid Material or Location")
+
+                try:
+                    qty_received = Decimal(str(row.get("qty_received", "")).strip())
+                except InvalidOperation:
+                    raise BulkRowError(
+                        current_row, f"Invalid quantity: {row.get('qty_received', '')}"
+                    )
+                if qty_received <= 0:
+                    raise BulkRowError(current_row, "Quantity received must be greater than zero")
+
+                price_raw = str(row.get("price_buy", "")).strip()
+                try:
+                    price_buy = Decimal(price_raw) if price_raw else Decimal("0")
+                except InvalidOperation:
+                    raise BulkRowError(current_row, f"Invalid price: {price_raw}")
+                if price_buy < 0:
+                    raise BulkRowError(current_row, "Price cannot be negative")
+
+                material = session.get(MaterialModel, material_id)
+                if material is None:
+                    raise BulkRowError(current_row, f"Unknown material id {material_id}")
+                if not material.is_active:
+                    raise BulkRowError(current_row, "Cannot receive: material is inactive")
+
+                if session.get(LocationModel, location_id) is None:
+                    raise BulkRowError(current_row, f"Unknown location id {location_id}")
+
+                item = ReceivingItemModel(
+                    receiving_header_id=receiving_header_id,
+                    material_id=material_id,
+                    location_id=location_id,
+                    price_buy=price_buy,
+                    qty_received=qty_received,
+                    remarks=str(row.get("remarks", "")).strip(),
+                )
+                session.add(item)
+                session.flush()
+
+                session.add(
+                    StockModel(
+                        receiving_item_id=item.id,
+                        material_id=material_id,
+                        location_id=location_id,
+                        qty=qty_received,
+                    )
+                )
+
+                inv = _get_or_create_inventory_value(session, material_id)
+                _apply_receiving_delta(inv, Decimal("0"), Decimal("0"), qty_received, price_buy)
+                session.flush()
+
+            session.commit()
+        except BulkRowError as e:
+            session.rollback()
+            return {"error": f"Row {e.row_number}: {e.message}"}
+
+    return {"message": f"{len(rows)} item(s) added"}
 
 
 def update_receiving_item(

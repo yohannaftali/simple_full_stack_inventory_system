@@ -40,7 +40,8 @@ class ModulePage:
             parent=self,
             name="new",
             fields=self.fields,
-            start_blank=True
+            start_blank=True,
+            bulk_input=True
         )
 
         self.view = ModuleView(page, module, screen)
