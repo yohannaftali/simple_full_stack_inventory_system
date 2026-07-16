@@ -107,12 +107,7 @@ class Table:
             page=page, parent=self, controls=toolbar_controls
         )
         if self.filter_row.has_filters():
-            self.toolbar.add_button(
-                position="left",
-                callback=self._toggle_filter_row,
-                icon=ft.Icons.FILTER_LIST,
-                tooltip="Toggle Filters",
-            )
+            self.toolbar.add_filter_button(callback=self._toggle_filter_row)
         self.header: Header | None = None
         self.body: Body | None = None
         self.is_loading_more = False

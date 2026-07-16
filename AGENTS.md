@@ -1505,20 +1505,53 @@ managed via `pyproject.toml` (uv/Poetry).
     set (matches `ModuleToolbar`'s/`TableToolbar`'s existing 32dp/16-radius
     buttons); passing `label` instead renders an `ft.FilledButton`
     (icon + text) for a future non-icon-only use case. **Each toolbar keeps
-    its own default-color-resolution logic** (`ModuleToolbar`'s default
-    bg/fg is `SURFACE_CONTAINER_HIGH`/`ON_SURFACE`, `TableToolbar`'s is the
-    inverse — `ON_SURFACE`/`SURFACE_CONTAINER_HIGH`, a deliberate
-    higher-contrast pill against `TableToolbar`'s lighter
-    `SURFACE_CONTAINER_LOW` bar background) — only the final
-    `ft.IconButton`/`ft.FilledButton` construction moved into `Button`, so
-    no toolbar's default look changed; verified by constructing all three
-    toolbars' `add_new_button`/`add_save_button`/`add_submit_button` in a
-    real Flet 0.85.3 environment and confirming each resolved
-    `bgcolor`/`icon_color`/`height`/`width` exactly matches its
-    pre-refactor value. `add_button`/`add_new_button`/`add_save_button`/
-    `add_submit_button` on all three toolbars still own callback wiring,
-    default icon/tooltip, and left/right positioning — `Button` only
-    builds the control, it has no opinion on toolbar placement.
+    its own default-color-resolution logic** — only the final
+    `ft.IconButton`/`ft.FilledButton` construction moved into `Button`.
+    `add_button`/`add_new_button`/`add_save_button`/`add_submit_button` on
+    all three toolbars still own callback wiring, default icon/tooltip,
+    and left/right positioning — `Button` only builds the control, it has
+    no opinion on toolbar placement.
+  - **`TableToolbar` renders standard (not filled) Material 3 icon
+    buttons**: `add_button`'s original defaults resolved every button's
+    `bgcolor` to a forced fallback (`ON_SURFACE` — i.e. a permanently
+    filled near-black pill) instead of ever leaving it unset, so every
+    table toolbar button (add-new, save, and the filter-row toggle) looked
+    like an always-on filled/tonal button rather than Material 3's
+    "standard" icon-button variant (transparent background, icon only,
+    Flutter's own hover/pressed state-layer highlight appearing only on
+    interaction). Fixed by leaving `bgcolor=None` through to `Button`
+    unless a caller explicitly passes one (the rare filled/tonal case);
+    `ft.ButtonStyle(bgcolor=None, ...)` is exactly what Flutter's own
+    standard `IconButton` variant renders (null background, automatic
+    state-layer hover), so no extra `overlay_color` wiring was needed.
+    Default `icon_color` also changed from the near-white
+    `SURFACE_CONTAINER_HIGH` (only legible against that forced dark fill)
+    to `ON_SURFACE_VARIANT`, matching M3's own standard-icon-button
+    default foreground and staying legible against the toolbar's
+    `SURFACE_CONTAINER_LOW` bar background now that there's no fill behind
+    it. `TableToolbar.add_filter_button(callback, icon=FILTER_LIST,
+    tooltip="Toggle Filters", ...)` was added alongside `add_new_button`/
+    `add_save_button` so `Table.__init__`'s filter-row-toggle button (only
+    shown when `self.filter_row.has_filters()`) is a one-line call instead
+    of a direct `add_button(position="left", icon=..., tooltip=...)` call
+    — the third of the toolbar's "3 different-looking buttons" the fix
+    addressed, now sharing the same standard-variant styling as the other
+    two. `ModuleToolbar` was deliberately left alone (its default
+    `SURFACE_CONTAINER_HIGH`/`ON_SURFACE` filled-tonal look wasn't the
+    reported problem) — if it should also move to the standard variant,
+    that's a separate, explicit follow-up.
+  - `components/table/menu.py::Menu`'s hamburger `ft.PopupMenuButton` is
+    now explicitly sized to the same compact metrics as `Button`'s 32dp
+    buttons (`height=32, width=32, padding=0,
+    style=ButtonStyle(shape=RoundedRectangleBorder(radius=16))`,
+    `icon_size=20`, `icon_color=ON_SURFACE_VARIANT`) — its own defaults
+    (an ~48dp target with 8px padding) didn't fit the 48dp toolbar bar's
+    32px content height (after the bar's own 8px vertical padding), so it
+    rendered low/off-center next to the compact `Button`-built siblings in
+    the same `ft.Row`. `PopupMenuButton` isn't built through `Button`
+    itself (it's a different Flet control type with no `Button`
+    equivalent), so these numbers are duplicated by hand here — keep them
+    in sync with `Button`'s `size=32, radius=16` if that ever changes.
 
 - **Repositories / state & persistence** (`src/repository/`): each repo
   wraps `page.data` (in-memory cache) plus an optional persistence `store`.

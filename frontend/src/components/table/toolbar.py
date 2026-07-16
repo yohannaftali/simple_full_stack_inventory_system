@@ -75,11 +75,13 @@ class TableToolbar:
         bgcolor=None,
         icon_color=None,
     ):
-        """Return an button"""
-        # Maintain design continuity utilizing your custom standard token mappings
-        btn_bg = bgcolor if bgcolor is not None else ft.Colors.ON_SURFACE
+        """Return a standard Material 3 icon button - transparent
+        background (only the icon shows), with Flutter's own hover/pressed
+        state-layer highlight, since no explicit `bgcolor` is forced onto
+        the button's style. Pass `bgcolor` only for the rare filled/tonal
+        variant; the default renders the plain "standard" M3 icon button."""
         btn_fg = (
-            icon_color if icon_color is not None else ft.Colors.SURFACE_CONTAINER_HIGH
+            icon_color if icon_color is not None else ft.Colors.ON_SURFACE_VARIANT
         )
 
         button = Button(
@@ -87,7 +89,7 @@ class TableToolbar:
             on_click=callback,
             tooltip=tooltip,
             icon_color=btn_fg,
-            bgcolor=btn_bg,
+            bgcolor=bgcolor,
             size=32,
             radius=16,
         ).build()
@@ -127,6 +129,26 @@ class TableToolbar:
         """Return an 'Add Save' button"""
         self.add_button(
             position="right",
+            callback=callback,
+            icon=icon,
+            tooltip=tooltip,
+            bgcolor=bgcolor,
+            icon_color=icon_color,
+        )
+
+    def add_filter_button(
+        self,
+        callback,
+        icon=ft.Icons.FILTER_LIST,
+        tooltip="Toggle Filters",
+        bgcolor=None,
+        icon_color=None,
+    ):
+        """Add the per-column filter-row toggle button (issue #10/#20) to
+        the toolbar's left side - lets callers (e.g. `Table.__init__`) add
+        it in one line instead of calling `add_button` directly."""
+        self.add_button(
+            position="left",
             callback=callback,
             icon=icon,
             tooltip=tooltip,

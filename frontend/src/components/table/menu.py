@@ -116,10 +116,25 @@ class Menu:
             )
         )
 
+        # Sized/padded to match the compact 32dp toolbar buttons
+        # (components/button.py::Button's `size=32, radius=16`) - the
+        # default PopupMenuButton's own ~48dp size and 8px padding didn't
+        # fit inside the 48dp toolbar bar's 32px content height (after its
+        # 8px vertical padding), so the hamburger rendered low/off-center
+        # next to the other toolbar buttons rather than sharing their
+        # vertical center.
         self.menu = ft.PopupMenuButton(
             icon=ft.Icons.MENU,
+            icon_color=ft.Colors.ON_SURFACE_VARIANT,
+            icon_size=20,
             tooltip="Actions" if self.parent.is_inside_form else "Download",
             items=menu_items,
+            height=32,
+            width=32,
+            padding=0,
+            style=ft.ButtonStyle(
+                shape=ft.RoundedRectangleBorder(radius=16),
+            ),
         )
 
     def build(self):
