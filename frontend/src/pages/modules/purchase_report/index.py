@@ -50,6 +50,7 @@ class ModulePage:
             {"name": "material_code", "label": "Code", "type": "label"},
             {"name": "material_name", "label": "Material", "type": "label"},
             {"name": "total_qty", "label": "Total Qty", "type": "label", "format": "number"},
+            {"name": "unit_name", "label": "Unit", "type": "label"},
             {
                 "name": "total_purchase", "label": "Total Purchase",
                 "type": "label", "format": "number"

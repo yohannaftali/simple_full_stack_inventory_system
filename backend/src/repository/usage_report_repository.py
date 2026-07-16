@@ -18,6 +18,7 @@ from models.department import DepartmentModel
 from models.material import MaterialModel
 from models.stock_out_header import StockOutHeaderModel
 from models.stock_out_item import StockOutItemModel
+from models.unit_of_material import UnitOfMaterialModel
 
 
 class UsageReportRepository:
@@ -45,6 +46,8 @@ class UsageReportRepository:
                     MaterialModel.id.label("material_id"),
                     MaterialModel.material_code,
                     MaterialModel.material_name,
+                    UnitOfMaterialModel.code.label("unit_code"),
+                    UnitOfMaterialModel.name.label("unit_name"),
                     func.sum(StockOutItemModel.qty_out).label("total_qty_out"),
                     func.sum(StockOutItemModel.total_value).label("total_cost"),
                 )
@@ -54,6 +57,7 @@ class UsageReportRepository:
                 )
                 .join(DepartmentModel, DepartmentModel.id == StockOutHeaderModel.department_id)
                 .join(MaterialModel, MaterialModel.id == StockOutItemModel.material_id)
+                .join(UnitOfMaterialModel, UnitOfMaterialModel.id == MaterialModel.unit_id)
                 .group_by(DepartmentModel.id, MaterialModel.id)
             )
             query = apply_keyword_filter(
@@ -84,6 +88,8 @@ class UsageReportRepository:
                     "material_id": row.material_id,
                     "material_code": row.material_code,
                     "material_name": row.material_name,
+                    "unit_code": row.unit_code,
+                    "unit_name": row.unit_name,
                     "total_qty_out": row.total_qty_out,
                     "total_cost": row.total_cost,
                 }

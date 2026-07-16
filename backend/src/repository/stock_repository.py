@@ -12,6 +12,7 @@ from models.inventory_value import InventoryValueModel
 from models.location import LocationModel
 from models.material import MaterialModel
 from models.stock import StockModel
+from models.unit_of_material import UnitOfMaterialModel
 
 
 class StockRepository:
@@ -30,10 +31,13 @@ class StockRepository:
                     LocationModel.id.label("location_id"),
                     LocationModel.code.label("location_code"),
                     LocationModel.name.label("location_name"),
+                    UnitOfMaterialModel.code.label("unit_code"),
+                    UnitOfMaterialModel.name.label("unit_name"),
                     func.sum(StockModel.qty).label("qty"),
                 )
                 .join(MaterialModel, MaterialModel.id == StockModel.material_id)
                 .join(LocationModel, LocationModel.id == StockModel.location_id)
+                .join(UnitOfMaterialModel, UnitOfMaterialModel.id == MaterialModel.unit_id)
                 .group_by(MaterialModel.id, LocationModel.id)
                 .having(func.sum(StockModel.qty) > 0)
             )
@@ -71,6 +75,8 @@ class StockRepository:
                         "location_id": row.location_id,
                         "location_code": row.location_code,
                         "location_name": row.location_name,
+                        "unit_code": row.unit_code,
+                        "unit_name": row.unit_name,
                         "qty": row.qty,
                         "average_price": average_price,
                         "value": row.qty * average_price,
@@ -91,9 +97,13 @@ class StockRepository:
                     LocationModel.id.label("location_id"),
                     LocationModel.code.label("location_code"),
                     LocationModel.name.label("location_name"),
+                    UnitOfMaterialModel.code.label("unit_code"),
+                    UnitOfMaterialModel.name.label("unit_name"),
                     func.sum(StockModel.qty).label("qty"),
                 )
                 .join(LocationModel, LocationModel.id == StockModel.location_id)
+                .join(MaterialModel, MaterialModel.id == StockModel.material_id)
+                .join(UnitOfMaterialModel, UnitOfMaterialModel.id == MaterialModel.unit_id)
                 .filter(StockModel.material_id == material_id)
                 .group_by(LocationModel.id)
                 .having(func.sum(StockModel.qty) > 0)
@@ -105,6 +115,8 @@ class StockRepository:
                     "location_id": row.location_id,
                     "location_code": row.location_code,
                     "location_name": row.location_name,
+                    "unit_code": row.unit_code,
+                    "unit_name": row.unit_name,
                     "qty": row.qty,
                 }
                 for row in rows

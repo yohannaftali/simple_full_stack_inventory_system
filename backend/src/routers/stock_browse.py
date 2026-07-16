@@ -28,6 +28,7 @@ _EXPORT_COLUMNS = [
     ("location_code", "Location Code"),
     ("location_name", "Location"),
     ("qty", "Qty"),
+    ("unit_name", "Unit"),
     ("average_price", "Avg Price"),
     ("value", "Value"),
 ]

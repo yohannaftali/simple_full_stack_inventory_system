@@ -48,6 +48,10 @@ class ItemTable:
                 "type": "label", "format": "number"
             },
             {
+                "name": "unit_name", "label": "Unit",
+                "type": "label"
+            },
+            {
                 "name": "price", "label": "Price",
                 "type": "label", "format": "number"
             },

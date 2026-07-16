@@ -11,6 +11,7 @@ from routers.master_department import router as master_department_router
 from routers.master_location import router as master_location_router
 from routers.master_material import router as master_material_router
 from routers.master_supplier import router as master_supplier_router
+from routers.master_unit_of_material import router as master_unit_of_material_router
 from routers.module import router as module_router
 from routers.module_admin import router as module_admin_router
 from routers.module_group_admin import router as module_group_admin_router
@@ -38,6 +39,7 @@ app.include_router(master_material_router)
 app.include_router(master_supplier_router)
 app.include_router(master_department_router)
 app.include_router(master_category_router)
+app.include_router(master_unit_of_material_router)
 app.include_router(stock_in_router)
 app.include_router(stock_out_router)
 app.include_router(stock_browse_router)

@@ -5,7 +5,12 @@ from components.form.form import Form
 
 
 class ModulePage:
-    """Module screen class"""
+    """Module screen class.
+
+    No delete button, unlike every other master-data edit screen — a unit of
+    material can never be removed once created (see
+    `backend/src/routers/master_unit_of_material.py`'s docstring for why).
+    """
 
     def __init__(self, page: ft.Page, module: str, screen=str, record_id: str | int = None):
         self.page = page
@@ -16,40 +21,29 @@ class ModulePage:
         self.fields = [
             {
                 "name": "id", "type": "hidden",
-                "key": True
+                "key": True,
             },
             {
-                "name": "material_code", "label": "Code", "icon": ft.Icons.QR_CODE,
+                "name": "code", "label": "Code", "icon": ft.Icons.QR_CODE,
                 "row": 1, "col": {"sm": 12, "md": 6},
                 "type": "input", "autofocus": True
             },
             {
-                "name": "material_name", "label": "Name", "icon": ft.Icons.LABEL,
+                "name": "name", "label": "Name", "icon": ft.Icons.STRAIGHTEN,
                 "row": 1, "col": {"sm": 12, "md": 6},
                 "type": "input"
-            },
-            {
-                "name": "unit_id", "label": "Unit", "icon": ft.Icons.STRAIGHTEN,
-                "row": 2, "col": {"sm": 12, "md": 6},
-                "type": "select"
-            },
-            {
-                "name": "category_id", "label": "Category", "icon": ft.Icons.CATEGORY,
-                "row": 2, "col": {"sm": 12, "md": 6},
-                "type": "select"
             }
         ]
 
         self.form = Form(
             page=page,
             parent=self,
-            name="new",
-            fields=self.fields,
-            start_blank=True
+            name="edit",
+            fields=self.fields
         )
 
         self.view = ModuleView(page, module, screen)
-        self.view.header.set_title("New Material")
+        self.view.header.set_title("Edit Unit of Material")
 
         self.view.toolbar.add_submit_button(callback=self.callback_submit)
 

@@ -27,6 +27,7 @@ from models.material import MaterialModel
 from models.receiving_header import ReceivingHeaderModel
 from models.receiving_item import ReceivingItemModel
 from models.supplier import SupplierModel
+from models.unit_of_material import UnitOfMaterialModel
 
 
 class PurchaseReportRepository:
@@ -96,6 +97,8 @@ class PurchaseReportRepository:
                     MaterialModel.id.label("material_id"),
                     MaterialModel.material_code,
                     MaterialModel.material_name,
+                    UnitOfMaterialModel.code.label("unit_code"),
+                    UnitOfMaterialModel.name.label("unit_name"),
                     func.sum(ReceivingItemModel.qty_received).label("total_qty"),
                     func.sum(
                         ReceivingItemModel.qty_received * ReceivingItemModel.price_buy
@@ -106,6 +109,7 @@ class PurchaseReportRepository:
                     ReceivingHeaderModel.id == ReceivingItemModel.receiving_header_id,
                 )
                 .join(MaterialModel, MaterialModel.id == ReceivingItemModel.material_id)
+                .join(UnitOfMaterialModel, UnitOfMaterialModel.id == MaterialModel.unit_id)
                 .group_by(MaterialModel.id)
             )
             query = apply_field_filters(
@@ -124,6 +128,8 @@ class PurchaseReportRepository:
                     "material_id": row.material_id,
                     "material_code": row.material_code,
                     "material_name": row.material_name,
+                    "unit_code": row.unit_code,
+                    "unit_name": row.unit_name,
                     "total_qty": row.total_qty,
                     "total_purchase": row.total_purchase,
                 }

@@ -48,6 +48,10 @@ class ModulePage:
                 "type": "label", "format": "number"
             },
             {
+                "name": "unit_name", "label": "Unit",
+                "type": "label"
+            },
+            {
                 "name": "total_cost", "label": "Total Cost",
                 "type": "label", "format": "number"
             }

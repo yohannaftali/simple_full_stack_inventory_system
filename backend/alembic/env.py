@@ -27,6 +27,7 @@ from models import (  # noqa: E402,F401
     stock_out_header,
     stock_out_item,
     supplier,
+    unit_of_material,
     user,
     user_module_permission,
 )

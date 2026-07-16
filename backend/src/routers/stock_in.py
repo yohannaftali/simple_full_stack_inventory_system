@@ -45,6 +45,7 @@ from repository.location_repository import LocationRepository
 from repository.material_repository import MaterialRepository
 from repository.receiving_repository import ReceivingRepository
 from repository.supplier_repository import SupplierRepository
+from repository.unit_of_material_repository import UnitOfMaterialRepository
 from services import inventory_service
 from services.auth_service import require_module_access
 from services.bulk_service import BulkRowError, bulk_create, parse_bulk_rows
@@ -54,6 +55,7 @@ _receiving_repository = ReceivingRepository()
 _material_repository = MaterialRepository()
 _location_repository = LocationRepository()
 _supplier_repository = SupplierRepository()
+_unit_repository = UnitOfMaterialRepository()
 
 _require_access = require_module_access("stock_in")
 
@@ -68,6 +70,7 @@ _EXPORT_ITEMS_COLUMNS = [
     ("location_code", "Location Code"),
     ("location_name", "Location"),
     ("qty_received", "Qty"),
+    ("unit_name", "Unit"),
     ("price_buy", "Price"),
     ("remarks", "Remarks"),
 ]
@@ -91,6 +94,7 @@ def _serialize_header(header) -> dict:
 def _serialize_item(item) -> dict:
     material = _material_repository.get_material_by_id(item.material_id)
     location = _location_repository.get_location_by_id(item.location_id)
+    unit = _unit_repository.get_unit_by_id(material.unit_id) if material else None
     return {
         "id": item.id,
         "material_code": material.material_code if material else "",
@@ -98,6 +102,8 @@ def _serialize_item(item) -> dict:
         "location_code": location.code if location else "",
         "location_name": location.name if location else "",
         "qty_received": item.qty_received,
+        "unit_code": unit.code if unit else "",
+        "unit_name": unit.name if unit else "",
         "price_buy": item.price_buy,
         "remarks": item.remarks,
     }

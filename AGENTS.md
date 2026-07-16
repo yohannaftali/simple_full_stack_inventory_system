@@ -35,6 +35,9 @@
 | #13 | chore(infra): move Dockerfile-backend/-frontend/-mariadb into their service subfolders | closed | 2026-07-15 |
 | #14 | feat(backend): seed default admin username/password/TOTP from .env instead of hardcoding | closed | 2026-07-15 |
 | #15 | feat(frontend): make default backend server URL configurable via .env instead of hardcoding | closed | 2026-07-15 |
+| #16 | feat(inventory): add unit of material (UOM) master table, link to materials, show in qty tables | ready-for-review | 2026-07-16 |
+| #17 | feat(inventory): replace material deletion with active/inactive status flag | open | 2026-07-16 |
+| #18 | feat(inventory): seed a full default unit-of-material catalog via Alembic | ready-for-review | 2026-07-16 |
 
 ## Big Picture
 
@@ -840,17 +843,45 @@ Master data: `locations` (`LocationModel`: `code`, `name`), `suppliers`
 (`SupplierModel`: `code`, `name`), `departments` (`DepartmentModel`: `code`,
 `name` — who consumes inventory, for usage reporting), `categories`
 (`CategoryModel`: `code`, `name`, `description` — classifies materials into
-logical groups, e.g. Raw Materials/Packaging/Tools), and `materials`
-(`MaterialModel`: `material_code`, `material_name`, `category_id` — nullable
-FK to `categories.id`, since materials created before the category link has
-no category to point to), managed via the `master_location`/`master_supplier`/
-`master_department`/`master_category`/`master_material` admin modules
-(plain CRUD, same shape as `ap_module`). `master_material`'s new/edit form
-renders `category_id` as a `select` field
-(`GET C_master_material/call_category_id_select`), and its list/get
-responses include a denormalized `category_name` for display — the same
-pattern as `stock_in`/`stock_out`'s `material_id`/`location_id` selects,
-just on master data instead of a transactional item. **`materials` does
+logical groups, e.g. Raw Materials/Packaging/Tools), `units_of_material`
+(`UnitOfMaterialModel`: `code`, `name` — e.g. `PCS`/`Pieces`,
+`KG`/`Kilogram`; issue #16), and `materials` (`MaterialModel`:
+`material_code`, `material_name`, `category_id` — nullable FK to
+`categories.id`, since materials created before the category link has no
+category to point to, `unit_id` — **non-nullable** FK to
+`units_of_material.id`, exactly one unit per material, no exceptions),
+managed via the `master_location`/`master_supplier`/`master_department`/
+`master_category`/`master_unit_of_material`/`master_material` admin modules
+(plain CRUD, same shape as `ap_module`) — **except `master_unit_of_material`,
+which has no delete endpoint/button at all**: a unit of material can never
+be removed once created, since every material links to exactly one and
+deleting the unit out from under an in-use material would break that link
+(same integrity reasoning as materials themselves not being deletable, see
+issue #17). `master_material`'s new/edit form renders `category_id` and
+`unit_id` as `select` fields (`GET C_master_material/call_category_id_select`
+/ `call_unit_id_select`, `unit_id` required — submit rejects a blank one with
+`{"error": "Unit of Material is required"}`), and its list/get responses
+include denormalized `category_name`/`unit_id`/`unit_code`/`unit_name` for
+display — the same pattern as `stock_in`/`stock_out`'s `material_id`/
+`location_id` selects, just on master data instead of a transactional item.
+Migration `0022_create_units_of_material_table.py` seeds one default unit
+(`PCS`/`Pieces`) and backfills every pre-existing material onto it before
+making `materials.unit_id` `NOT NULL`, so the column can be mandatory from
+day one without breaking existing rows; `0023_seed_master_unit_of_material_module.py`
+seeds the module + admin grant, same pattern as `0018`.
+`0024_seed_default_units_of_material.py` (issue #18) then seeds a full
+catalog of 22 more common units (`L`/Litres, `G`/Grams, `KG`/Kilograms,
+`LB`/Pounds, `OZ`/Ounces, `GAL`/Gallons, `ML`/Millilitres, `CTN`/Carton,
+`PACK`/Pack, `PLT`/Pallet, `ROLL`/Roll, `BOX`/Boxes, `DZ`/Dozens,
+`BTL`/Bottles, `CASE`/Cases, `M`/Meters, `CM`/Centimeters, `FT`/Feet,
+`IN`/Inches, `UNIT`/Units, `SET`/Sets, `PAIR`/Pairs) so a fresh setup has a
+ready-to-use catalog instead of needing every unit added by hand —
+match-by-code idempotent (skips `PCS`, already owned by `0022`) and
+reversible, but its `downgrade()` skips (rather than raising on) any unit a
+material has since been created against, using a per-row `SAVEPOINT`
+(`bind.begin_nested()`) so one blocked delete doesn't abort the whole
+migration's transaction — same friendly-skip precedent as every other
+delete-guard in this codebase. **`materials` does
 not carry its own `supplier_id`** — a material may be sourced from many
 different suppliers over time, so supplier tracking instead lives at the
 receiving-header level (`receiving_headers.supplier_id` below); an earlier
@@ -1011,13 +1042,33 @@ Routers (all under `backend/src/routers/`, each gated by
   and `call_supplier_id_select` for its header form; `stock_out.py`
   additionally exposes `call_department_id_select` for its header form.
 
+**Unit of material (UOM) display convention** (issue #16): every material
+links to exactly one unit of material (`materials.unit_id`, non-nullable —
+see the Inventory Domain section above), and every table/list that shows a
+material *quantity* displays that material's unit alongside the qty column:
+`stock_browse` (`qty`/`unit_name`), `stock_in`'s item sub-table
+(`qty_received`/`unit_name`), `stock_out`'s item sub-table
+(`qty_out`/`unit_name`) and its `item_new.py` per-location "Qty Stock"/"Qty
+Issue" table (`unit_name` column, no backend serialization needed there
+since `stock_repository.py::list_stock_by_material` already returns it),
+`usage_report` (`total_qty_out`/`unit_name`), and `purchase_report`'s
+**by-material** table only (`total_qty`/`unit_name`) — deliberately **not**
+`purchase_report`'s by-supplier table, since that one aggregates `total_qty`
+across many different materials that may carry different units, so a single
+unit column there would be misleading. Each qty-bearing repository/router
+joins `UnitOfMaterialModel` (via `MaterialModel.unit_id`) and adds
+`unit_code`/`unit_name` to its row dict; `master_material`'s own list/get
+responses do the same for its own `unit_id` field.
+
 **Frontend module structure** (`frontend/src/pages/modules/`): `master_location`,
 `master_supplier`, `master_department`, `master_category`, `master_material`,
-and `master_module_group` are plain `{index,new,edit}.py` CRUD, identical in
-shape to `ap_module` (`master_category`'s `new`/`edit` additionally carry a
-plain `description` input field; `master_material`'s `new`/`edit` carry a
-`category_id` select field, `index` a read-only `category_name` label).
-`ap_master_user`'s `new`/`edit` similarly carry a `department_id` select
+`master_unit_of_material`, and `master_module_group` are plain
+`{index,new,edit}.py` CRUD, identical in shape to `ap_module`
+(`master_category`'s `new`/`edit` additionally carry a plain `description`
+input field; `master_material`'s `new`/`edit` carry `category_id` and
+`unit_id` select fields, `index` read-only `category_name`/`unit_name`
+labels; `master_unit_of_material`'s `edit.py` has **no delete button** —
+see the Inventory Domain section above for why). `ap_master_user`'s `new`/`edit` similarly carry a `department_id` select
 field (optional — blank is valid) and `index` a read-only `department_name`
 label; `stock_out`'s `new`/`edit` carry a required `department_id` select on
 the header form and `index` a read-only `department_name` label. `ap_module`

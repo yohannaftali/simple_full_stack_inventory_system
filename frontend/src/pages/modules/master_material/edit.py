@@ -30,6 +30,11 @@ class ModulePage:
                 "type": "input"
             },
             {
+                "name": "unit_id", "label": "Unit", "icon": ft.Icons.STRAIGHTEN,
+                "row": 2, "col": {"sm": 12, "md": 6},
+                "type": "select"
+            },
+            {
                 "name": "category_id", "label": "Category", "icon": ft.Icons.CATEGORY,
                 "row": 2, "col": {"sm": 12, "md": 6},
                 "type": "select"

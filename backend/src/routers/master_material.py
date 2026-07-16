@@ -9,6 +9,10 @@ Supplier tracking lives at the receiving-header level instead
 (`receiving_headers.supplier_id`, see `stock_in.py`) — a material may be
 sourced from many different suppliers over time, so it doesn't carry a
 `supplier_id` of its own (removed, see issue #11).
+
+Every material also links to exactly one unit of material (`unit_id`,
+required — see issue #16); the edit/new form's `unit_id` field is a `select`
+sourced from `call_unit_id_select`.
 """
 
 from fastapi import APIRouter, Depends, Form, Query, Request
@@ -20,12 +24,14 @@ from models.material import MaterialModel
 from models.user import UserModel
 from repository.category_repository import CategoryRepository
 from repository.material_repository import MaterialRepository
+from repository.unit_of_material_repository import UnitOfMaterialRepository
 from services.auth_service import require_module_access
 from services.bulk_service import BulkRowError, bulk_create, parse_bulk_rows
 
 router = APIRouter(prefix="/C_master_material", tags=["master-material"])
 _material_repository = MaterialRepository()
 _category_repository = CategoryRepository()
+_unit_repository = UnitOfMaterialRepository()
 
 _require_access = require_module_access("master_material")
 
@@ -33,6 +39,7 @@ _EXPORT_COLUMNS = [
     ("material_code", "Material Code"),
     ("material_name", "Material Name"),
     ("category_name", "Category"),
+    ("unit_name", "Unit"),
 ]
 
 
@@ -42,12 +49,16 @@ def _serialize(material: MaterialModel) -> dict:
         if material.category_id
         else None
     )
+    unit = _unit_repository.get_unit_by_id(material.unit_id)
     return {
         "id": material.id,
         "material_code": material.material_code,
         "material_name": material.material_name,
         "category_id": str(material.category_id) if material.category_id else "",
         "category_name": category.name if category else "",
+        "unit_id": str(material.unit_id),
+        "unit_code": unit.code if unit else "",
+        "unit_name": unit.name if unit else "",
     }
 
 
@@ -94,9 +105,13 @@ def submit(
     id: str = Form(""),  # noqa: A002
     material_code: str = Form(...),
     material_name: str = Form(...),
+    unit_id: str = Form(""),
     category_id: str = Form(""),
     user: UserModel = Depends(_require_access),
 ) -> dict:
+    if not unit_id:
+        return {"error": "Unit of Material is required"}
+    unit_id_value = int(unit_id)
     category_id_value = int(category_id) if category_id else None
 
     if id:
@@ -104,6 +119,7 @@ def submit(
             int(id),
             material_code=material_code,
             material_name=material_name,
+            unit_id=unit_id_value,
             category_id=category_id_value,
         )
         if not updated:
@@ -113,6 +129,7 @@ def submit(
     _material_repository.create_material(
         material_code=material_code,
         material_name=material_name,
+        unit_id=unit_id_value,
         category_id=category_id_value,
     )
     return {"message": "Material created successfully"}
@@ -137,16 +154,31 @@ def call_category_id_select(user: UserModel = Depends(_require_access)) -> list:
     ]
 
 
+@router.get("/call_unit_id_select")
+def call_unit_id_select(user: UserModel = Depends(_require_access)) -> list:
+    return [
+        {"value": str(u.id), "label": f"{u.code} - {u.name}"}
+        for u in _unit_repository.get_all_units()
+    ]
+
+
 @router.post("/submit_bulk")
 async def submit_bulk(request: Request, user: UserModel = Depends(_require_access)) -> dict:
     form = await request.form()
-    rows = parse_bulk_rows(form, ["material_code", "material_name", "category_id"])
+    rows = parse_bulk_rows(form, ["material_code", "material_name", "unit_id", "category_id"])
 
     def build(row, session):
         material_code = str(row.get("material_code", "")).strip()
         material_name = str(row.get("material_name", "")).strip()
         if not material_code or not material_name:
             raise BulkRowError(row["_row"], "Code and Name are required")
+        unit_id_raw = str(row.get("unit_id", "")).strip()
+        if not unit_id_raw:
+            raise BulkRowError(row["_row"], "Unit of Material is required")
+        try:
+            unit_id = int(unit_id_raw)
+        except ValueError:
+            raise BulkRowError(row["_row"], f"Invalid Unit of Material: {unit_id_raw}")
         category_id_raw = str(row.get("category_id", "")).strip()
         try:
             category_id = int(category_id_raw) if category_id_raw else None
@@ -155,6 +187,7 @@ async def submit_bulk(request: Request, user: UserModel = Depends(_require_acces
         return MaterialModel(
             material_code=material_code,
             material_name=material_name,
+            unit_id=unit_id,
             category_id=category_id,
         )
 

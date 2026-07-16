@@ -36,6 +36,7 @@ _EXPORT_COLUMNS = [
     ("department_name", "Department"),
     ("material_code", "Material Code"),
     ("material_name", "Material"),
+    ("unit_name", "Unit"),
     ("total_qty_out", "Total Qty"),
     ("total_cost", "Total Cost"),
 ]

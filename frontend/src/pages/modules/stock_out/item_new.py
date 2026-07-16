@@ -51,6 +51,7 @@ class ModulePage:
                 {"name": "location_code", "label": "Code"},
                 {"name": "location_name", "label": "Location"},
                 {"name": "qty", "label": "Qty Stock", "format": "number"},
+                {"name": "unit_name", "label": "Unit"},
                 {
                     "name": "qty_issue",
                     "label": "Qty Issue",

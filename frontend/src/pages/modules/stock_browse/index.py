@@ -38,6 +38,10 @@ class ModulePage:
                 "type": "label", "format": "number"
             },
             {
+                "name": "unit_name", "label": "Unit",
+                "type": "label"
+            },
+            {
                 "name": "average_price", "label": "Avg Price",
                 "type": "label", "format": "number"
             },

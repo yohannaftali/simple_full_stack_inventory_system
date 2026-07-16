@@ -49,6 +49,7 @@ _EXPORT_BY_SUPPLIER_COLUMNS = [
 _EXPORT_BY_MATERIAL_COLUMNS = [
     ("material_code", "Material Code"),
     ("material_name", "Material"),
+    ("unit_name", "Unit"),
     ("total_qty", "Total Qty"),
     ("total_purchase", "Total Purchase"),
 ]
