@@ -558,3 +558,11 @@
 - Scope: backend, frontend
 - Files: `backend/src/models/material.py`, `backend/src/repository/material_repository.py`, `backend/src/routers/master_material.py`, `backend/src/routers/stock_in.py`, `backend/alembic/versions/0025_add_is_active_to_materials.py` (new), `frontend/src/pages/modules/master_material/{new,edit,index}.py`, `AGENTS.md`
 - Issue #17 addressed on GitHub
+
+## [2026-07-16] — #17 status changed: open → closed
+- Title: feat(inventory): replace material deletion with active/inactive status flag
+- Platform: GitHub
+
+## [2026-07-16] — #1 status changed: open → closed
+- Title: feat(infra): scaffold full-stack app with MariaDB, FastAPI, and Flet via Podman Compose
+- Platform: GitHub

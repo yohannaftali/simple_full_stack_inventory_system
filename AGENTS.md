@@ -20,7 +20,7 @@
 ## Tracked Issues
 | ID | Title | Status | Last Checked |
 |----|-------|--------|--------------|
-| #1 | feat(infra): scaffold full-stack app with MariaDB, FastAPI, and Flet via Podman Compose | ready-for-review | 2026-07-08 |
+| #1 | feat(infra): scaffold full-stack app with MariaDB, FastAPI, and Flet via Podman Compose | closed | 2026-07-16 |
 | #2 | fix(frontend): table search bar loses focus on every keystroke | closed | 2026-07-14 |
 | #3 | feat(frontend): add multi-format export menu to shared Table toolbar | closed | 2026-07-14 |
 | #4 | feat(frontend): client-side CSV/XLSX upload into table input fields via hamburger menu | closed | 2026-07-15 |
@@ -36,7 +36,7 @@
 | #14 | feat(backend): seed default admin username/password/TOTP from .env instead of hardcoding | closed | 2026-07-15 |
 | #15 | feat(frontend): make default backend server URL configurable via .env instead of hardcoding | closed | 2026-07-15 |
 | #16 | feat(inventory): add unit of material (UOM) master table, link to materials, show in qty tables | ready-for-review | 2026-07-16 |
-| #17 | feat(inventory): replace material deletion with active/inactive status flag | ready-for-review | 2026-07-16 |
+| #17 | feat(inventory): replace material deletion with active/inactive status flag | closed | 2026-07-16 |
 | #18 | feat(inventory): seed a full default unit-of-material catalog via Alembic | ready-for-review | 2026-07-16 |
 
 ## Big Picture
