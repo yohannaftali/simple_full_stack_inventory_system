@@ -30,7 +30,7 @@ from utils.http_client import HttpClient
 _UPLOADABLE_TYPES = {"input", "date", "select"}
 
 
-class BulkMenu:
+class MenuForm:
     def __init__(self, page: ft.Page, form):
         self.page = page
         self.form = form  # components/form/form.py Form

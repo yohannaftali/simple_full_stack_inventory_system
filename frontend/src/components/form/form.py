@@ -128,9 +128,9 @@ class Form:
         if view is None or not hasattr(view, "toolbar"):
             return
 
-        from components.form.bulk_menu import BulkMenu
+        from components.form.menu import MenuForm
 
-        self.bulk_menu = BulkMenu(page=self.page, form=self)
+        self.bulk_menu = MenuForm(page=self.page, form=self)
         if view.toolbar.right is None:
             view.toolbar.right = []
         view.toolbar.right.append(self.bulk_menu.build())

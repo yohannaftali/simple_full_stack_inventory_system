@@ -13,7 +13,7 @@ Upload entries are only shown when the table has at least one editable
 column (input/textarea/select/option/datepicker/checkbox) - a purely
 read-only list table has nothing for an upload to populate; bulk record
 creation for those goes through the "Add New" screen's own bulk-upload
-menu instead (issue #5, components/form/bulk_menu.py).
+menu instead (issue #5, components/form/menu.py::MenuForm).
 """
 
 import csv
@@ -70,7 +70,7 @@ def parse_xlsx_bytes(data: bytes) -> list[list[str]]:
     return rows
 
 
-class Menu:
+class TableMenu:
     """Wraps a `PopupMenuButton` (hamburger icon) - `parent` is the owning
     `Table`, read for its current module/name/filter/sort/custom_param state
     at click time, not build time.
@@ -107,7 +107,7 @@ class Menu:
         # uploaded values - a purely read-only list table (no "input"/
         # "select"/etc. field) has nothing for it to populate. Bulk record
         # creation for those tables already goes through the "Add New"
-        # screen's own bulk-upload menu (issue #5, components/form/bulk_menu.py).
+        # screen's own bulk-upload menu (issue #5, components/form/menu.py::MenuForm).
         has_editable_fields = any(
             field.get("type") in _EDITABLE_TYPES for field in self.parent.fields
         )

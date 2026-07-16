@@ -1,9 +1,9 @@
 import flet as ft
-from components.table.columns import TABLE_COLUMN_SPACING, TABLE_HORIZONTAL_MARGIN, Columns
+from components.table.columns import TABLE_COLUMN_SPACING, TABLE_HORIZONTAL_MARGIN, TableColumns
 
 
-class Header:
-    def __init__(self, page: ft.Page, columns: Columns):
+class TableHeader:
+    def __init__(self, page: ft.Page, columns: TableColumns):
         self.page = page
         self.columns = columns
         self.data_table: ft.DataTable | None = None
@@ -30,7 +30,7 @@ class Header:
         return self.data_table
 
     def update(self):
-        print("Header.update")
+        print("TableHeader.update")
         print(self.columns.widths)
         if self.data_table is not None:
             self.data_table.columns = self.columns.columns

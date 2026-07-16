@@ -53,7 +53,7 @@ TABLE_HORIZONTAL_MARGIN = 10
 TABLE_COLUMN_SPACING = 5
 
 
-class Columns:
+class TableColumns:
     def __init__(self, page: ft.Page, fields: list):
         self.page = page
         self.fields = fields
@@ -213,7 +213,7 @@ class Columns:
         self.columns = self._build_data_columns()
 
     def _build_data_columns(self) -> list:
-        print("Columns.build (fresh)")
+        print("TableColumns.build (fresh)")
         print(self.widths)
         visible_fields = [
             f
@@ -576,7 +576,7 @@ class Columns:
 
         # ensure integer widths
         self.widths = [int(w) for w in widths]
-        print("Columns.load: columns width")
+        print("TableColumns.load: columns width")
         print(self.widths)
         self.rebuild()
         self._reposition_handles()

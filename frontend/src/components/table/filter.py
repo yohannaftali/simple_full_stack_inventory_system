@@ -9,7 +9,7 @@ column. A field is treated as numeric-operator (hint pointing at the
 `>=5and<=10` syntax `core/table_query.py::_parse_numeric_filter`
 understands) when marked `"numeric_filter": True`, or automatically when
 its own display config already says so (`"format": "number"` /
-`"is_numeric": True` — the same flags `Columns._build_data_columns()`
+`"is_numeric": True` — the same flags `TableColumns._build_data_columns()`
 already reads for right-alignment) - one source of truth for "this
 column is numeric," not a second flag every numeric field must
 separately remember to set.
@@ -19,15 +19,15 @@ one fixed-width `ft.Container` per **visible** column (not just the
 filterable ones, so a non-filterable column still reserves its slot and
 every filter field after it stays aligned), using the exact same
 `TABLE_HORIZONTAL_MARGIN`/`TABLE_COLUMN_SPACING` constants and
-`Columns.widths` list the header/body DataTables and the resize-handle
+`TableColumns.widths` list the header/body DataTables and the resize-handle
 overlay already position themselves from (see
-`Columns._reposition_handles()`) - a plain `ft.Row` with matching
+`TableColumns._reposition_handles()`) - a plain `ft.Row` with matching
 left-padding and inter-item spacing lines up pixel-for-pixel with
 `ft.DataTable`'s own `horizontal_margin`/`column_spacing` layout, no
 absolute positioning needed the way the resize handles require (those sit
 in a separate overlay Stack on top of the header; this is a normal Row
 underneath it). `Table` calls `reposition()` after every place
-`Columns.widths` can change (initial/reloaded data, a resize drag tick, a
+`TableColumns.widths` can change (initial/reloaded data, a resize drag tick, a
 double-tap reset) to patch each field's `Container.width` in place -
 cheap, since (unlike the header's `ft.DataTable`) a plain `Container`
 genuinely does shrink on a live width patch, no rebuild required.
@@ -41,16 +41,16 @@ never leaves a filter silently still applied server-side.
 
 import flet as ft
 
-from components.table.columns import TABLE_COLUMN_SPACING, TABLE_HORIZONTAL_MARGIN, Columns
+from components.table.columns import TABLE_COLUMN_SPACING, TABLE_HORIZONTAL_MARGIN, TableColumns
 
 
-class FilterRow:
-    def __init__(self, page: ft.Page, parent, fields: list, columns: Columns, on_apply=None):
+class TableFilter:
+    def __init__(self, page: ft.Page, parent, fields: list, columns: TableColumns, on_apply=None):
         self.page = page
         self.parent = parent
         self.columns = columns
         self.on_apply = on_apply
-        # Every visible column, in the same order as Columns.index/.widths -
+        # Every visible column, in the same order as TableColumns.index/.widths -
         # needed so each field (filterable or not) gets a same-width slot
         # and the row stays aligned with the table body.
         self.visible_fields = [
@@ -137,9 +137,9 @@ class FilterRow:
 
     def reposition(self) -> None:
         """Patch each field's Container.width from the current
-        `Columns.widths` - called by `Table` after every place column
+        `TableColumns.widths` - called by `Table` after every place column
         widths can change (data load, resize drag, double-tap reset), same
-        trigger points as `Columns._reposition_handles()`."""
+        trigger points as `TableColumns._reposition_handles()`."""
         if not self.columns.widths or not self.field_containers:
             return
         for i, container in enumerate(self.field_containers):

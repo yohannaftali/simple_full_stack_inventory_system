@@ -1,7 +1,7 @@
 import flet as ft
 
 from components.form.date import DateForm
-from components.table.columns import Columns
+from components.table.columns import TableColumns
 from utils.formatting import format_date, format_number, format_time
 from utils.http_client import HttpClient
 
@@ -16,8 +16,8 @@ _FORMATTERS = {
 _EDITABLE_TYPES = {"input", "textarea", "select", "option", "datepicker", "checkbox"}
 
 
-class Rows:
-    def __init__(self, page: ft.Page, columns: Columns, parent=None):
+class TableRows:
+    def __init__(self, page: ft.Page, columns: TableColumns, parent=None):
         self.page = page
         self.columns = columns
         self.parent = parent
@@ -35,13 +35,13 @@ class Rows:
         self._select_options_cache: dict[str, list[dict]] = {}
 
     def build(self):
-        print("Rows.build")
+        print("TableRows.build")
         print(self.columns.widths)
         return self.rows
 
     def load(self, data: list, append: bool = False):
         columns_widths: list[int] | None = self.columns.widths
-        print("Rows.load: coloumns width")
+        print("TableRows.load: coloumns width")
         print(columns_widths)
         row = len(self.rows) if append else 0
         if not append:

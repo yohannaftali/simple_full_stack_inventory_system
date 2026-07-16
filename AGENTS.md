@@ -41,7 +41,8 @@
 | #19 | fix(frontend): table search bar styling regressions; lighter placeholder color on table + home search bars | ready-for-review | 2026-07-16 |
 | #20 | fix(frontend): redesign table filter row — per-column alignment, live filtering, inline clear | ready-for-review | 2026-07-16 |
 | #21 | chore(frontend): extract shared Button component to DRY up toolbar add_*_button methods | closed | 2026-07-16 |
-| #22 | fix(frontend): hide CSV/XLSX upload menu items on tables with no editable columns | ready-for-review | 2026-07-16 |
+| #22 | fix(frontend): hide CSV/XLSX upload menu items on tables with no editable columns | closed | 2026-07-16 |
+| #23 | chore(frontend): rename table/form component files and classes for clearer, unambiguous naming | ready-for-review | 2026-07-16 |
 
 ## Big Picture
 
@@ -278,7 +279,7 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
     documented gap as `apply_keyword_filter`'s own HAVING branch.
     **On by default for every non-hidden field, every table** (rolled out
     2026-07-15, same day as landing) — the frontend flips the polarity
-    from the original opt-in design: `FilterRow.__init__` includes any
+    from the original opt-in design: `TableFilter.__init__` includes any
     field with a `name` whose `"type"` isn't `"hidden"`, unless that
     field is explicitly marked `"filter": False`. There is no
     `"filterable"` flag anymore (removed — every table gets this for
@@ -287,7 +288,7 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
     numeric-operator hint (`"numeric_filter": True`) is also inferred
     automatically from whatever the field already uses for
     right-alignment/number formatting (`"format": "number"` or
-    `"is_numeric": True` — the same flags `Columns._build_data_columns()`
+    `"is_numeric": True` — the same flags `TableColumns._build_data_columns()`
     reads) — one source of truth for "this column is numeric," not a
     second flag every numeric field must separately remember to set.
     Wired on every non-aggregate `list_*` repository/router pair in the
@@ -325,17 +326,17 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
     elsewhere. Wiring these would mean adding the same
     `receiving_repository.py::list_headers`-style outer-join to each
     affected repository; not done yet.
-    Frontend half: `components/table/filter_row.py::FilterRow` — a
+    Frontend half: `components/table/filter.py::TableFilter` — a
     collapsible row of `ft.TextField`s, toggled via a toolbar button
     (`Table._toggle_filter_row`) only added when at least one field opts
     in (in practice, almost always).
     **Pixel-aligned to the table body** (issue #20, reversing the original
     "free-standing row, not worth aligning" design noted below): one
     fixed-width `ft.Container` per **visible** column, in the same order
-    as `Columns.index`/`.widths` — a non-filterable-but-visible column
+    as `TableColumns.index`/`.widths` — a non-filterable-but-visible column
     still reserves its slot (an empty `Container` of that column's width)
     so every filter field after it stays aligned, same reasoning as
-    `Columns._reposition_handles()`'s cumulative-offset math. The row's
+    `TableColumns._reposition_handles()`'s cumulative-offset math. The row's
     outer `Container` uses `TABLE_HORIZONTAL_MARGIN` as left/right padding
     and `TABLE_COLUMN_SPACING` as inter-field spacing — the exact same
     constants `header.py`/`body.py` construct their `ft.DataTable`s with —
@@ -343,21 +344,21 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
     with the `DataTable`'s own `horizontal_margin`/`column_spacing`
     layout, with no absolute positioning needed (unlike the resize
     handles, which sit in a separate overlay `Stack` on top of the
-    header — this is a normal `Row` underneath it). `FilterRow.reposition()`
+    header — this is a normal `Row` underneath it). `TableFilter.reposition()`
     patches each field's `Container.width` in place from the current
-    `Columns.widths` — cheap, since (unlike `ft.DataTable`) a plain
+    `TableColumns.widths` — cheap, since (unlike `ft.DataTable`) a plain
     `Container` genuinely does shrink on a live width patch, no rebuild
-    required. `Table` calls it from every place `Columns.widths` can
+    required. `Table` calls it from every place `TableColumns.widths` can
     change: `Table.load()` (data reload — recomputed widths unless
     manually resized), `Table.build()`'s pending-data branch, and
     `Table._handle_resize_commit()` (a resize drag tick or double-tap
-    reset) — the same trigger points `Columns._reposition_handles()`
-    itself runs from for the resize handles. Reusing `Columns`' own
+    reset) — the same trigger points `TableColumns._reposition_handles()`
+    itself runs from for the resize handles. Reusing `TableColumns`' own
     resize/sort-aware `DataTable` header cells directly (rather than a
     parallel `Row`) was considered and rejected for the same reason as
     before: those solve a different problem (fixed per-column pixel
     widths baked into `DataColumn`s), and reusing that machinery here
-    would mean touching every hardcoded `Table`/`Columns` index
+    would mean touching every hardcoded `Table`/`TableColumns` index
     assumption for no real UX gain over a width-matched `Row`.
     Each filterable field also gets a leading filter icon (`prefix_icon`,
     `ft.Icons.FILTER_ALT`) and a trailing per-field clear icon
@@ -366,7 +367,7 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
     Filtering is live (`on_change`/`on_submit` both call the same
     `on_apply` callback on every keystroke) — the row's earlier
     "Apply Filters"/"Clear Filters" `IconButton`s at the end of the row
-    are gone entirely. Toggling the row closed (`FilterRow.toggle()`)
+    are gone entirely. Toggling the row closed (`TableFilter.toggle()`)
     always clears every field's value and re-fetches first, so a hidden
     row never leaves a filter silently still applied server-side. Each
     field's `border_radius=10` and the row's own `bgcolor=
@@ -379,7 +380,7 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
     `_handle_sort_change()` all hardcode `col.controls[1]`/`[2]` as
     header/body, so inserting a genuinely new top-level control would have
     shifted those indices and silently broken every one of those call
-    sites. `Table.get_data()` appends `FilterRow.serialize()`
+    sites. `Table.get_data()` appends `TableFilter.serialize()`
     (`&{field}-filter=value` for every non-blank field) alongside the
     existing `table-keyword-filter`/`custom_param`/`sort-fields[...]`
     params — same wire-format convention, no special-casing needed on the
@@ -412,9 +413,9 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
       fields make sense `"sort": True` per module (some, like a free-text
       `remarks` column, may deliberately stay unsortable).
     - Frontend half lives entirely in `components/table/columns.py`:
-      `Columns.sort_order` is an ordered `[(field_name, "ASC"|"DESC"), ...]`
+      `TableColumns.sort_order` is an ordered `[(field_name, "ASC"|"DESC"), ...]`
       list (list order = priority, mirrors `y.form.js`'s
-      `this.orderBy[table]` array). `Columns.on_sort(e)` — wired as every
+      `this.orderBy[table]` array). `TableColumns.on_sort(e)` — wired as every
       sortable `DataColumn`'s `on_sort`, which makes Flutter's own
       `DataColumn` tap handling cover the *whole* header cell for free
       (no custom `GestureDetector` needed, unlike the resize handle) —
@@ -425,7 +426,7 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
       modifier, matching the reference's
       `#setOrderByAsc`/`#setOrderByDesc`/`#resetOrderBy` exactly. Each
       sortable column always renders its own state icon
-      (`Columns._build_sort_icon()` — neutral `unfold_more`, or an
+      (`TableColumns._build_sort_icon()` — neutral `unfold_more`, or an
       up/down arrow once active) as part of its label, since Flet's
       `DataTable` has no multi-column sort indicator of its own (it only
       ever highlights one `sort_column_index`, which this table never
@@ -443,11 +444,11 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
       Container passes its own width down as a tight constraint — same
       mechanism `components/form/date.py`'s docstring documents for why an
       alignment-less Container forces full width onto its child) and
-      pushes the icon to that width's far edge. `Columns.serialize_sort()`
+      pushes the icon to that width's far edge. `TableColumns.serialize_sort()`
       builds the
       `&sort-fields[N][field]=...` query string
       `components/table/table.py::get_data()` appends on every request.
-      `Columns.on_sort_change` (wired to `Table._handle_sort_change`)
+      `TableColumns.on_sort_change` (wired to `Table._handle_sort_change`)
       fires after every toggle: an instant optimistic header-only rebuild
       (icons update immediately, same split as the reference doing its
       `icon.classList` swap synchronously before the AJAX call), then
@@ -456,13 +457,13 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
       `y.form.js`'s `serializePagination`/`listenerHeaderTable`. Sort
       state itself isn't persisted anywhere (matches the reference - an
       in-memory `this.orderBy[table]` there too), so it resets whenever a
-      `Table`/`Columns` instance itself is torn down and rebuilt (e.g.
+      `Table`/`TableColumns` instance itself is torn down and rebuilt (e.g.
       navigating away and back).
 
   **Table export/upload convention** (multi-format download 2026-07-14,
   CSV/XLSX upload added same day for issue #4): every `Table` gets a
   hamburger-icon menu at the far right of its toolbar for free
-  (`components/table/menu.py`, class `Menu` — renamed from the original
+  (`components/table/menu.py`, class `TableMenu` — renamed from the original
   `export_menu.py`; wired into `Table.__init__` as `self.export_menu`,
   appended rightmost by `toolbar.py`). Menu contents by table kind:
   non-input tables get the 6 download entries; `is_inside_form=True`
@@ -481,14 +482,14 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
   them, when downloads are also present) when at least one of the table's
   `fields` has a `"type"` in the module-level `_EDITABLE_TYPES` set
   (`input`, `textarea`, `select`, `option`, `datepicker`, `checkbox` — the
-  same set `Rows._build_editable_cell()` dispatches on). Before this, the
+  same set `TableRows._build_editable_cell()` dispatches on). Before this, the
   menu always offered both upload entries regardless of `is_inside_form`,
   which was actively misleading on a purely read-only list table (e.g.
   `master_material`/`stock_in`'s header list — every field `label`/
   `hidden`) since there was nothing editable for an upload to populate;
   bulk record creation for those tables already goes through the "Add
   New" screen's own separate bulk-upload menu (issue #5,
-  `components/form/bulk_menu.py`), so this isn't a lost capability, just a
+  `components/form/menu.py::MenuForm`), so this isn't a lost capability, just a
   dead one. The gate is based on the fields themselves, not the
   `is_inside_form` flag, so it composes correctly with the download gate
   independently: a non-form table that happens to have an editable column
@@ -541,7 +542,7 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
   every module `new` screen gets a second hamburger menu at the far right
   of its `ModuleToolbar` — "Upload bulk from CSV/XLSX" — attached
   automatically by `Form.build()` via
-  `components/form/bulk_menu.py::BulkMenu` when `parent.screen == "new"`
+  `components/form/menu.py::MenuForm` when `parent.screen == "new"`
   (zero per-module wiring; runs in `build()` rather than `__init__` so it
   lands *after* the screen's own submit button, i.e. rightmost, and obeys
   the same three Flet invariants as the table menu above). The file is
@@ -1163,7 +1164,7 @@ itself also carries a `module_group_id` select on `new`/`edit` (optional —
 blank is valid) and a read-only `module_group_name` label on `index`.
 `stock_browse` and `usage_report` are `index.py` only (no `new`/`edit` — and
 deliberately no field marked `"key": True` in their `Table` config, since
-`Rows.py` unconditionally wires a `"key"` field to row-tap-navigates-to-
+`TableRows.py` unconditionally wires a `"key"` field to row-tap-navigates-to-
 `edit/<id>`, and neither has an edit screen to navigate to). `purchase_report`
 is the same shape, but with **two** `Table`s on one `index.py` (`by_supplier`/
 `by_material`, each defaulting its endpoint to `C_purchase_report/get_by_x`
@@ -1266,8 +1267,8 @@ itself grew two small hooks so a sub-table *can* reuse it:
 
   Getting `Table` to support editable cells needed one generically reusable
   addition to `components/table/`, previously read-only display only
-  (`Rows.load()` always rendered `ft.Text`): six `"type"` values now
-  render an editable control instead of text (`Rows._build_editable_cell()`
+  (`TableRows.load()` always rendered `ft.Text`): six `"type"` values now
+  render an editable control instead of text (`TableRows._build_editable_cell()`
   is the dispatch point) —
   - `"input"` — single-line `ft.TextField` (`hint_text`/`keyboard_type`,
     same keys `components/form/input.py` uses).
@@ -1275,10 +1276,10 @@ itself grew two small hooks so a sub-table *can* reuse it:
   - `"select"` — `ft.Dropdown` fetching options from
     `C_{module}/call_{field_name}_select` (or a field-level `endpoint`
     override), same convention as `components/form/select.py`. Fetched
-    once per column and cached on the `Rows` instance (`_select_options_cache`)
+    once per column and cached on the `TableRows` instance (`_select_options_cache`)
     since the option list is normally identical for every row - not
     refetched per row, and not refreshed on a later reload within the same
-    `Rows` lifetime.
+    `TableRows` lifetime.
   - `"option"` — `ft.Dropdown` from a field-supplied static `"options":
     [{"value", "label"}, ...]` list, no HTTP fetch - for small fixed
     enumerations that don't need a backend round trip.
@@ -1299,11 +1300,11 @@ itself grew two small hooks so a sub-table *can* reuse it:
   land in the control to interact with it, not navigate away.
 
   Every cell (editable or not) is wrapped in a fixed-width `ft.Container`
-  matching `Columns.load()`'s computed per-column width - without that
+  matching `TableColumns.load()`'s computed per-column width - without that
   wrapper Flutter sizes the DataTable column from the raw control's own
   intrinsic width instead (e.g. a bare `TextField`'s ~300px default),
   drifting the column out of alignment with the rest of the table.
-  `Columns._get_widths()`'s proportional scale-down (when a table's total
+  `TableColumns._get_widths()`'s proportional scale-down (when a table's total
   content is wider than the screen) also respects a *per-column* minimum
   now, not one flat `40px` for every column - `_EDITABLE_MIN_WIDTHS` in
   `components/table/columns.py` floors editable types higher (e.g. `input`
@@ -1334,7 +1335,7 @@ itself grew two small hooks so a sub-table *can* reuse it:
     auto-fit.
     - **Handles live outside the `DataTable` entirely**, in an
       absolutely-positioned overlay `ft.Stack` on top of the header
-      (`Columns.get_resize_overlay()`, built once and cached - reused as
+      (`TableColumns.get_resize_overlay()`, built once and cached - reused as
       the exact same control objects on every later call). This is the key
       design point, arrived at after two failed approaches:
       1. Embedding the handle inside the header's own `DataColumn` label
@@ -1356,14 +1357,14 @@ itself grew two small hooks so a sub-table *can* reuse it:
          only snapping to size on release.
 
       Moving the handle out of the `DataTable` breaks that tension:
-      `Columns.on_resize_commit(recompute: bool)` now fires on *every*
+      `TableColumns.on_resize_commit(recompute: bool)` now fires on *every*
       `handle_drag()` step (`recompute=False`) as well as a double-tap
-      reset (`Columns.reset_column_pair()`, `recompute=True`) - wired by
+      reset (`TableColumns.reset_column_pair()`, `recompute=True`) - wired by
       `Table.__init__` to `Table._handle_resize_commit`, which (for a
-      reset) recomputes `Columns.widths` from content via `Columns.load()`,
-      then always runs `Rows.load()` and rebuilds the header (through
+      reset) recomputes `TableColumns.widths` from content via `TableColumns.load()`,
+      then always runs `TableRows.load()` and rebuilds the header (through
       `Table._build_header_with_resize_overlay()` - every header-rebuild
-      call site must go through this, not `Header.build()` directly, or
+      call site must go through this, not `TableHeader.build()` directly, or
       the overlay silently drops off the tree) and body in place. A full
       rebuild on every tick is only safe *because* the handle is no longer
       inside what's being rebuilt: Flet's control-id-based patching (not
@@ -1372,7 +1373,7 @@ itself grew two small hooks so a sub-table *can* reuse it:
       the added controls) recognizes the same `GestureDetector` object
       reappearing in a brand new `Stack` and leaves it mounted, preserving
       the in-progress gesture across the header's repeated recreation.
-      `Columns._reposition_handles()` moves each handle's `left` to its
+      `TableColumns._reposition_handles()` moves each handle's `left` to its
       column boundary's real rendered x-offset after every width change,
       using `TABLE_HORIZONTAL_MARGIN`/`TABLE_COLUMN_SPACING` - the same
       constants `components/table/header.py`/`body.py` construct their
@@ -1385,20 +1386,20 @@ itself grew two small hooks so a sub-table *can* reuse it:
       (`components/table/body.py`'s `ft.Column(scroll=...)` only scrolls
       vertically), so a resize can only redistribute existing space, never
       grow the table past the screen.
-    - Once a user drags a handle, `Columns.manually_resized` is set and
+    - Once a user drags a handle, `TableColumns.manually_resized` is set and
       `load()` stops recomputing widths from content on later data reloads
       (pagination/filter/scroll-more/page-resize) - it just keeps whatever
       the user set, like a spreadsheet remembering a manual column width.
     - Shrinking a column narrow enough used to wrap its header label onto
       multiple lines, growing the header row into the row below it
-      instead of truncating - both `Columns._build_data_columns()`'s
-      header `Text` and `Rows.load()`'s body-cell `Text`s now set
+      instead of truncating - both `TableColumns._build_data_columns()`'s
+      header `Text` and `TableRows.load()`'s body-cell `Text`s now set
       `overflow=ft.TextOverflow.ELLIPSIS, max_lines=1` (Excel-style: a
       narrow column truncates to one line, it doesn't wrap). Below
       `_MIN_LABEL_VISIBLE_WIDTH` (24px) a header label is dropped
       entirely rather than rendered as one unreadable clipped character.
     - Every `DataColumn` sets `on_sort=self.on_sort` unconditionally -
-      sorting itself isn't implemented yet (`Columns.on_sort()` is a
+      sorting itself isn't implemented yet (`TableColumns.on_sort()` is a
       `print()`-only stub, kept intentionally for whenever that lands).
       An earlier pass here guessed that `on_sort`'s presence makes
       Flutter reserve extra width for a sort-indicator icon on *every*
@@ -1410,7 +1411,7 @@ itself grew two small hooks so a sub-table *can* reuse it:
       visibly shrank every header label for nothing; reverted. If a real
       divider/label misalignment resurfaces, re-diagnose from scratch
       rather than reapplying that fix.
-      `Columns._min_width_for()` still floors every column at
+      `TableColumns._min_width_for()` still floors every column at
       `_RESIZE_HANDLE_HIT_WIDTH` (unrelated to the icon guess) so a
       column can't end up narrower than its own two half-handles (this
       column's right-edge handle plus half of the previous column's)
@@ -1589,7 +1590,7 @@ managed via `pyproject.toml` (uv/Poetry).
     delete button still resolves `bgcolor=Colors.ERROR`/`icon_color=
     Colors.ON_ERROR` unchanged, and the bare call now also resolves
     `bgcolor=None` instead of `PRIMARY`.
-  - `components/table/menu.py::Menu`'s hamburger `ft.PopupMenuButton` is
+  - `components/table/menu.py::TableMenu`'s hamburger `ft.PopupMenuButton` is
     now explicitly sized to the same compact metrics as `Button`'s 32dp
     buttons (`height=32, width=32, padding=0,
     style=ButtonStyle(shape=RoundedRectangleBorder(radius=16))`,

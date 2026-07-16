@@ -1,11 +1,11 @@
 import flet as ft
 
-from components.table.body import Body
-from components.table.columns import Columns
-from components.table.filter_row import FilterRow
-from components.table.header import Header
-from components.table.menu import Menu
-from components.table.rows import Rows
+from components.table.body import TableBody
+from components.table.columns import TableColumns
+from components.table.filter import TableFilter
+from components.table.header import TableHeader
+from components.table.menu import TableMenu
+from components.table.rows import TableRows
 from components.table.search_bar import TableSearchBar
 from components.table.toolbar import TableToolbar
 from repository.storage import Storage
@@ -56,18 +56,18 @@ class Table:
 
         self.is_inside_form = is_inside_form
 
-        self.columns: Columns = Columns(page, fields)
-        self.rows: Rows = Rows(page, self.columns, parent=self)
-        # Lets Columns request a full header/body/rows rebuild after every
+        self.columns: TableColumns = TableColumns(page, fields)
+        self.rows: TableRows = TableRows(page, self.columns, parent=self)
+        # Lets TableColumns request a full header/body/rows rebuild after every
         # resize step (drag tick or double-tap reset) - see
-        # Columns.on_resize_commit's docstring for why a rebuild is needed
+        # TableColumns.on_resize_commit's docstring for why a rebuild is needed
         # at all (Flutter's DataTable only ever grows a column to fit a
         # wider child, never shrinks it back down from a live property
         # patch alone).
         self.columns.on_resize_commit = self._handle_resize_commit
-        # Lets Columns request a data re-fetch (with new sort-fields query
+        # Lets TableColumns request a data re-fetch (with new sort-fields query
         # params) after a header click cycles a sortable column's state -
-        # see Columns.on_sort()/serialize_sort().
+        # see TableColumns.on_sort()/serialize_sort().
         self.columns.on_sort_change = self._handle_sort_change
 
         self.limit = limit
@@ -90,12 +90,12 @@ class Table:
         # Input-mode tables (is_inside_form, e.g. stock_out item_new's
         # per-location qty-entry table) are an entry widget, not a dataset -
         # no menu, and no C_{module}/export_{name} endpoint exists for them.
-        self.export_menu = Menu(page=page, parent=self)
+        self.export_menu = TableMenu(page=page, parent=self)
         # Per-column `{field}-filter` row (issue #10) - config-driven, one
         # ft.TextField per field marked "filterable": True; collapsed by
         # default, toggled via a toolbar button only shown when at least
-        # one field opts in. See components/table/filter_row.py.
-        self.filter_row = FilterRow(
+        # one field opts in. See components/table/filter.py.
+        self.filter_row = TableFilter(
             page=page,
             parent=self,
             fields=fields,
@@ -108,8 +108,8 @@ class Table:
         )
         if self.filter_row.has_filters():
             self.toolbar.add_filter_button(callback=self._toggle_filter_row)
-        self.header: Header | None = None
-        self.body: Body | None = None
+        self.header: TableHeader | None = None
+        self.body: TableBody | None = None
         self.is_loading_more = False
 
         self.table_container: ft.Container | None = None
@@ -126,8 +126,8 @@ class Table:
             self.get_data()
 
     def build(self, padding: int = 0):
-        self.header = Header(page=self.page, columns=self.columns)
-        self.body = Body(
+        self.header = TableHeader(page=self.page, columns=self.columns)
+        self.body = TableBody(
             page=self.page,
             columns=self.columns,
             rows=self.rows,
@@ -210,8 +210,8 @@ class Table:
         self.get_data()
 
     def _build_header_with_resize_overlay(self):
-        """Header.build()'s DataTable, wrapped in a Stack with the
-        resize-handle overlay (Columns.get_resize_overlay()) on top.
+        """TableHeader.build()'s DataTable, wrapped in a Stack with the
+        resize-handle overlay (TableColumns.get_resize_overlay()) on top.
 
         Every caller that rebuilds the header (here and
         _handle_resize_commit()) must go through this, not
@@ -347,8 +347,8 @@ class Table:
         return merged
 
     def _handle_resize_commit(self, recompute: bool) -> None:
-        """Rebuild Header/Body/Rows after every column-resize step
-        (Columns.on_resize_commit - a drag tick, or a double-tap reset).
+        """Rebuild TableHeader/TableBody/TableRows after every column-resize step
+        (TableColumns.on_resize_commit - a drag tick, or a double-tap reset).
 
         Flutter's `DataTable` grows to fit a wider child during normal
         layout, but doesn't shrink a column's rendered width back down
@@ -359,24 +359,24 @@ class Table:
         symmetrically on every tick, yet only the growing one ever
         visibly resized). Doing this on every tick is safe now because the
         resize handles live in a separate overlay Stack
-        (Columns.get_resize_overlay(), reattached by
+        (TableColumns.get_resize_overlay(), reattached by
         _build_header_with_resize_overlay() below) entirely outside the
         DataTable being rebuilt - an earlier version embedded the handle
         inside the header's own DataColumn label and broke the drag after
         the first tick by tearing down its own GestureDetector.
 
         `recompute=True` (double-tap reset) additionally recomputes
-        `Columns.widths` from content via `Columns.load()` first, since a
+        `TableColumns.widths` from content via `TableColumns.load()` first, since a
         reset changes every column's width, not just one dragged pair.
         `recompute=False` (a drag tick) keeps the widths `handle_drag()`
         already tracked, just rebuilds to render them correctly.
 
         Mirrors Table.load()'s "replace the built header/body controls in
-        place" approach rather than Header.update()/Body.update() (both
+        place" approach rather than TableHeader.update()/TableBody.update() (both
         dead code - nothing in this codebase calls them - so untested):
-        Rows bakes each cell's pixel width in at Rows.load() time, not read
-        live from Columns.widths, so this needs that re-run too, not just
-        Columns.rebuild().
+        TableRows bakes each cell's pixel width in at TableRows.load() time, not read
+        live from TableColumns.widths, so this needs that re-run too, not just
+        TableColumns.rebuild().
         """
         if self.data:
             if recompute:
@@ -406,13 +406,13 @@ class Table:
 
     def _handle_sort_change(self) -> None:
         """A header click cycled a sortable column's state
-        (Columns.on_sort()). Two things need to happen, same split as the
-        senar reference: (1) instant icon feedback - Columns.on_sort()
+        (TableTableColumns.on_sort()). Two things need to happen, same split as the
+        senar reference: (1) instant icon feedback - TableColumns.on_sort()
         already rebuilt `self.columns.columns` synchronously, so just
         swap the header control in place, same as
         _handle_resize_commit()'s header-only refresh; (2) the actual
         re-sort, which is server-side and needs a round trip - re-fetch
-        with Columns.serialize_sort()'s new sort-fields params.
+        with TableColumns.serialize_sort()'s new sort-fields params.
         Deliberately does *not* reset to page 1 (get_data() keeps
         self.page_number as-is) - matches y.form.js's serializePagination/
         listenerHeaderTable, where only a page-*size* change resets

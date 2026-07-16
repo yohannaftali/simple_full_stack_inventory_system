@@ -1,10 +1,10 @@
 import flet as ft
-from components.table.columns import TABLE_COLUMN_SPACING, TABLE_HORIZONTAL_MARGIN, Columns
-from components.table.rows import Rows
+from components.table.columns import TABLE_COLUMN_SPACING, TABLE_HORIZONTAL_MARGIN, TableColumns
+from components.table.rows import TableRows
 
 
-class Body:
-    def __init__(self, page: ft.Page, columns: Columns, rows: Rows, on_scroll_end=None):
+class TableBody:
+    def __init__(self, page: ft.Page, columns: TableColumns, rows: TableRows, on_scroll_end=None):
         self.page = page
         self.columns = columns
         self.rows = rows
@@ -87,7 +87,7 @@ class Body:
             self.is_loading = True
 
     def update(self):
-        print("Body.update")
+        print("TableBody.update")
         print(self.columns.widths)
         if self.data_table is not None:
             self.data_table.columns = self.columns.columns
