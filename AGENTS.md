@@ -38,13 +38,13 @@
 | #16 | feat(inventory): add unit of material (UOM) master table, link to materials, show in qty tables | closed | 2026-07-16 |
 | #17 | feat(inventory): replace material deletion with active/inactive status flag | closed | 2026-07-16 |
 | #18 | feat(inventory): seed a full default unit-of-material catalog via Alembic | closed | 2026-07-16 |
-| #19 | fix(frontend): table search bar styling regressions; lighter placeholder color on table + home search bars | ready-for-review | 2026-07-16 |
-| #20 | fix(frontend): redesign table filter row — per-column alignment, live filtering, inline clear | ready-for-review | 2026-07-16 |
+| #19 | fix(frontend): table search bar styling regressions; lighter placeholder color on table + home search bars | closed | 2026-07-16 |
+| #20 | fix(frontend): redesign table filter row — per-column alignment, live filtering, inline clear | closed | 2026-07-16 |
 | #21 | chore(frontend): extract shared Button component to DRY up toolbar add_*_button methods | closed | 2026-07-16 |
 | #22 | fix(frontend): hide CSV/XLSX upload menu items on tables with no editable columns | closed | 2026-07-16 |
 | #23 | chore(frontend): rename table/form component files and classes for clearer, unambiguous naming | closed | 2026-07-16 |
 | #24 | feat(stock_in): bulk CSV/XLSX upload for receiving items on item_new | closed | 2026-07-16 |
-| #25 | feat(stock_out): multi-material bulk item upload + accept bare code (no " - Name") across all bulk uploads | ready-for-review | 2026-07-16 |
+| #25 | feat(stock_out): multi-material bulk item upload + accept bare code (no " - Name") across all bulk uploads | closed | 2026-07-16 |
 
 ## Big Picture
 

@@ -737,3 +737,19 @@
 - Scope: backend, frontend
 - Files: `backend/src/routers/stock_out.py`, `frontend/src/components/table/menu.py`, `frontend/src/components/form/menu.py`, `frontend/src/components/form/form.py`, `frontend/src/pages/modules/stock_out/item_new.py`, `AGENTS.md`
 - Closes #25
+
+## [2026-07-16] — #25 status changed: open → closed
+- Title: feat(stock_out): multi-material bulk item upload + accept bare code (no " - Name") across all bulk uploads
+- Platform: GitHub (auto-closed by the "Closes #25" line in the pushed commit)
+
+## [2026-07-16] — #19 and #20 status changed: open → closed
+- Title #19: fix(frontend): table search bar styling regressions; lighter placeholder color on table + home search bars
+- Title #20: fix(frontend): redesign table filter row — per-column alignment, live filtering, inline clear
+- Platform: GitHub — both were implemented and pushed in commit 1958ea4 but never explicitly closed (that commit predates the "Closes #ID" convention adopted from #21 onward); closed manually after user confirmation
+
+## [2026-07-16] — docs: document bulk-create/bulk-item-upload coverage and bare-code matching in README.md
+- User noticed Unit of Material wasn't mentioned anywhere in README's bulk-upload documentation, even though `master_unit_of_material/new.py` has had `bulk_input=True` since issue #24's rollout
+- Section 15.3 (Bulk Creating New Records) now explicitly lists every "Add New" screen that supports it (Locations, Suppliers, Departments, Categories, Materials, Unit of Material, Module Groups, Modules, Users, Stock In/Stock Out headers) instead of leaving it to two examples, and documents that a `select`-backed column (Category, Unit of Material, Supplier, etc.) accepts either the full `"CODE - Name"` text or just the bare code (issue #25)
+- Added new Section 15.4 (Bulk Uploading Items into a Stock In or Stock Out Header) documenting the separate item-level bulk upload (issues #24/#25) — Stock In's Material | Location | Qty Received | Price | Remarks and Stock Out's Material | Location | Qty Issue | Remarks, both accepting multiple different materials in one file, Stock Out's upload menu being independent of its material dropdown, and the same code-or-full-label acceptance for Material/Location
+- Scope: docs
+- Files: `README.md`

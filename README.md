@@ -478,14 +478,24 @@ This feature allows you to populate editable fields in a table (like the item en
 
 ### 15.3 Bulk Creating New Records
 
-On screens where you create new records (like "Add New User" or "Add New Material"), the toolbar on the "New" screen has its own hamburger menu (☰). This allows you to create many records at once from a file.
+On screens where you create new records (like "Add New User" or "Add New Material"), the toolbar on the "New" screen has its own hamburger menu (☰). This allows you to create many records at once from a file. It's available on every one of these "Add New" screens: **Locations**, **Suppliers**, **Departments**, **Categories**, **Materials**, **Unit of Material**, **Module Groups**, **Modules**, **Users**, **Stock In** (headers), and **Stock Out** (headers).
 
 1.  **Prepare your file**: Create a CSV or XLSX file where the column headers match the labels or field names of the form. For example, a user bulk-upload file would have columns like "Username", "Email", and "Password".
+    -   For a column that picks from another list (e.g. Materials' "Category" or "Unit of Material", or Stock In's "Supplier"), you can type either the full `"CODE - Name"` text shown in that dropdown, or just the bare **code** on its own — e.g. `PCS` works just as well as `PCS - Pieces`.
 2.  **Upload**:
     -   Navigate to the "New" screen for the module (e.g., Users -> Add New).
     -   Click the hamburger menu (☰) on the toolbar.
     -   Select "Upload bulk from CSV/XLSX".
     -   Choose your prepared file.
 3.  **Creation**: The system will process the file and attempt to create a new record for each row.
-    -   The entire upload is **all or nothing**. If any single row fails validation (e.g., a duplicate username, a missing required field), the entire operation is rolled back, and no records are created. An error message will indicate which row and what the error was.
+    -   The entire upload is **all or nothing**. If any single row fails validation (e.g., a duplicate username, a missing required field, or a code that doesn't match anything), the entire operation is rolled back, and no records are created. An error message will indicate which row and what the error was.
     -   If all rows are valid, they will all be created in the database.
+
+### 15.4 Bulk Uploading Items into a Stock In or Stock Out Header
+
+Beyond bulk-creating headers (above), the item-entry screens under a Stock In or Stock Out header also each have their own hamburger menu (☰) for bulk-adding line items — a faster alternative to clicking **+** and filling in one item at a time, and unlike the header bulk-create, **one file can list several different materials** in the same upload.
+
+- **Stock In** (`Stock In` → open a header → **+ Add Item** → ☰): columns **Material | Location | Qty Received | Price | Remarks**.
+- **Stock Out** (`Stock Out` → open a header → **Issue Stock** → ☰, next to the Material dropdown — the bulk upload here is independent of that dropdown, so you don't need to select a material first): columns **Material | Location | Qty Issue | Remarks**.
+
+Material and Location accept either the full `"CODE - Name"` text or just the bare code — e.g. both `SKU-1 - Widget` and `SKU-1` are accepted for Material, and both `A1 - A1` and `A1` for Location. Like every other bulk upload, this is **all or nothing**: for Stock Out specifically, if any row would exceed what's currently on hand at that material/location, the whole batch is rejected before anything is deducted.
