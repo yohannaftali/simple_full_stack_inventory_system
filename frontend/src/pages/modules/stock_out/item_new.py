@@ -1,5 +1,6 @@
 import flet as ft
 
+from components.form.menu import MenuForm
 from components.module.view import ModuleView
 from components.table.table import Table
 from utils.http_client import HttpClient
@@ -24,6 +25,19 @@ class ModulePage:
     location_id/qty_out/remarks triplet per row with a qty > 0
     (C_stock_out/submit_items) — the backend creates one stock_out_item per
     location, each deducted FIFO within that location.
+
+    Also gets a bulk-upload hamburger menu (issue #25), **independent of**
+    the material dropdown above - the dropdown+table flow only ever issues
+    one material per screen visit, but a bulk file can list several
+    different materials in the same batch (Material | Location | Qty Issue
+    | Remarks per row). Since this screen has no `Form` at all, it
+    constructs `components/form/menu.py::MenuForm` directly (that component
+    only ever needed `parent`/`fields`, not a real `Form` instance) instead
+    of going through `Form(bulk_input=True)` like every other bulk-eligible
+    screen - posts to `C_{module}/submit_bulk_items` (not the single-material
+    `submit_items` the manual flow above uses) with `stock_out_header_id`
+    riding along on every row, same convention as stock_in's `item_new`
+    (issue #24).
     """
 
     def __init__(
@@ -42,6 +56,23 @@ class ModulePage:
         self.view = ModuleView(page, module, screen)
         self.view.header.set_title("Issue Stock")
         self.view.toolbar.add_submit_button(callback=self.callback_submit)
+
+        self.bulk_menu = MenuForm(
+            page=page,
+            parent=self,
+            fields=[
+                {"name": "material_id", "label": "Material", "type": "select"},
+                {"name": "location_id", "label": "Location", "type": "select"},
+                {"name": "qty_out", "label": "Qty Issue", "type": "input"},
+                {"name": "remarks", "label": "Remarks", "type": "input"},
+            ],
+            endpoint=f"C_{module}/submit_bulk_items",
+            extra_fields={"stock_out_header_id": str(self.header_id)},
+            redirect_route=f"/modules/{module}/edit/{self.header_id}",
+        )
+        if self.view.toolbar.right is None:
+            self.view.toolbar.right = []
+        self.view.toolbar.right.append(self.bulk_menu.build())
 
         self.stock_table = Table(
             page=page,

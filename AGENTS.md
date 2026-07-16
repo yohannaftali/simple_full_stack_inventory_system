@@ -43,7 +43,8 @@
 | #21 | chore(frontend): extract shared Button component to DRY up toolbar add_*_button methods | closed | 2026-07-16 |
 | #22 | fix(frontend): hide CSV/XLSX upload menu items on tables with no editable columns | closed | 2026-07-16 |
 | #23 | chore(frontend): rename table/form component files and classes for clearer, unambiguous naming | closed | 2026-07-16 |
-| #24 | feat(stock_in): bulk CSV/XLSX upload for receiving items on item_new | ready-for-review | 2026-07-16 |
+| #24 | feat(stock_in): bulk CSV/XLSX upload for receiving items on item_new | closed | 2026-07-16 |
+| #25 | feat(stock_out): multi-material bulk item upload + accept bare code (no " - Name") across all bulk uploads | ready-for-review | 2026-07-16 |
 
 ## Big Picture
 
@@ -625,6 +626,70 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
   MAP; an inactive material in row 2 rolls back row 1 too (true
   all-or-nothing, not partial commit); missing-required-field and
   empty-batch rejections.
+
+  **`MenuForm` decoupled from `Form`** (issue #25, 2026-07-16): it used to
+  take a `form` object and read only two things off it —
+  `form.parent`/`form.fields` — so its constructor now takes `parent`/
+  `fields` directly instead. `Form._attach_bulk_menu()` still passes its
+  own `self.parent`/`self.fields` through unchanged, but a screen with no
+  `Form` at all can now construct `MenuForm` directly (see stock_out's
+  item-level bulk upload immediately below, the first caller that isn't a
+  `Form`).
+
+  **Bare-code matching for every bulk-upload `select` cell** (issue #25,
+  2026-07-16): every `call_*_select` endpoint in this app returns options
+  with labels in a consistent `"{code} - {name}"` shape (confirmed for
+  material, location, supplier, department, unit, category), so
+  `components/table/menu.py::resolve_option_value(value, options)` —
+  `options` a `[(value, label), ...]` list — now resolves a typed cell
+  against, in order: the raw `value` (DB id), the full `label`, or just the
+  label's code prefix (everything before the first `" - "`, e.g. `"SKU-1"`
+  matching `"SKU-1 - Widget"`). Both independent bulk-matching code paths
+  route through this one function instead of duplicating the same
+  three-way rule: `components/form/menu.py::MenuForm._build_payload()`
+  (header/item bulk uploads — retroactively covers every existing one:
+  #24's stock_in item bulk, every #5 header bulk including
+  `master_material`'s `unit_id`/`category_id`) and
+  `components/table/menu.py::TableMenu._set_control_value()` (`is_inside_form`
+  table uploads' `select`/`option` cells).
+
+  **Multi-material item bulk create** (issue #25, 2026-07-16 — distinct
+  from #24's item-level bulk above): `stock_out/item_new.py` isn't a
+  `Form` at all (it's hand-built around a material dropdown scoping a
+  single-material `Table`, see "Master-detail pattern" below), and that
+  dropdown-driven flow can only ever issue one material per screen visit.
+  A bulk upload needs to accept **several different materials in one
+  file** (`Material | Location | Qty Issue | Remarks` per row), which
+  doesn't fit "pick one material first" at all — so this bulk menu is
+  wired **independent of** the dropdown, constructing `MenuForm` directly
+  (`parent=self, fields=[material_id, location_id, qty_out, remarks]`,
+  `endpoint="C_stock_out/submit_bulk_items"`,
+  `extra_fields={"stock_out_header_id": ...}`,
+  `redirect_route=".../edit/{header_id}"`) right after
+  `add_submit_button` in `__init__`, appended straight onto
+  `view.toolbar.right` the same way `Form._attach_bulk_menu()` does it
+  internally. `POST C_stock_out/submit_bulk_items` (form:
+  `stock_out_header_id` + repeated `material_id`/`location_id`/`qty_out`/
+  `remarks`/`row_number`) combines rows that repeat the same
+  `(material_id, location_id)` pair, then validates the combined qty
+  against current stock **grouped per material** (`list_stock_by_material`
+  is itself per-material) before calling
+  `inventory_service.create_stock_out_item` once per pair — same
+  up-front-validate-then-loop-commit pattern `submit_items` already uses
+  for its own single-material multi-location case, **not** a single DB
+  transaction (a stock change racing the up-front check is still possible
+  and caught by `InsufficientStockError`, same documented caveat
+  `submit_items` already carries). Verified via `TestClient` against a
+  real SQLite session (`StaticPool` in-memory, `dependency_overrides` on
+  the router's own `_require_access` object — overriding a fresh
+  `require_module_access("stock_out")` call doesn't work, `dependency_overrides`
+  keys by the exact callable object and that factory returns a new closure
+  every call): two different materials issued in one batch with correct
+  captured price/total_value; an insufficient-stock row rejects the whole
+  batch (the other, valid row in the same batch is correctly *not*
+  applied either); two rows repeating the same (material, location) pair
+  correctly combine into one item with the summed qty; a missing
+  `stock_out_header_id` is rejected.
 
   **Every list endpoint `get_{name}` gets an export twin
   `export_{name}`** — the table *name* is part of the contract because

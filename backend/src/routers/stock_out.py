@@ -31,6 +31,15 @@ create-only (no `submit_item` update path, no `get_item`) — see
   now "pick a material, then a qty per location" instead of "pick a
   material and one location", matching FIFO-by-location semantics but
   letting one screen issue from several locations at once.
+- POST C_stock_out/submit_bulk_items (form: stock_out_header_id, repeated
+  material_id/location_id/qty_out/remarks/row_number - NOT scoped to one
+  material, unlike submit_items) -> issue #25's multi-material bulk
+  upload, for a file listing several different materials in one batch.
+  Combines rows repeating the same (material_id, location_id) pair,
+  validates against current stock up front grouped per material, then
+  calls services.inventory_service.create_stock_out_item once per pair -
+  same up-front-validate-then-commit pattern as submit_items, not a
+  single DB transaction.
 - GET  C_stock_out/call_material_id_select, call_location_id_select,
   call_department_id_select -> options for the header form's `select`
   fields (`call_location_id_select` is unused by the item form now, kept
@@ -322,6 +331,100 @@ async def submit_items(request: Request, user: UserModel = Depends(_require_acce
         return {"error": f"Insufficient stock: only {exc.available} available"}
 
     return {"message": f"Stock issued from {len(requested)} location(s) successfully"}
+
+
+@router.post("/submit_bulk_items")
+async def submit_bulk_items(
+    request: Request, user: UserModel = Depends(_require_access)
+) -> dict:
+    """Multi-material bulk version of `submit_items` (issue #25) - unlike
+    that endpoint, rows here aren't scoped to one pre-selected material;
+    each row carries its own material_id/location_id pair. Combines rows
+    that repeat the same (material_id, location_id) pair before validating
+    against current stock, grouped per material (`list_stock_by_material`
+    is itself per-material) - a shortfall anywhere rejects the whole batch
+    before any deduction, same up-front-validate-then-commit pattern
+    `submit_items` already uses (not a single DB transaction - a stock
+    change racing the up-front check is still possible and caught by
+    `InsufficientStockError`, same documented caveat as `submit_items`)."""
+    form = await request.form()
+    stock_out_header_id = form.get("stock_out_header_id")
+    if not stock_out_header_id:
+        return {"error": "stock_out_header_id is required"}
+
+    rows = parse_bulk_rows(form, ["material_id", "location_id", "qty_out", "remarks"])
+    if not rows:
+        return {"error": "No rows to import"}
+
+    requested: dict[tuple[int, int], Decimal] = {}
+    remarks_by_pair: dict[tuple[int, int], str] = {}
+    for row in rows:
+        row_no = row["_row"]
+        material_raw = str(row.get("material_id", "")).strip()
+        location_raw = str(row.get("location_id", "")).strip()
+        if not material_raw or not location_raw:
+            return {"error": f"Row {row_no}: Material and Location are required"}
+        try:
+            material_id = int(material_raw)
+            location_id = int(location_raw)
+        except ValueError:
+            return {"error": f"Row {row_no}: Invalid Material or Location"}
+
+        qty_raw = str(row.get("qty_out", "")).strip()
+        if not qty_raw:
+            continue
+        try:
+            qty_out = Decimal(qty_raw)
+        except InvalidOperation:
+            return {"error": f"Row {row_no}: Invalid quantity: {qty_raw}"}
+        if qty_out <= 0:
+            continue
+
+        key = (material_id, location_id)
+        requested[key] = requested.get(key, Decimal("0")) + qty_out
+        remarks_by_pair[key] = str(row.get("remarks", "")).strip()
+
+    if not requested:
+        return {"error": "Enter a quantity to issue for at least one row"}
+
+    # Validate every requested qty against current stock up front, grouped
+    # per material, so a shortfall anywhere rejects the whole batch instead
+    # of issuing some rows and silently failing on others.
+    materials_needed = {material_id for material_id, _location_id in requested}
+    available: dict[tuple[int, int], Decimal] = {}
+    for material_id in materials_needed:
+        for row in _stock_repository.list_stock_by_material(material_id):
+            available[(material_id, row["location_id"])] = row["qty"]
+
+    for (material_id, location_id), qty_out in requested.items():
+        on_hand = available.get((material_id, location_id), Decimal("0"))
+        if qty_out > on_hand:
+            material = _material_repository.get_material_by_id(material_id)
+            location = _location_repository.get_location_by_id(location_id)
+            material_label = material.material_name if material else f"material {material_id}"
+            location_label = location.name if location else f"location {location_id}"
+            return {
+                "error": (
+                    f"Insufficient stock: only {on_hand} available for "
+                    f"{material_label} at {location_label}"
+                )
+            }
+
+    try:
+        for (material_id, location_id), qty_out in requested.items():
+            inventory_service.create_stock_out_item(
+                stock_out_header_id=int(stock_out_header_id),
+                material_id=material_id,
+                location_id=location_id,
+                qty_out=qty_out,
+                remarks=remarks_by_pair[(material_id, location_id)],
+            )
+    except InsufficientStockError as exc:
+        return {"error": f"Insufficient stock: only {exc.available} available"}
+
+    return {
+        "message": f"Stock issued for {len(requested)} material/location pair(s) successfully"
+    }
 
 
 @router.get("/call_material_id_select")

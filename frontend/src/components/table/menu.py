@@ -70,6 +70,37 @@ def parse_xlsx_bytes(data: bytes) -> list[list[str]]:
     return rows
 
 
+def resolve_option_value(value: str, options: list[tuple[str, str]]) -> str | None:
+    """Resolve a typed cell value against a `[(value, label), ...]` option
+    list (issue #25) - shared by every bulk-upload `select`/`option` cell
+    resolver in the app (`components/form/menu.py::MenuForm._build_payload()`
+    for header/item bulk uploads, this module's own `_set_control_value()`
+    for `is_inside_form` table uploads) so the three-way matching rule below
+    lives in exactly one place.
+
+    Tries, in order: an exact match on the option's raw `value` (e.g. the DB
+    id), an exact match on its full `label` (e.g. `"SKU-1 - Widget"`), then
+    the label's **code prefix** - everything before the first `" - "` (e.g.
+    `"SKU-1"`) - since every `call_*_select` endpoint in this app returns
+    labels in that consistent `"{code} - {name}"` shape. All comparisons are
+    case-insensitive/stripped. Returns `None` if nothing matches."""
+    needle = value.strip().lower()
+    if not needle:
+        return None
+
+    for opt_value, _opt_label in options:
+        if opt_value.strip().lower() == needle:
+            return opt_value
+    for opt_value, opt_label in options:
+        if opt_label.strip().lower() == needle:
+            return opt_value
+    for opt_value, opt_label in options:
+        code = opt_label.split(" - ", 1)[0].strip().lower()
+        if code and code == needle:
+            return opt_value
+    return None
+
+
 class TableMenu:
     """Wraps a `PopupMenuButton` (hamburger icon) - `parent` is the owning
     `Table`, read for its current module/name/filter/sort/custom_param state
@@ -354,18 +385,16 @@ class TableMenu:
         if field_type == "checkbox":
             control.value = val_str.lower() in ("1", "true", "yes")
         elif field_type in ("select", "option"):
-            # Resolve against the dropdown's options by key or visible text.
+            # Resolve against the dropdown's options by key, visible text,
+            # or the text's code prefix (issue #25) - see
+            # resolve_option_value()'s docstring for the exact matching order.
             matched_key = None
             if val_str:
-                for option in control.options:
-                    key = str(option.key or "")
-                    text = str(option.text or "")
-                    if (
-                        key.lower().strip() == val_str.lower()
-                        or text.lower().strip() == val_str.lower()
-                    ):
-                        matched_key = option.key
-                        break
+                option_pairs = [
+                    (str(option.key or ""), str(option.text or ""))
+                    for option in control.options
+                ]
+                matched_key = resolve_option_value(val_str, option_pairs)
             if val_str and matched_key is None:
                 return  # unresolvable value: leave the cell as-is
             control.value = matched_key

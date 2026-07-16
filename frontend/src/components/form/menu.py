@@ -1,15 +1,23 @@
 """Hamburger-icon bulk-upload menu for module `new`/`item_new`-style screens
-that opt in via `Form(..., bulk_input=True)` (issue #5/#24/#25).
+(issue #5/#24/#25).
 
-Attached automatically by `Form.build()` to the far right of the screen's
-`ModuleToolbar` whenever the owning `Form` was constructed with
-`bulk_input=True` - no per-module wiring beyond that one flag. Offers
+Takes `parent`/`fields` directly (not a `components/form/form.py::Form`
+instance) - the only two things it ever read off a `Form` were
+`form.parent` and `form.fields`, so decoupling it from `Form` entirely lets
+a hand-built screen with no `Form` at all (e.g. `stock_out/item_new.py`,
+built around a material dropdown + `Table`, not a `Form`) construct one
+directly. `Form.build()` still attaches one automatically to the far right
+of the screen's `ModuleToolbar` whenever it was constructed with
+`bulk_input=True` (passing its own `self.parent`/`self.fields` through) -
+no per-module wiring beyond that one flag for a `Form`-based screen. Offers
 "Upload bulk from CSV" / "Upload bulk from XLSX": the file is parsed
 client-side (reusing `components/table/menu.py`'s byte parsers, so the same
 delimiter sniffing and blank-row skipping apply), headers are matched to
 the form's fields by visible label or field name (case-insensitive,
 unknown columns ignored), `select` cells are resolved against the field's
-option list (by option label or value), and every row is submitted in ONE
+option list via `components/table/menu.py::resolve_option_value()` (by
+raw value, full label, or the label's bare code prefix - e.g. "SKU-1"
+matching "SKU-1 - Widget", issue #25), and every row is submitted in ONE
 `POST` to `endpoint` (defaults to `C_{module}/submit_bulk`, overridable via
 `Form(bulk_endpoint=...)` for a screen posting somewhere else, e.g.
 stock_in's `item_new` posting to `submit_bulk_item`) - the backend wraps
@@ -33,7 +41,7 @@ constructor, FilePicker registered lazily in the async click handler via
 
 import flet as ft
 
-from components.table.menu import parse_csv_bytes, parse_xlsx_bytes
+from components.table.menu import parse_csv_bytes, parse_xlsx_bytes, resolve_option_value
 from utils.http_client import HttpClient
 
 # Field types whose columns can be supplied by the uploaded file.
@@ -44,14 +52,15 @@ class MenuForm:
     def __init__(
         self,
         page: ft.Page,
-        form,
+        parent,
+        fields: list,
         endpoint: str | None = None,
         extra_fields: dict | None = None,
         redirect_route: str | None = None,
     ):
         self.page = page
-        self.form = form  # components/form/form.py Form
-        self.parent = form.parent  # ModulePage (module, view)
+        self.parent = parent  # ModulePage (module, view)
+        self.fields = fields
         self.file_picker: ft.FilePicker | None = None
         self.endpoint = endpoint or f"C_{self.parent.module}/submit_bulk"
         self.extra_fields = extra_fields or {}
@@ -161,7 +170,7 @@ class MenuForm:
         header_to_field = {}  # file column index -> field dict
         for i, header in enumerate(headers):
             h_norm = header.lower().strip()
-            for field in self.form.fields:
+            for field in self.fields:
                 if field.get("type", "input") not in _UPLOADABLE_TYPES:
                     continue
                 label = str(field.get("label", ""))
@@ -176,23 +185,18 @@ class MenuForm:
 
         # Fetch options once per select field present in the file, resolved
         # from the same endpoint SelectForm itself uses.
-        select_options = {}  # field_name -> {normalized label/value: value}
+        select_options = {}  # field_name -> [(value, label), ...]
         client = HttpClient(self.page)
         for field in header_to_field.values():
             if field.get("type") != "select":
                 continue
             name = field.get("name")
             options = client.get(f"C_{self.parent.module}/call_{name}_select")
-            lookup = {}
-            if isinstance(options, list):
-                for opt in options:
-                    value = str(opt.get("value", ""))
-                    label = str(opt.get("label", ""))
-                    if value:
-                        lookup[value.lower().strip()] = value
-                    if label:
-                        lookup[label.lower().strip()] = value
-            select_options[name] = lookup
+            select_options[name] = (
+                [(str(opt.get("value", "")), str(opt.get("label", ""))) for opt in options]
+                if isinstance(options, list)
+                else []
+            )
 
         lists: dict[str, list[str]] = {
             field.get("name"): [] for field in header_to_field.values()
@@ -214,7 +218,7 @@ class MenuForm:
                 name = field.get("name")
                 value = cells[name]
                 if field.get("type") == "select" and value:
-                    resolved = select_options.get(name, {}).get(value.lower())
+                    resolved = resolve_option_value(value, select_options.get(name, []))
                     if resolved is None:
                         self._show_error(
                             f"Row {offset}: unknown {field.get('label', name)} '{value}'"

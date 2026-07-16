@@ -157,7 +157,8 @@ class Form:
 
         self.bulk_menu = MenuForm(
             page=self.page,
-            form=self,
+            parent=self.parent,
+            fields=self.fields,
             endpoint=self.bulk_endpoint,
             extra_fields=self.bulk_extra_fields,
             redirect_route=self.bulk_redirect,
