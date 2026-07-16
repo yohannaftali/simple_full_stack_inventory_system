@@ -1536,10 +1536,35 @@ managed via `pyproject.toml` (uv/Poetry).
     of a direct `add_button(position="left", icon=..., tooltip=...)` call
     — the third of the toolbar's "3 different-looking buttons" the fix
     addressed, now sharing the same standard-variant styling as the other
-    two. `ModuleToolbar` was deliberately left alone (its default
-    `SURFACE_CONTAINER_HIGH`/`ON_SURFACE` filled-tonal look wasn't the
-    reported problem) — if it should also move to the standard variant,
-    that's a separate, explicit follow-up.
+    two.
+  - **`ModuleToolbar` had the identical bug**, found on a follow-up check
+    after the `TableToolbar` fix above, in a slightly different shape: its
+    `add_button`'s default *parameter* was `bgcolor=ft.Colors.PRIMARY`
+    (not `None`), so a bare `add_button(...)` call with no `bgcolor`
+    argument at all (`purchase_report/index.py`/`usage_report/index.py`'s
+    "Apply Filters" button) rendered a solid, visibly-colored filled pill.
+    `add_new_button`/`add_submit_button` (used across ~40 module screens)
+    separately passed `bgcolor=None` explicitly, which the body's
+    `btn_bg = bgcolor if bgcolor else SURFACE_CONTAINER_HIGH` fallback
+    resolved to `SURFACE_CONTAINER_HIGH` — the *exact same color* as
+    `ModuleToolbar`'s own bar background, so those buttons happened to
+    look transparent by coincidence, not by design (fragile: would break
+    the moment the bar's bgcolor ever changed independently). Fixed the
+    same way as `TableToolbar`: default `bgcolor=None` (both the
+    parameter default and the fallback removed) and default
+    `icon_color=ON_SURFACE_VARIANT`. The 7 delete buttons across
+    `master_location/edit.py`, `ap_module/edit.py`, `ap_master_user/edit.py`,
+    `master_category/edit.py`, `master_department/edit.py`,
+    `master_module_group/edit.py`, `master_supplier/edit.py` all pass
+    `bgcolor=ft.Colors.ERROR`/`icon_color=ft.Colors.ON_ERROR` explicitly
+    and are unaffected — that's the toolbar's one legitimate filled/tonal
+    (danger) button. Verified by constructing `ModuleToolbar` directly and
+    calling `add_new_button`/`add_submit_button`/an explicit red delete
+    `add_button`/a bare "Apply Filters"-style `add_button`: the first
+    three now resolve `bgcolor=None`/`ON_SURFACE_VARIANT` as expected, the
+    delete button still resolves `bgcolor=Colors.ERROR`/`icon_color=
+    Colors.ON_ERROR` unchanged, and the bare call now also resolves
+    `bgcolor=None` instead of `PRIMARY`.
   - `components/table/menu.py::Menu`'s hamburger `ft.PopupMenuButton` is
     now explicitly sized to the same compact metrics as `Button`'s 32dp
     buttons (`height=32, width=32, padding=0,

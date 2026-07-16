@@ -51,19 +51,23 @@ class ModuleToolbar:
         callback,
         icon=ft.Icons.ABC,
         tooltip="",
-        bgcolor=ft.Colors.PRIMARY,
-        icon_color=ft.Colors.ON_PRIMARY,
+        bgcolor=None,
+        icon_color=None,
     ):
-        """Return a compact button (32dp height)"""
-        btn_fg = icon_color if icon_color else ft.Colors.ON_SURFACE
-        btn_bg = bgcolor if bgcolor else ft.Colors.SURFACE_CONTAINER_HIGH
+        """Return a standard Material 3 icon button (32dp, transparent
+        background - only the icon shows, with Flutter's own hover/pressed
+        state-layer highlight). Pass `bgcolor` for the rare filled/tonal
+        variant (e.g. a red "danger" delete button)."""
+        btn_fg = (
+            icon_color if icon_color is not None else ft.Colors.ON_SURFACE_VARIANT
+        )
 
         button = Button(
             icon=icon,
             on_click=callback,
             tooltip=tooltip,
             icon_color=btn_fg,
-            bgcolor=btn_bg,
+            bgcolor=bgcolor,
             size=32,
             radius=16,
         ).build()

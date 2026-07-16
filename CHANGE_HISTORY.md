@@ -646,3 +646,14 @@
 - Scope: frontend
 - Files: `frontend/src/components/table/toolbar.py`, `frontend/src/components/table/table.py`, `frontend/src/components/table/menu.py`, `AGENTS.md`
 - No GitHub issue filed (direct implementation, per user, following on from the #21 discussion)
+
+## [2026-07-16] — fix(frontend): ModuleToolbar had the same forced-fill button bug as TableToolbar
+- User asked to check whether `components/module/toolbar.py` had the same "not standard Material 3" bug just fixed on `TableToolbar` — it did, in a slightly different shape
+- Root cause: `add_button`'s default *parameter* was `bgcolor=ft.Colors.PRIMARY` (never `None`), so `purchase_report/index.py`'s and `usage_report/index.py`'s bare `add_button(...)` calls for "Apply Filters" (no `bgcolor` passed at all) rendered a solid, visibly-colored filled pill. Separately, `add_new_button`/`add_submit_button` (used across ~40 module screens) passed `bgcolor=None` explicitly, which the body's fallback resolved to `SURFACE_CONTAINER_HIGH` — coincidentally the exact same color as `ModuleToolbar`'s own bar background, so those buttons only looked transparent by luck, not by design
+- Fix: same pattern as the `TableToolbar` fix — default `bgcolor=None` (both the parameter default and the fallback substitution removed) and default `icon_color=ON_SURFACE_VARIANT`
+- The 7 delete buttons (`master_location/edit.py`, `ap_module/edit.py`, `ap_master_user/edit.py`, `master_category/edit.py`, `master_department/edit.py`, `master_module_group/edit.py`, `master_supplier/edit.py`) all pass `bgcolor=ft.Colors.ERROR`/`icon_color=ft.Colors.ON_ERROR` explicitly and are unaffected — the toolbar's one legitimate filled/tonal (danger) button
+- Verified in a real Flet 0.85.3 environment: constructed `ModuleToolbar` directly, called `add_new_button`/`add_submit_button`/an explicit red delete `add_button`/a bare "Apply Filters"-style `add_button` — confirmed the first three now resolve `bgcolor=None`/`icon_color=ON_SURFACE_VARIANT`, the delete button still resolves `bgcolor=Colors.ERROR`/`icon_color=Colors.ON_ERROR` unchanged, and the bare call now resolves `bgcolor=None` instead of `PRIMARY`; also imported `components/module/view.py` plus `purchase_report/index.py`, `usage_report/index.py`, `master_location/edit.py`, `ap_module/edit.py` to confirm no downstream breakage. **Not verified in a real browser** — no browser available in this environment
+- Updated AGENTS.md's Components section with this second finding
+- Scope: frontend
+- Files: `frontend/src/components/module/toolbar.py`, `AGENTS.md`
+- No GitHub issue filed (direct implementation, per user, following on from the TableToolbar fix above)
