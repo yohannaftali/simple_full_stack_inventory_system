@@ -52,6 +52,7 @@ class MaterialRepository:
         material_name: str,
         unit_id: int,
         category_id: Optional[int] = None,
+        is_active: bool = True,
     ) -> MaterialModel:
         with SessionLocal() as session:
             material = MaterialModel(
@@ -59,6 +60,7 @@ class MaterialRepository:
                 material_name=material_name,
                 unit_id=unit_id,
                 category_id=category_id,
+                is_active=is_active,
             )
             session.add(material)
             session.commit()
@@ -72,6 +74,7 @@ class MaterialRepository:
         material_name: str,
         unit_id: int,
         category_id: Optional[int] = None,
+        is_active: bool = True,
     ) -> bool:
         with SessionLocal() as session:
             material = (
@@ -84,17 +87,6 @@ class MaterialRepository:
             material.material_name = material_name
             material.unit_id = unit_id
             material.category_id = category_id
-            session.commit()
-            return True
-
-    def delete_material(self, material_id: int) -> bool:
-        with SessionLocal() as session:
-            material = (
-                session.query(MaterialModel).filter(MaterialModel.id == material_id).first()
-            )
-            if material is None:
-                return False
-
-            session.delete(material)
+            material.is_active = is_active
             session.commit()
             return True

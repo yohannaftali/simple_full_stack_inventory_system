@@ -1,11 +1,21 @@
 """Material master-data CRUD admin screen (frontend module `master_material`).
 
-Same list/get/submit/delete contract as `module_admin.py` — see that file's
-docstring for the shape. Gated by `require_module_access("master_material")`.
-Each material optionally links to a category (`category_id`, nullable —
-existing materials predate the category link); the edit/new form's
-`category_id` field is a `select` sourced from `call_category_id_select`.
-Supplier tracking lives at the receiving-header level instead
+Same list/get/submit contract as `module_admin.py` — see that file's
+docstring for the shape — but **no delete endpoint** (issue #17): deleting a
+material can break referential integrity with existing receiving/stock/
+stock-out history, so deletion is no longer offered at all (matching the
+`master_unit_of_material` precedent, issue #16). Instead, materials carry an
+`is_active` status (`select` field, `call_is_active_select`, same static
+Yes/No pattern as `ap_master_user`'s `is_active`/`is_superuser`) — an
+inactive material can no longer be *received* (`stock_in.py::submit_item`'s
+create path rejects it), but remains fully visible/usable for historical
+reporting and existing on-hand stock browse/issue.
+
+Gated by `require_module_access("master_material")`. Each material
+optionally links to a category (`category_id`, nullable — existing
+materials predate the category link); the edit/new form's `category_id`
+field is a `select` sourced from `call_category_id_select`. Supplier
+tracking lives at the receiving-header level instead
 (`receiving_headers.supplier_id`, see `stock_in.py`) — a material may be
 sourced from many different suppliers over time, so it doesn't carry a
 `supplier_id` of its own (removed, see issue #11).
@@ -16,7 +26,6 @@ sourced from `call_unit_id_select`.
 """
 
 from fastapi import APIRouter, Depends, Form, Query, Request
-from sqlalchemy.exc import IntegrityError
 
 from core.table_export import export_response
 from core.table_query import attach_pagination
@@ -40,7 +49,17 @@ _EXPORT_COLUMNS = [
     ("material_name", "Material Name"),
     ("category_name", "Category"),
     ("unit_name", "Unit"),
+    ("is_active", "Active"),
 ]
+
+_YES_NO_OPTIONS = [
+    {"value": "true", "label": "Yes"},
+    {"value": "false", "label": "No"},
+]
+
+
+def _parse_bool(value: str) -> bool:
+    return str(value).strip().lower() in ("true", "1", "yes")
 
 
 def _serialize(material: MaterialModel) -> dict:
@@ -59,6 +78,7 @@ def _serialize(material: MaterialModel) -> dict:
         "unit_id": str(material.unit_id),
         "unit_code": unit.code if unit else "",
         "unit_name": unit.name if unit else "",
+        "is_active": "true" if material.is_active else "false",
     }
 
 
@@ -107,12 +127,14 @@ def submit(
     material_name: str = Form(...),
     unit_id: str = Form(""),
     category_id: str = Form(""),
+    is_active: str = Form("true"),
     user: UserModel = Depends(_require_access),
 ) -> dict:
     if not unit_id:
         return {"error": "Unit of Material is required"}
     unit_id_value = int(unit_id)
     category_id_value = int(category_id) if category_id else None
+    active = _parse_bool(is_active)
 
     if id:
         updated = _material_repository.update_material(
@@ -121,6 +143,7 @@ def submit(
             material_name=material_name,
             unit_id=unit_id_value,
             category_id=category_id_value,
+            is_active=active,
         )
         if not updated:
             return {"error": "Material not found"}
@@ -131,19 +154,14 @@ def submit(
         material_name=material_name,
         unit_id=unit_id_value,
         category_id=category_id_value,
+        is_active=active,
     )
     return {"message": "Material created successfully"}
 
 
-@router.post("/delete")
-def delete(id: str = Form(...), user: UserModel = Depends(_require_access)) -> dict:  # noqa: A002
-    try:
-        deleted = _material_repository.delete_material(int(id))
-    except IntegrityError:
-        return {"error": "Cannot delete: this material has receiving/stock/issue history"}
-    if not deleted:
-        return {"error": "Material not found"}
-    return {"message": "Material deleted successfully"}
+@router.get("/call_is_active_select")
+def call_is_active_select(user: UserModel = Depends(_require_access)) -> list:
+    return _YES_NO_OPTIONS
 
 
 @router.get("/call_category_id_select")
@@ -165,7 +183,9 @@ def call_unit_id_select(user: UserModel = Depends(_require_access)) -> list:
 @router.post("/submit_bulk")
 async def submit_bulk(request: Request, user: UserModel = Depends(_require_access)) -> dict:
     form = await request.form()
-    rows = parse_bulk_rows(form, ["material_code", "material_name", "unit_id", "category_id"])
+    rows = parse_bulk_rows(
+        form, ["material_code", "material_name", "unit_id", "category_id", "is_active"]
+    )
 
     def build(row, session):
         material_code = str(row.get("material_code", "")).strip()
@@ -189,6 +209,7 @@ async def submit_bulk(request: Request, user: UserModel = Depends(_require_acces
             material_name=material_name,
             unit_id=unit_id,
             category_id=category_id,
+            is_active=_parse_bool(row.get("is_active", "true") or "true"),
         )
 
     return bulk_create(rows, build)

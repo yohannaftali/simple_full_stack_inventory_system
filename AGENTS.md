@@ -36,7 +36,7 @@
 | #14 | feat(backend): seed default admin username/password/TOTP from .env instead of hardcoding | closed | 2026-07-15 |
 | #15 | feat(frontend): make default backend server URL configurable via .env instead of hardcoding | closed | 2026-07-15 |
 | #16 | feat(inventory): add unit of material (UOM) master table, link to materials, show in qty tables | ready-for-review | 2026-07-16 |
-| #17 | feat(inventory): replace material deletion with active/inactive status flag | open | 2026-07-16 |
+| #17 | feat(inventory): replace material deletion with active/inactive status flag | ready-for-review | 2026-07-16 |
 | #18 | feat(inventory): seed a full default unit-of-material catalog via Alembic | ready-for-review | 2026-07-16 |
 
 ## Big Picture
@@ -892,6 +892,26 @@ an optional `department_id` (see Backend Architecture above) so a user can
 represent one department's requester, separately from stock-out headers
 each declaring their own department.
 
+**Materials cannot be deleted, only deactivated** (issue #17):
+`materials.is_active` (non-nullable `Boolean`, default `True`, added by
+migration `0025_add_is_active_to_materials.py` — single-step
+`server_default=sa.true()` add-column, no backfill dance needed since
+booleans always have a sensible default, unlike `unit_id`'s FK) replaces
+`master_material`'s delete button/endpoint entirely, same "no delete"
+precedent as `master_unit_of_material` (#16) — deleting a material can
+break referential integrity with its receiving/stock/issue history, so
+`master_material.py` router now has **no `/delete` route at all**.
+`master_material`'s new/edit form gains an `is_active` `select` field
+(`call_is_active_select`, same static Yes/No options as
+`ap_master_user`'s `is_active`/`is_superuser`), and its list shows the
+status. An inactive material is otherwise fully functional everywhere
+else — stock browse, stock out, usage report, and purchase report all
+continue to show its historical/on-hand data unchanged — **except**
+`POST C_stock_in/submit_item`'s create path (not its update path, since
+editing an already-received item shouldn't retroactively re-validate a
+material that was receivable at the time), which rejects it with
+`{"error": "Cannot receive: material is inactive"}`.
+
 Transactional tables, all in `backend/src/models/`:
 - `receiving_headers` / `receiving_items` (stock in): a header is
   `date` + `description` + `supplier_id` (nullable FK to `suppliers.id` —
@@ -1065,10 +1085,12 @@ responses do the same for its own `unit_id` field.
 `master_unit_of_material`, and `master_module_group` are plain
 `{index,new,edit}.py` CRUD, identical in shape to `ap_module`
 (`master_category`'s `new`/`edit` additionally carry a plain `description`
-input field; `master_material`'s `new`/`edit` carry `category_id` and
-`unit_id` select fields, `index` read-only `category_name`/`unit_name`
-labels; `master_unit_of_material`'s `edit.py` has **no delete button** —
-see the Inventory Domain section above for why). `ap_master_user`'s `new`/`edit` similarly carry a `department_id` select
+input field; `master_material`'s `new`/`edit` carry `category_id`,
+`unit_id`, and `is_active` select fields, `index` read-only
+`category_name`/`unit_name`/`is_active` labels; **both**
+`master_unit_of_material`'s and `master_material`'s `edit.py` have **no
+delete button** — see the Inventory Domain section above for why).
+`ap_master_user`'s `new`/`edit` similarly carry a `department_id` select
 field (optional — blank is valid) and `index` a read-only `department_name`
 label; `stock_out`'s `new`/`edit` carry a required `department_id` select on
 the header form and `index` a read-only `department_name` label. `ap_module`

@@ -37,6 +37,11 @@ class ModulePage:
                 "name": "category_id", "label": "Category", "icon": ft.Icons.CATEGORY,
                 "row": 2, "col": {"sm": 12, "md": 6},
                 "type": "select"
+            },
+            {
+                "name": "is_active", "label": "Active", "icon": ft.Icons.CHECK_CIRCLE,
+                "row": 3, "col": {"sm": 12, "md": 6},
+                "type": "select"
             }
         ]
 

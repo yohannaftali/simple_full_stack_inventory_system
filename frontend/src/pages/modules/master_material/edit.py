@@ -2,11 +2,17 @@ import flet as ft
 
 from components.module.view import ModuleView
 from components.form.form import Form
-from utils.http_client import HttpClient
 
 
 class ModulePage:
-    """Module screen class"""
+    """Module screen class.
+
+    No delete button, unlike most other master-data edit screens (issue
+    #17) - deleting a material can break referential integrity with
+    existing receiving/stock/issue history, so an `is_active` status
+    replaces deletion instead (same "no delete" precedent as
+    `master_unit_of_material`, issue #16).
+    """
 
     def __init__(self, page: ft.Page, module: str, screen=str, record_id: str | int = None):
         self.page = page
@@ -38,6 +44,11 @@ class ModulePage:
                 "name": "category_id", "label": "Category", "icon": ft.Icons.CATEGORY,
                 "row": 2, "col": {"sm": 12, "md": 6},
                 "type": "select"
+            },
+            {
+                "name": "is_active", "label": "Active", "icon": ft.Icons.CHECK_CIRCLE,
+                "row": 3, "col": {"sm": 12, "md": 6},
+                "type": "select"
             }
         ]
 
@@ -52,14 +63,6 @@ class ModulePage:
         self.view.header.set_title("Edit Material")
 
         self.view.toolbar.add_submit_button(callback=self.callback_submit)
-        self.view.toolbar.add_button(
-            position="left",
-            callback=self.callback_delete,
-            icon=ft.Icons.DELETE,
-            tooltip="Delete",
-            bgcolor=ft.Colors.ERROR,
-            icon_color=ft.Colors.ON_ERROR,
-        )
 
     def build(self):
         return self.view.build(self.body())
@@ -69,14 +72,3 @@ class ModulePage:
 
     def callback_submit(self, e):
         self.form.submit()
-
-    def callback_delete(self, e):
-        client = HttpClient(self.page)
-        response = client.post(f"C_{self.module}/delete", data={"id": self.record_id})
-
-        if isinstance(response, dict) and "error" in response:
-            self.view.show_error(response["error"])
-            return
-
-        self.view.show_success("Material deleted successfully")
-        self.page.run_task(self.page.push_route, f"/modules/{self.module}/index")

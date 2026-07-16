@@ -32,6 +32,10 @@ class ModulePage:
             {
                 "name": "unit_name", "label": "Unit",
                 "type": "label"
+            },
+            {
+                "name": "is_active", "label": "Active",
+                "type": "label"
             }
         ]
 

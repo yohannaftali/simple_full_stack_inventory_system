@@ -24,6 +24,10 @@ screen (material/location are then read-only — see inventory_service).
 - POST C_stock_in/submit_item (form: id [blank=create], receiving_header_id
   [required on create], material_id, location_id [required on create],
   qty_received, price_buy, remarks) -> services.inventory_service create/update.
+  The create path rejects an inactive material (`materials.is_active`, issue
+  #17) with `{"error": "Cannot receive: material is inactive"}` - editing an
+  existing item (id present) is unaffected, since that material was already
+  receivable at the time it was first received.
 - GET  C_stock_in/call_material_id_select, call_location_id_select -> options
   for the item form's `select` fields.
 - GET  C_stock_in/call_supplier_id_select -> options for the header form's
@@ -287,6 +291,10 @@ def submit_item(
 
     if not receiving_header_id or not material_id or not location_id:
         return {"error": "receiving_header_id, material_id and location_id are required"}
+
+    material = _material_repository.get_material_by_id(int(material_id))
+    if material is not None and not material.is_active:
+        return {"error": "Cannot receive: material is inactive"}
 
     inventory_service.create_receiving_item(
         receiving_header_id=int(receiving_header_id),
