@@ -37,7 +37,7 @@ class PermissionChecklist:
                 ],
                 spacing=10,
             ),
-            padding=ft.Padding.Symmetric(horizontal=20, vertical=10),
+            padding=ft.Padding.symmetric(horizontal=20, vertical=10),
         )
 
     def _load(self):

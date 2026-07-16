@@ -75,7 +75,7 @@ class HeadingForm:
 
         return ft.Container(
             height=38,
-            padding=ft.Padding.Symmetric(horizontal=12, vertical=3),
+            padding=ft.Padding.symmetric(horizontal=12, vertical=3),
             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
             border=ft.Border.only(bottom=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
             content=ft.Row(
