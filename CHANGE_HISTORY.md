@@ -624,3 +624,12 @@
 - Added new Section 14 (filtering and searching table data) covering the toolbar keyword search and the per-column filter row (live filtering, per-field clear, numeric operator syntax `>=`/`<=`/`>`/`<`/`!=`/`and`-joined ranges, keyword-vs-column-filter mutual exclusivity, hide-clears-all)
 - Scope: docs
 - Files: `README.md`
+
+## [2026-07-16] — chore(frontend): extract shared Button component to DRY up toolbar add_*_button methods
+- Issue #21 addressed on GitHub
+- Added `frontend/src/components/button.py::Button` — a shared Material 3 button builder (`icon`, `on_click`, `tooltip`, optional `label`, `icon_color`, `bgcolor`, `size`, `radius`, `padding`) replacing three near-identical inline `ft.IconButton(...)` constructions. Renders a plain Flet-default `IconButton` when `size` is `None`, a compact pill-shaped `IconButton` when `size` is set, or an `ft.FilledButton` (icon + text) when `label` is given
+- Rewired `components/list/toolbar.py`, `components/module/toolbar.py`, and `components/table/toolbar.py`'s `add_button` methods to call `Button(...).build()` instead of constructing `ft.IconButton` inline — each toolbar still owns its own default-color-resolution logic (`ModuleToolbar`: bg `SURFACE_CONTAINER_HIGH`/fg `ON_SURFACE`; `TableToolbar`: the inverse, bg `ON_SURFACE`/fg `SURFACE_CONTAINER_HIGH`; `ListToolbar`: plain default button, fg `ON_PRIMARY`) so no default look changed — only the final control construction moved into the shared component
+- Verified in a real Flet 0.85.3 environment (`uv run --no-project --with flet==0.85.3 ...`): `Button.build()` returns the expected `IconButton`/`FilledButton` shape for both the plain and compact-pill paths; constructed all three toolbars' `add_new_button`/`add_save_button`/`add_submit_button` and confirmed every resolved `bgcolor`/`icon_color`/`height`/`width` matches its pre-refactor value exactly; imported `components/table/table.py`, `components/module/view.py`, and `components/list/list.py` (the modules that actually consume these toolbars) to catch any downstream import breakage — none found. **Not verified in a real browser** — no browser available in this environment
+- Updated AGENTS.md's Frontend Architecture / Components section to document `Button` and each toolbar's preserved default color semantics
+- Scope: frontend
+- Files: `frontend/src/components/button.py`, `frontend/src/components/list/toolbar.py`, `frontend/src/components/module/toolbar.py`, `frontend/src/components/table/toolbar.py`, `AGENTS.md`

@@ -4,6 +4,8 @@ Toolbar component for table
 
 import flet as ft
 
+from components.button import Button
+
 
 class ListToolbar:
     """Toolbar component"""
@@ -55,12 +57,12 @@ class ListToolbar:
 
     def add_button(self, position, callback, icon=ft.Icons.ABC, tooltip="", icon_color=None):
         """Return an button"""
-        button = ft.IconButton(
+        button = Button(
             icon=icon,
-            icon_color=icon_color or ft.Colors.ON_PRIMARY,
-            tooltip=tooltip,
             on_click=callback,
-        )
+            tooltip=tooltip,
+            icon_color=icon_color or ft.Colors.ON_PRIMARY,
+        ).build()
         if position == "right":
             self.right = [] if self.right is None else self.right
             self.right.append(

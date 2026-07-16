@@ -40,7 +40,7 @@
 | #18 | feat(inventory): seed a full default unit-of-material catalog via Alembic | closed | 2026-07-16 |
 | #19 | fix(frontend): table search bar styling regressions; lighter placeholder color on table + home search bars | ready-for-review | 2026-07-16 |
 | #20 | fix(frontend): redesign table filter row — per-column alignment, live filtering, inline clear | ready-for-review | 2026-07-16 |
-| #21 | chore(frontend): extract shared Button component to DRY up toolbar add_*_button methods | open | 2026-07-16 |
+| #21 | chore(frontend): extract shared Button component to DRY up toolbar add_*_button methods | ready-for-review | 2026-07-16 |
 
 ## Big Picture
 
@@ -1492,6 +1492,33 @@ managed via `pyproject.toml` (uv/Poetry).
     `expand=True` on their control so they fill their `ResponsiveRow`
     column on web — a fix applied after `input`/`label` were initially
     missing it while `select` already had it.
+  - `components/button.py::Button` (issue #21) — a shared Material 3
+    button builder factoring out what used to be three near-identical
+    inline `ft.IconButton(...)` constructions in `components/list/toolbar.py`,
+    `components/module/toolbar.py`, and `components/table/toolbar.py`'s own
+    `add_button` methods. `Button(icon, on_click, tooltip="", label=None,
+    icon_color=None, bgcolor=None, size=None, radius=None,
+    padding=0).build()` returns a plain Flet-default `ft.IconButton` when
+    `size` is left `None` (matches `ListToolbar`'s bare buttons), or a
+    compact pill-shaped `ft.IconButton` (fixed `height`/`width=size`,
+    `ft.RoundedRectangleBorder(radius=radius or size/2)`) when `size` is
+    set (matches `ModuleToolbar`'s/`TableToolbar`'s existing 32dp/16-radius
+    buttons); passing `label` instead renders an `ft.FilledButton`
+    (icon + text) for a future non-icon-only use case. **Each toolbar keeps
+    its own default-color-resolution logic** (`ModuleToolbar`'s default
+    bg/fg is `SURFACE_CONTAINER_HIGH`/`ON_SURFACE`, `TableToolbar`'s is the
+    inverse — `ON_SURFACE`/`SURFACE_CONTAINER_HIGH`, a deliberate
+    higher-contrast pill against `TableToolbar`'s lighter
+    `SURFACE_CONTAINER_LOW` bar background) — only the final
+    `ft.IconButton`/`ft.FilledButton` construction moved into `Button`, so
+    no toolbar's default look changed; verified by constructing all three
+    toolbars' `add_new_button`/`add_save_button`/`add_submit_button` in a
+    real Flet 0.85.3 environment and confirming each resolved
+    `bgcolor`/`icon_color`/`height`/`width` exactly matches its
+    pre-refactor value. `add_button`/`add_new_button`/`add_save_button`/
+    `add_submit_button` on all three toolbars still own callback wiring,
+    default icon/tooltip, and left/right positioning — `Button` only
+    builds the control, it has no opinion on toolbar placement.
 
 - **Repositories / state & persistence** (`src/repository/`): each repo
   wraps `page.data` (in-memory cache) plus an optional persistence `store`.

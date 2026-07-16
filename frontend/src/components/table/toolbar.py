@@ -4,6 +4,8 @@ Toolbar component for table
 
 import flet as ft
 
+from components.button import Button
+
 
 class TableToolbar:
     """Toolbar component"""
@@ -80,19 +82,15 @@ class TableToolbar:
             icon_color if icon_color is not None else ft.Colors.SURFACE_CONTAINER_HIGH
         )
 
-        button = ft.IconButton(
+        button = Button(
             icon=icon,
-            icon_color=btn_fg,
-            tooltip=tooltip,
             on_click=callback,
-            height=32,
-            width=32,
-            style=ft.ButtonStyle(
-                bgcolor=btn_bg,
-                padding=0,  # Forces graphic straight to geometric center
-                shape=ft.RoundedRectangleBorder(radius=16),
-            ),
-        )
+            tooltip=tooltip,
+            icon_color=btn_fg,
+            bgcolor=btn_bg,
+            size=32,
+            radius=16,
+        ).build()
         if position == "right":
             self.right.append(button)
             return

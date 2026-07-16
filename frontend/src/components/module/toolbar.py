@@ -4,6 +4,8 @@ Toolbar component for module
 
 import flet as ft
 
+from components.button import Button
+
 
 class ModuleToolbar:
     """Toolbar component compliant with Material 3 sub-header standards"""
@@ -56,19 +58,15 @@ class ModuleToolbar:
         btn_fg = icon_color if icon_color else ft.Colors.ON_SURFACE
         btn_bg = bgcolor if bgcolor else ft.Colors.SURFACE_CONTAINER_HIGH
 
-        button = ft.IconButton(
+        button = Button(
             icon=icon,
-            icon_color=btn_fg,
-            tooltip=tooltip,
             on_click=callback,
-            height=32,
-            width=32,
-            style=ft.ButtonStyle(
-                bgcolor=btn_bg,
-                padding=0,
-                shape=ft.RoundedRectangleBorder(radius=16),
-            ),
-        )
+            tooltip=tooltip,
+            icon_color=btn_fg,
+            bgcolor=btn_bg,
+            size=32,
+            radius=16,
+        ).build()
         if position == "right":
             self.right.append(button)
             return
