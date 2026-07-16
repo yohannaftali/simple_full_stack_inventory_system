@@ -690,3 +690,13 @@
 - Verified in a real Flet 0.85.3 environment: imported all seven renamed classes directly by their new names (`TableColumns`, `TableRows`, `TableBody`, `TableHeader`, `TableFilter`, `TableMenu`, `MenuForm`) from their (possibly renamed) module paths; confirmed the old `filter_row.py`/`bulk_menu.py` paths no longer exist on disk; imported `components/table/table.py`, `components/form/form.py`, and a spread of real consumer pages (`master_material/index.py`, `master_material/new.py`, `stock_in/item_table.py`, `stock_out/item_new.py`, `usage_report/index.py`) to confirm no downstream `ImportError`/`NameError`; grepped the whole repo afterward for any remaining `bulk_menu`/`filter_row`/`BulkMenu`/`FilterRow` reference outside this changelog - none found. **Not verified in a real browser** — no browser available in this environment
 - Scope: frontend
 - Files: `frontend/src/components/table/{columns,rows,body,header,filter,menu,table}.py`, `frontend/src/components/form/{menu,form}.py`, `AGENTS.md`
+
+## [2026-07-16] — #23 status changed: open → closed
+- Title: chore(frontend): rename table/form component files and classes for clearer, unambiguous naming
+- Platform: GitHub (auto-closed by the "Closes #23" line in the pushed commit)
+
+## [2026-07-16] — feat(stock_in): bulk CSV/XLSX upload for receiving items on item_new
+- Issue #24 created on GitHub
+- Scope: backend, frontend
+- Labels: enhancement, backend, frontend
+- User noticed `stock_in/item_new.py` (the per-header "Add Item" screen) has no bulk-upload option — issue #5's `_attach_bulk_menu()` guard only fires when `parent.screen == "new"`, and this screen's route segment is `"item_new"`, so it was deliberately excluded at the time ("items have their own flows"). Scoped the gap: needs a new backend `inventory_service.py::create_receiving_items_bulk` (one transaction, all-or-nothing, same convention as `bulk_service.py::bulk_create`) + `POST C_stock_in/submit_bulk_item` endpoint, and a frontend bulk-upload menu on `item_new.py` that can carry the header's `receiving_header_id` as a static field on every row and post to the new endpoint instead of `MenuForm`'s hardcoded `submit_bulk` — flagged both as the two things that block just reusing `components/form/menu.py::MenuForm` as-is

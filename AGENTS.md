@@ -42,7 +42,8 @@
 | #20 | fix(frontend): redesign table filter row — per-column alignment, live filtering, inline clear | ready-for-review | 2026-07-16 |
 | #21 | chore(frontend): extract shared Button component to DRY up toolbar add_*_button methods | closed | 2026-07-16 |
 | #22 | fix(frontend): hide CSV/XLSX upload menu items on tables with no editable columns | closed | 2026-07-16 |
-| #23 | chore(frontend): rename table/form component files and classes for clearer, unambiguous naming | ready-for-review | 2026-07-16 |
+| #23 | chore(frontend): rename table/form component files and classes for clearer, unambiguous naming | closed | 2026-07-16 |
+| #24 | feat(stock_in): bulk CSV/XLSX upload for receiving items on item_new | open | 2026-07-16 |
 
 ## Big Picture
 
