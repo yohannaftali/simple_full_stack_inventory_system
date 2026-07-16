@@ -40,7 +40,7 @@
 | #18 | feat(inventory): seed a full default unit-of-material catalog via Alembic | closed | 2026-07-16 |
 | #19 | fix(frontend): table search bar styling regressions; lighter placeholder color on table + home search bars | ready-for-review | 2026-07-16 |
 | #20 | fix(frontend): redesign table filter row — per-column alignment, live filtering, inline clear | ready-for-review | 2026-07-16 |
-| #21 | chore(frontend): extract shared Button component to DRY up toolbar add_*_button methods | ready-for-review | 2026-07-16 |
+| #21 | chore(frontend): extract shared Button component to DRY up toolbar add_*_button methods | closed | 2026-07-16 |
 
 ## Big Picture
 
