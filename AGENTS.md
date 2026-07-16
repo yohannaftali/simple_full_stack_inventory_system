@@ -41,6 +41,7 @@
 | #19 | fix(frontend): table search bar styling regressions; lighter placeholder color on table + home search bars | ready-for-review | 2026-07-16 |
 | #20 | fix(frontend): redesign table filter row — per-column alignment, live filtering, inline clear | ready-for-review | 2026-07-16 |
 | #21 | chore(frontend): extract shared Button component to DRY up toolbar add_*_button methods | closed | 2026-07-16 |
+| #22 | fix(frontend): hide CSV/XLSX upload menu items on tables with no editable columns | ready-for-review | 2026-07-16 |
 
 ## Big Picture
 
@@ -464,16 +465,39 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
   (`components/table/menu.py`, class `Menu` — renamed from the original
   `export_menu.py`; wired into `Table.__init__` as `self.export_menu`,
   appended rightmost by `toolbar.py`). Menu contents by table kind:
-  non-input tables get the 6 download entries, a separator, then the two
-  upload entries; `is_inside_form=True` tables (input-mode grids like
-  `stock_out` item_new's per-location qty-entry table — the *primary*
-  upload use case) get an upload-only menu, since no
-  `C_{module}/export_{name}` endpoint exists for them. Downloads offer
-  the table's *entire* current filtered/sorted result set (not just the
-  loaded page) as CSV, TSV, SCSV, XLSX, ODS, or PDF. Backend half:
-  `backend/src/core/table_export.py::export_response(rows, columns,
+  non-input tables get the 6 download entries; `is_inside_form=True`
+  tables (input-mode grids like `stock_out` item_new's per-location
+  qty-entry table — the *primary* upload use case) skip downloads
+  entirely, since no `C_{module}/export_{name}` endpoint exists for them.
+  Downloads offer the table's *entire* current filtered/sorted result set
+  (not just the loaded page) as CSV, TSV, SCSV, XLSX, ODS, or PDF. Backend
+  half: `backend/src/core/table_export.py::export_response(rows, columns,
   format, filename_base)` renders any of the 6 formats from a plain
   `list[dict]` + `[(field, label), ...]` column spec.
+
+  **Upload entries are gated on the table actually having somewhere to put
+  the uploaded values** (issue #22, 2026-07-16) — `Menu.__init__` only
+  appends "Upload from CSV"/"Upload from XLSX" (and the separator before
+  them, when downloads are also present) when at least one of the table's
+  `fields` has a `"type"` in the module-level `_EDITABLE_TYPES` set
+  (`input`, `textarea`, `select`, `option`, `datepicker`, `checkbox` — the
+  same set `Rows._build_editable_cell()` dispatches on). Before this, the
+  menu always offered both upload entries regardless of `is_inside_form`,
+  which was actively misleading on a purely read-only list table (e.g.
+  `master_material`/`stock_in`'s header list — every field `label`/
+  `hidden`) since there was nothing editable for an upload to populate;
+  bulk record creation for those tables already goes through the "Add
+  New" screen's own separate bulk-upload menu (issue #5,
+  `components/form/bulk_menu.py`), so this isn't a lost capability, just a
+  dead one. The gate is based on the fields themselves, not the
+  `is_inside_form` flag, so it composes correctly with the download gate
+  independently: a non-form table that happens to have an editable column
+  gets downloads + separator + uploads (all three sections); a
+  read-only non-form table gets downloads only; an `is_inside_form` table
+  with editable fields (the common case) gets uploads only, no leading
+  separator (nothing precedes it); the never-yet-seen case of an
+  `is_inside_form` table with zero editable fields gets an empty menu
+  (harmless, no real table hits this today).
 
   **Upload half is entirely client-side** (in the Flet process): the
   picked file's bytes are parsed (`parse_csv_bytes` sniffs comma/

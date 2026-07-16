@@ -8,8 +8,12 @@
    label-column headers, sequential row-by-row otherwise. Only rows currently
    loaded on the client are populated (lazy-loaded pages are ignored).
 
-Download entries are suppressed for input-mode tables (is_inside_form);
-upload entries are always present.
+Download entries are suppressed for input-mode tables (is_inside_form).
+Upload entries are only shown when the table has at least one editable
+column (input/textarea/select/option/datepicker/checkbox) - a purely
+read-only list table has nothing for an upload to populate; bulk record
+creation for those goes through the "Add New" screen's own bulk-upload
+menu instead (issue #5, components/form/bulk_menu.py).
 """
 
 import csv
@@ -98,23 +102,33 @@ class Menu:
                         content=label, icon=icon, on_click=self._download_handler(fmt)
                     )
                 )
-            # Separator between the download and upload sections.
-            menu_items.append(ft.PopupMenuItem())
 
-        menu_items.append(
-            ft.PopupMenuItem(
-                content="Upload from CSV",
-                icon=ft.Icons.UPLOAD_FILE,
-                on_click=self._upload_handler("csv"),
-            )
+        # Upload only makes sense when the table has somewhere to put the
+        # uploaded values - a purely read-only list table (no "input"/
+        # "select"/etc. field) has nothing for it to populate. Bulk record
+        # creation for those tables already goes through the "Add New"
+        # screen's own bulk-upload menu (issue #5, components/form/bulk_menu.py).
+        has_editable_fields = any(
+            field.get("type") in _EDITABLE_TYPES for field in self.parent.fields
         )
-        menu_items.append(
-            ft.PopupMenuItem(
-                content="Upload from XLSX",
-                icon=ft.Icons.UPLOAD_FILE,
-                on_click=self._upload_handler("xlsx"),
+        if has_editable_fields:
+            if menu_items:
+                # Separator between the download and upload sections.
+                menu_items.append(ft.PopupMenuItem())
+            menu_items.append(
+                ft.PopupMenuItem(
+                    content="Upload from CSV",
+                    icon=ft.Icons.UPLOAD_FILE,
+                    on_click=self._upload_handler("csv"),
+                )
             )
-        )
+            menu_items.append(
+                ft.PopupMenuItem(
+                    content="Upload from XLSX",
+                    icon=ft.Icons.UPLOAD_FILE,
+                    on_click=self._upload_handler("xlsx"),
+                )
+            )
 
         # Sized/padded to match the compact 32dp toolbar buttons
         # (components/button.py::Button's `size=32, radius=16`) - the

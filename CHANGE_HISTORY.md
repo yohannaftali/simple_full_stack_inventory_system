@@ -657,3 +657,17 @@
 - Scope: frontend
 - Files: `frontend/src/components/module/toolbar.py`, `AGENTS.md`
 - No GitHub issue filed (direct implementation, per user, following on from the TableToolbar fix above)
+
+## [2026-07-16] — fix(frontend): hide CSV/XLSX upload menu items on tables with no editable columns
+- Issue #22 created on GitHub
+- Scope: frontend
+- Labels: bug, frontend
+- User noticed `components/table/menu.py`'s hamburger menu always shows "Upload from CSV"/"Upload from XLSX", even on purely read-only list tables where there's nothing editable to populate — asked for the menu to check whether the table actually contains any editable column type (input/textarea/select/option/datepicker/checkbox) and only show the upload entries when it does, since bulk record creation for ordinary list tables already goes through the "Add New" screen's own bulk-upload menu (issue #5)
+
+## [2026-07-16] — fix(frontend): hide CSV/XLSX upload menu items on tables with no editable columns (issue #22)
+- `Menu.__init__` now computes `has_editable_fields = any(field.get("type") in _EDITABLE_TYPES for field in self.parent.fields)` and only appends the "Upload from CSV"/"Upload from XLSX" items (plus the separator before them, only when download items are also present) when that's true — previously upload was unconditional regardless of whether the table had any editable cell to populate
+- Restructured the separator logic so it's added only between two actually-present sections, not unconditionally whenever downloads were shown: a non-form table with an editable column now correctly gets downloads + separator + uploads; a non-form table with none gets downloads only (no dangling trailing separator); an `is_inside_form` table with editable fields (the common case, e.g. `stock_out/item_new.py`) gets uploads only, same as before
+- Updated the class docstring and AGENTS.md's "Table export/upload convention" section to describe the new gating rule in place of the old "upload entries are always present" note
+- Verified in a real Flet 0.85.3 environment: constructed `Menu` against four fake parent shapes (read-only list, `is_inside_form` with editable fields, non-form with an editable field, `is_inside_form` with zero editable fields) and confirmed each produced exactly the expected item set (download-only, upload-only, download+separator+upload, and empty, respectively); cross-checked against two real modules' actual field configs — `master_material/index.py` (all `label`/`hidden` fields, confirming its upload entries now correctly disappear) and `stock_out/item_new.py` (`input` fields, confirming its upload entries are unaffected); imported `components/table/table.py` plus `master_material/index.py`, `stock_in/index.py`, `stock_out/item_new.py` to confirm no downstream breakage. **Not verified in a real browser** — no browser available in this environment
+- Scope: frontend
+- Files: `frontend/src/components/table/menu.py`, `AGENTS.md`
