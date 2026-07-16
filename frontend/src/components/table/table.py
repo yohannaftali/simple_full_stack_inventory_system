@@ -96,7 +96,11 @@ class Table:
         # default, toggled via a toolbar button only shown when at least
         # one field opts in. See components/table/filter_row.py.
         self.filter_row = FilterRow(
-            page=page, parent=self, fields=fields, on_apply=self._handle_filter_apply
+            page=page,
+            parent=self,
+            fields=fields,
+            columns=self.columns,
+            on_apply=self._handle_filter_apply,
         )
         toolbar_controls = [self.table_search_bar.build()]
         self.toolbar: TableToolbar | None = TableToolbar(
@@ -166,6 +170,7 @@ class Table:
         if self.data and len(self.data) > 0:
             self.columns.load(self.data)
             self.rows.load(self.data, append=False)
+            self.filter_row.reposition()
             # Rebuild the header and body with the loaded data
             if self.header and self.body:
                 if (
@@ -281,6 +286,12 @@ class Table:
         # Recalculate column widths and rebuild rows
         self.columns.load(data)
         self.rows.load(data, append=append)
+        # Keep each filter field aligned with its column - a live width
+        # patch on the same mounted Containers (issue #20), safe to call on
+        # every keystroke same as the comment below explains for the
+        # toolbar/header/body themselves: it never rebuilds the TextField
+        # instances, so it can't drop focus the way a full rebuild would.
+        self.filter_row.reposition()
 
         # If the table has already been built (header/body DataTables exist inside
         # self.table_container), replace the DataTable controls so the new
@@ -376,6 +387,12 @@ class Table:
             if recompute:
                 self.columns.load(self.data)
             self.rows.load(self.data)
+
+        # Widths are current by this point either way - handle_drag()
+        # already mutated them directly before calling here (recompute=
+        # False), or columns.load() just recomputed them above (recompute=
+        # True) - keep each filter field aligned either way (issue #20).
+        self.filter_row.reposition()
 
         if self.table_container and hasattr(self.table_container, "content"):
             col = self.table_container.content  # ft.Column

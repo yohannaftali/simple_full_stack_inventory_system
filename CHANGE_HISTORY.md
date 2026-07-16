@@ -566,3 +566,61 @@
 ## [2026-07-16] — #1 status changed: open → closed
 - Title: feat(infra): scaffold full-stack app with MariaDB, FastAPI, and Flet via Podman Compose
 - Platform: GitHub
+
+## [2026-07-16] — fix(frontend): table search bar styling regressions; lighter placeholder color on table + home search bars
+- Issue #19 created on GitHub
+- Scope: frontend
+- Labels: bug, frontend
+- User-reported regressions in the compact `TextField`-based table search bar (rebuilt for #2): search/clear icons only show while focused (should always show), clear icon padding/position too far right, text not vertically centered, border radius smaller than every other input in the app (8 vs. the established 10). Also: placeholder text on both the table search bar and the home module search bar is too close in contrast to real typed text
+
+## [2026-07-16] — fix(frontend): table search bar styling regressions; lighter placeholder color (issue #19)
+- Root cause of the icon-visibility bug: `components/table/search_bar.py`'s `TextField` used Flet's `prefix`/`suffix` slots (`FormFieldControl.prefix`/`.suffix`) for the search/clear icons — per Flutter's `InputDecoration`, those inline affix slots only render once the field is focused or non-empty, unlike `prefix_icon`/`suffix_icon`, which always render. `components/form/input.py`'s leading icon already correctly used `prefix_icon` and never had this bug — confirmed by reading Flet 0.85.3's own `form_field_control.py` source (`prefix`: "A Control to place on the line before the input" vs. `prefix_icon`: "An icon that appears before the editable part... within the decoration's container", no focus caveat)
+- Fix: swapped `prefix`→`prefix_icon` and `suffix`→`suffix_icon` (still the same clickable `ft.IconButton` for clear) — both now render unconditionally
+- Fix: clear icon's "too far right" gap was Flutter reserving its default ~48dp tap-target for the suffix slot; added `suffix_icon_size_constraints=ft.BoxConstraints(min/max width/height=24)` to match the icon's own compact size, eliminating the extra gap
+- Fix: vertical centering — added explicit `text_vertical_align=ft.VerticalAlignment.CENTER` and a small non-zero vertical `content_padding` (was `0`)
+- Fix: `border_radius` changed `8` → `10`, matching every other input in the app (`components/form/input.py`/`date.py`/`label.py`/`select.py`)
+- Fix: placeholder contrast — added `hint_style=ft.TextStyle(color=ft.Colors.with_opacity(0.5, ft.Colors.ON_SURFACE), size=13)` to the table search bar and the equivalent `bar_hint_text_style` (same opacity/color) to `components/home/search_bar.py`'s `ft.SearchBar`, so the hint text ("Search in table..."/"Search modules...") is now visibly lighter than real typed text (`color`/`bar_text_style` stay full-opacity `ON_SURFACE`)
+- Verified by constructing the actual, unmodified `TableSearchBar`/`HomeSearchBar` classes (not just isolated snippets) inside a real Flet 0.85.3 environment (`uv run --no-project --with flet==0.85.3 --with requests --with flet-datatable2`, working around the known bind-mounted-venv dev gotcha) with a fake `Page`/`Storage` harness — both build without error, and the resulting `prefix_icon`/`suffix_icon`/`suffix_icon_size_constraints`/`text_vertical_align`/`hint_style`/`bar_hint_text_style` attributes all hold the expected values. **Not verified in a real browser** — no browser available in this environment; the user should do a quick visual check (unfocused state shows both icons, clear icon sits flush with the edge, text centered, radius matches other inputs, placeholder visibly lighter on both bars)
+- Scope: frontend
+- Files: `frontend/src/components/table/search_bar.py`, `frontend/src/components/home/search_bar.py`
+- Issue #19 addressed on GitHub
+
+## [2026-07-16] — fix(frontend): redesign table filter row — per-column alignment, live filtering, inline clear
+- Issue #20 created on GitHub
+- Scope: frontend
+- Labels: bug, frontend
+- User-reported gaps in the per-column filter row (#10): fields don't align with the table body's actual column positions/widths and don't track resizing; needs a leading filter icon + trailing per-field clear icon (auto-unfilters just that column); the row-level "Apply Filters"/"Clear Filters" buttons should be removed in favor of live per-keystroke filtering; hiding the filter row should also clear every active column filter; background/border-radius should match the table search bar (`SURFACE_CONTAINER_HIGH`, radius 10, per #19)
+
+## [2026-07-16] — fix(frontend): redesign table filter row — per-column alignment, live filtering, inline clear (issue #20)
+- `filter_row.py::FilterRow` rebuilt around one fixed-width `ft.Container` per **visible** column (not just filterable ones — a non-filterable column still reserves its slot as an empty `Container`, so every filter field after it stays aligned), using `Columns.widths` + the same `TABLE_HORIZONTAL_MARGIN`/`TABLE_COLUMN_SPACING` constants `header.py`/`body.py`'s `ft.DataTable`s are built with — a plain `ft.Row` of these lines up pixel-for-pixel with the real table body, no absolute positioning needed (`Table` now passes `columns=self.columns` into `FilterRow.__init__`)
+- New `FilterRow.reposition()` patches each field's `Container.width` in place from the current `Columns.widths` (cheap — unlike `ft.DataTable`, a plain `Container` genuinely shrinks on a live width patch, no rebuild). `table.py` calls it from every place `Columns.widths` can change: `Table.load()`, `Table.build()`'s pending-data branch, and `Table._handle_resize_commit()` (resize drag tick / double-tap reset) — the same trigger points `Columns._reposition_handles()` already uses for the resize handles
+- Each filterable field gained a leading filter icon (`prefix_icon=ft.Icons.FILTER_ALT`) and a trailing per-field clear icon (`suffix_icon=ft.Icons.CLEAR`, `suffix_icon_size_constraints` to avoid the same oversized-tap-target gap issue #19 fixed on the search bar) that clears only that column's own filter value and immediately re-fetches; `border_radius=10` and `bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH` now match the table search bar (was `SURFACE_CONTAINER_LOW`, radius unset)
+- Filtering is now live: every field's `on_change`/`on_submit` call the same `on_apply` callback (a keystroke re-fetches immediately, same pattern the table search bar already used) — the row's trailing "Apply Filters"/"Clear Filters" `IconButton`s are gone entirely
+- `FilterRow.toggle()` now clears every field's value and re-fetches (only) when transitioning from visible→hidden, so a hidden filter row never leaves a column filter silently still applied server-side
+- Verified by constructing the real, unmodified `Table`/`FilterRow`/`Columns` classes end-to-end (not isolated snippets) in a real Flet 0.85.3 environment with a fake `Page`/`Storage`/`HttpClient` harness (`uv run --no-project --with flet==0.85.3 --with requests --with flet-datatable2 --with openpyxl`): initial field-container widths exactly match `Columns.widths`; a resize drag (`handle_drag`) changes widths and every filter field followed via `reposition()`; each field's `border_radius`/icons/row `bgcolor` hold the expected values; the row contains exactly one container per visible field (no leftover Apply/Clear-all buttons); typing into a field triggers exactly one refetch; clearing one field only clears that field (not others) and still refetches; toggling the row from visible to hidden clears every field and refetches. `BaseControl.update()` was stubbed out in the test harness only (this script never attaches controls to a real live Page, which `.update()` requires) — `FilterRow`'s own control updates already go through its pre-existing `RuntimeError`-safe `_safe_update` pattern, so this doesn't mask anything. **Not verified in a real browser** — no browser available in this environment; a visual check (fields sit exactly under their header/body columns, follow a live drag-resize, icons/colors match the search bar) is still worth doing before merging
+- `AGENTS.md`'s per-column-filter documentation updated to describe the new alignment/live-filter/clear/hide-clears-all design in place of the old "free-standing row, not worth aligning" rationale
+- Scope: frontend
+- Files: `frontend/src/components/table/filter_row.py`, `frontend/src/components/table/table.py`, `AGENTS.md`
+- Issue #20 addressed on GitHub
+
+## [2026-07-16] — #16 status changed: ready-for-review → closed
+- Title: feat(inventory): add unit of material (UOM) master table, link to materials, show in qty tables
+- Platform: GitHub
+
+## [2026-07-16] — #18 status changed: ready-for-review → closed
+- Title: feat(inventory): seed a full default unit-of-material catalog via Alembic
+- Platform: GitHub
+
+## [2026-07-16] — chore(frontend): extract shared Button component to DRY up toolbar add_*_button methods
+- Issue #21 created on GitHub
+- Scope: frontend
+- Labels: chore, frontend
+- User noticed `add_button`/`add_new_button`/`add_save_button`/`add_submit_button` are each independently duplicated across `components/list/toolbar.py`, `components/module/toolbar.py`, and `components/table/toolbar.py` — proposed a shared Button component under `components/` (configurable position/icon/title/tooltip/color/size, Material 3 defaults) so future buttons (back, submit, menu, search) can reuse the same standard
+
+## [2026-07-16] — docs: document unit of material, suppliers, material active/inactive, and table filtering in README.md
+- README.md was last updated before UOM (#16/#18), suppliers (#7), material active/inactive (#17), and per-column table filtering (#10/#19/#20) landed — brought it up to date before starting #21
+- Section 6 (master material) now documents the required Unit of Material select, the seeded 22-unit starter catalog, that units can't be deleted, and that materials can't be deleted either — only deactivated via the Active select (an inactive material stays fully visible/historical, just can't be picked on a *new* Stock In line)
+- Added new Section 7 (master supplier) — this master list existed in the backend/frontend but was never documented in the README; renumbered every following section (location/department/stock in/out/browse/usage/download-upload) by one
+- Added new Section 14 (filtering and searching table data) covering the toolbar keyword search and the per-column filter row (live filtering, per-field clear, numeric operator syntax `>=`/`<=`/`>`/`<`/`!=`/`and`-joined ranges, keyword-vs-column-filter mutual exclusivity, hide-clears-all)
+- Scope: docs
+- Files: `README.md`

@@ -35,9 +35,12 @@
 | #13 | chore(infra): move Dockerfile-backend/-frontend/-mariadb into their service subfolders | closed | 2026-07-15 |
 | #14 | feat(backend): seed default admin username/password/TOTP from .env instead of hardcoding | closed | 2026-07-15 |
 | #15 | feat(frontend): make default backend server URL configurable via .env instead of hardcoding | closed | 2026-07-15 |
-| #16 | feat(inventory): add unit of material (UOM) master table, link to materials, show in qty tables | ready-for-review | 2026-07-16 |
+| #16 | feat(inventory): add unit of material (UOM) master table, link to materials, show in qty tables | closed | 2026-07-16 |
 | #17 | feat(inventory): replace material deletion with active/inactive status flag | closed | 2026-07-16 |
-| #18 | feat(inventory): seed a full default unit-of-material catalog via Alembic | ready-for-review | 2026-07-16 |
+| #18 | feat(inventory): seed a full default unit-of-material catalog via Alembic | closed | 2026-07-16 |
+| #19 | fix(frontend): table search bar styling regressions; lighter placeholder color on table + home search bars | ready-for-review | 2026-07-16 |
+| #20 | fix(frontend): redesign table filter row — per-column alignment, live filtering, inline clear | ready-for-review | 2026-07-16 |
+| #21 | chore(frontend): extract shared Button component to DRY up toolbar add_*_button methods | open | 2026-07-16 |
 
 ## Big Picture
 
@@ -324,12 +327,50 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
     Frontend half: `components/table/filter_row.py::FilterRow` — a
     collapsible row of `ft.TextField`s, toggled via a toolbar button
     (`Table._toggle_filter_row`) only added when at least one field opts
-    in (in practice, almost always). Renders as a free-standing row above
-    the header rather than trying to align pixel-for-pixel with
-    `Columns`' resize/sort-aware DataTable header cells — those solve a
-    different problem (fixed per-column pixel widths), and reusing that
-    machinery here would mean touching every hardcoded `Table`/`Columns`
-    index assumption for no real UX gain.
+    in (in practice, almost always).
+    **Pixel-aligned to the table body** (issue #20, reversing the original
+    "free-standing row, not worth aligning" design noted below): one
+    fixed-width `ft.Container` per **visible** column, in the same order
+    as `Columns.index`/`.widths` — a non-filterable-but-visible column
+    still reserves its slot (an empty `Container` of that column's width)
+    so every filter field after it stays aligned, same reasoning as
+    `Columns._reposition_handles()`'s cumulative-offset math. The row's
+    outer `Container` uses `TABLE_HORIZONTAL_MARGIN` as left/right padding
+    and `TABLE_COLUMN_SPACING` as inter-field spacing — the exact same
+    constants `header.py`/`body.py` construct their `ft.DataTable`s with —
+    so a plain `ft.Row` of fixed-width containers lines up pixel-for-pixel
+    with the `DataTable`'s own `horizontal_margin`/`column_spacing`
+    layout, with no absolute positioning needed (unlike the resize
+    handles, which sit in a separate overlay `Stack` on top of the
+    header — this is a normal `Row` underneath it). `FilterRow.reposition()`
+    patches each field's `Container.width` in place from the current
+    `Columns.widths` — cheap, since (unlike `ft.DataTable`) a plain
+    `Container` genuinely does shrink on a live width patch, no rebuild
+    required. `Table` calls it from every place `Columns.widths` can
+    change: `Table.load()` (data reload — recomputed widths unless
+    manually resized), `Table.build()`'s pending-data branch, and
+    `Table._handle_resize_commit()` (a resize drag tick or double-tap
+    reset) — the same trigger points `Columns._reposition_handles()`
+    itself runs from for the resize handles. Reusing `Columns`' own
+    resize/sort-aware `DataTable` header cells directly (rather than a
+    parallel `Row`) was considered and rejected for the same reason as
+    before: those solve a different problem (fixed per-column pixel
+    widths baked into `DataColumn`s), and reusing that machinery here
+    would mean touching every hardcoded `Table`/`Columns` index
+    assumption for no real UX gain over a width-matched `Row`.
+    Each filterable field also gets a leading filter icon (`prefix_icon`,
+    `ft.Icons.FILTER_ALT`) and a trailing per-field clear icon
+    (`suffix_icon`, `ft.Icons.CLEAR`) that clears *only that column's*
+    filter value and immediately re-fetches — not a row-wide clear.
+    Filtering is live (`on_change`/`on_submit` both call the same
+    `on_apply` callback on every keystroke) — the row's earlier
+    "Apply Filters"/"Clear Filters" `IconButton`s at the end of the row
+    are gone entirely. Toggling the row closed (`FilterRow.toggle()`)
+    always clears every field's value and re-fetches first, so a hidden
+    row never leaves a filter silently still applied server-side. Each
+    field's `border_radius=10` and the row's own `bgcolor=
+    ft.Colors.SURFACE_CONTAINER_HIGH` match the table search bar's
+    styling (issue #19).
     `Table._build_toolbar_with_filter_row()` folds the filter row into the
     *same* top-level `controls` slot the toolbar alone used to occupy
     (`ft.Column([toolbar, filter_row])` as one element) rather than adding

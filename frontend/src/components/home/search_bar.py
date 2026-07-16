@@ -45,6 +45,12 @@ class HomeSearchBar:
             # colored accent (that's the older M2 convention).
             bar_bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
             bar_text_style=ft.TextStyle(color=ft.Colors.ON_SURFACE, size=14),
+            # Lighter than `bar_text_style`'s entered-text color, so the
+            # placeholder is visibly distinguishable from real input
+            # (issue #19 - same fix as the table search bar's `hint_style`).
+            bar_hint_text_style=ft.TextStyle(
+                color=ft.Colors.with_opacity(0.5, ft.Colors.ON_SURFACE), size=14
+            ),
             # A ControlState dict of low-opacity tints (the M3 "state layer"
             # convention), not a single solid color: passing a plain color
             # here replaces the whole bar background on hover/focus/press

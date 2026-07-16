@@ -34,22 +34,34 @@ class TableSearchBar:
         self.search_bar = ft.TextField(
             value=initial_value,
             hint_text="Search in table...",
+            # Lighter than the entered-text color (`color` below) so the
+            # placeholder is visibly distinguishable from real input, not a
+            # near-identical shade of the same on-surface color (issue #19).
+            hint_style=ft.TextStyle(
+                color=ft.Colors.with_opacity(0.5, ft.Colors.ON_SURFACE), size=13
+            ),
             height=32,  # Hard-locked compact dimension profile
             text_size=13,  # Scaled down to prevent text vertical wrapping
+            text_vertical_align=ft.VerticalAlignment.CENTER,
             on_change=self.on_search_change,
             on_submit=self.on_submit,
             # Material 3 Styling mapping to your exact Theme values
             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
             color=ft.Colors.ON_SURFACE,
-            border_radius=8,
+            border_radius=10,  # Matches every other input in the app (form/input.py etc.)
             # Low opacity state-layer boundaries matching your architectural commentary
             border_color=ft.Colors.OUTLINE_VARIANT,
             focused_border_color=ft.Colors.TERTIARY,
             # Content padding adjustment prevents the text block from drifting out of alignment
-            content_padding=ft.Padding.symmetric(horizontal=10, vertical=0),
-            # Functional Iconography alignments scaled down to match the 32dp boundary constraints
-            prefix=ft.Icon(ft.Icons.SEARCH, color=ft.Colors.ON_SURFACE, size=14),
-            suffix=ft.IconButton(
+            content_padding=ft.Padding.symmetric(horizontal=10, vertical=6),
+            # `prefix_icon`/`suffix_icon` (not `prefix`/`suffix`) - Flutter's
+            # InputDecoration only renders `prefix`/`suffix` once the field is
+            # focused or non-empty; `prefix_icon`/`suffix_icon` render
+            # unconditionally, which is what a persistent search/clear icon
+            # needs (issue #19). `input.py`'s `prefix_icon` usage never had
+            # this bug for the same reason.
+            prefix_icon=ft.Icon(ft.Icons.SEARCH, color=ft.Colors.ON_SURFACE, size=14),
+            suffix_icon=ft.IconButton(
                 icon=ft.Icons.CLEAR,
                 icon_color=ft.Colors.ON_SURFACE,
                 icon_size=14,
@@ -58,6 +70,13 @@ class TableSearchBar:
                 padding=0,  # Absolute graphic centering
                 on_click=self.clear_search,
                 tooltip="Clear text",
+            ),
+            # Without this, Flutter reserves its default ~48dp tap-target
+            # width/height for the suffix icon slot, pushing it well past the
+            # field's true right edge - the "clear icon sits too far right"
+            # regression from issue #19.
+            suffix_icon_size_constraints=ft.BoxConstraints(
+                min_width=24, max_width=24, min_height=24, max_height=24
             ),
         )
 

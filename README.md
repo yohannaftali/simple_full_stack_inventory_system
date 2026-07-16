@@ -19,13 +19,15 @@ department usage/cost reporting.
 4. [Setting up TOTP (2FA)](#4-setting-up-totp-2fa)
 5. [Setting up users and permissions](#5-setting-up-users-and-permissions)
 6. [Setting up master material](#6-setting-up-master-material)
-7. [Setting up master location](#7-setting-up-master-location)
-8. [Setting up master department](#8-setting-up-master-department)
-9. [Stock in (receiving)](#9-stock-in-receiving)
-10. [Stock out (issuing)](#10-stock-out-issuing)
-11. [Browsing current stock](#11-browsing-current-stock)
-12. [Checking usage](#12-checking-usage)
-13. [Download and Upload Features](#13-download-and-upload-features)
+7. [Setting up master supplier](#7-setting-up-master-supplier)
+8. [Setting up master location](#8-setting-up-master-location)
+9. [Setting up master department](#9-setting-up-master-department)
+10. [Stock in (receiving)](#10-stock-in-receiving)
+11. [Stock out (issuing)](#11-stock-out-issuing)
+12. [Browsing current stock](#12-browsing-current-stock)
+13. [Checking usage](#13-checking-usage)
+14. [Filtering and searching table data](#14-filtering-and-searching-table-data)
+15. [Download and Upload Features](#15-download-and-upload-features)
 
 ## 1. Deploying the application
 
@@ -298,35 +300,66 @@ before any exist.
 
 ## 6. Setting up master material
 
-Open the **Materials** module. Click **Add New** and fill in:
+Materials link to two other master lists, so it's easiest to set those up
+first:
+
+- **Unit of Material** (e.g. `PCS`/Pieces, `KG`/Kilogram, `L`/Litres) — open
+  the **Unit of Material** module and add any units you need. A large
+  starter catalog (22 common units) is already seeded out of the box, so
+  you often won't need to add any. **Units can't be deleted** once created
+  — there's no delete button on this screen at all — since every material
+  must always point at exactly one valid unit.
+- **Category** (optional, e.g. Raw Materials, Packaging, Tools) — open the
+  **Categories** module and add your own if you want materials grouped by
+  category; this link is optional and can be left blank.
+
+Then open the **Materials** module, click **Add New**, and fill in:
 
 - **Code** — a unique material code
 - **Name** — the material's display name
-- **Category** — optional, pick from your categories list (set up
-  categories first via the **Categories** module if you want to link one)
+- **Category** — optional, pick from your categories list
+- **Unit of Material** — **required**, pick from your units list; every
+  material has exactly one unit, shown alongside its quantity everywhere
+  the app displays a qty for that material (stock browse, stock in/out
+  items, usage report)
+- **Active** — Yes/No, defaults to Yes
 
 Materials don't carry their own supplier — a material can come from many
 different suppliers over time, so supplier is instead recorded per
-receiving batch (see [Stock in](#9-stock-in-receiving) below).
+receiving batch (see [Stock in](#10-stock-in-receiving) below).
 
-Click **Submit**. Edit or delete existing materials from the list the same
-way as users. A material can't be deleted once it has any receiving/stock/
-issue history — you'll get a clear error instead of a broken delete.
+Click **Submit**. Edit existing materials from the list the same way as
+users. **Materials can't be deleted** — the edit screen has no delete
+button at all, since removing a material could break its receiving/stock/
+issue history. To retire a material instead of deleting it, edit it and set
+**Active** to **No**: an inactive material still shows up everywhere with
+its full historical/on-hand data, it just can't be selected as the material
+on a *new* Stock In receiving line going forward (editing an existing
+receiving line for it is still allowed).
 
-## 7. Setting up master location
+## 7. Setting up master supplier
+
+Open the **Suppliers** module. Click **Add New**, fill in **Code** and
+**Name**, then **Submit**. Same edit/delete pattern and delete-history
+protection as location/department below. Suppliers are picked per receiving
+batch on the Stock In header (see [Stock in](#10-stock-in-receiving) below)
+rather than per material, since one material can be sourced from several
+different suppliers over time.
+
+## 8. Setting up master location
 
 Open the **Locations** module (e.g. warehouse zones, shelves, or storage
 areas). Click **Add New** and fill in **Code** and **Name**, then
 **Submit**. Same edit/delete pattern, same delete-history protection as
 material.
 
-## 8. Setting up master department
+## 9. Setting up master department
 
 Open the **Departments** module (who *consumes* inventory — used later for
 usage reporting). Click **Add New**, fill in **Code** and **Name**, then
 **Submit**. Same edit/delete pattern and delete-history protection.
 
-## 9. Stock in (receiving)
+## 10. Stock in (receiving)
 
 1. Open the **Stock In** module and click **Add New**. Fill in the header:
    **Date**, **Description** (e.g. a PO/DO reference), and **Supplier**
@@ -349,7 +382,7 @@ Each receipt recalculates that material's **moving average price** and adds
 to its on-hand quantity — you don't need to do anything else; it's
 automatic.
 
-## 10. Stock out (issuing)
+## 11. Stock out (issuing)
 
 1. Open the **Stock Out** module and click **Add New**. Fill in the header:
    **Date**, **Department** (required — every issue must be attributed to a
@@ -371,29 +404,63 @@ error before anything is changed. Stock out items can't be edited or
 deleted once created (to "undo" one, receive the quantity back in via
 Stock In).
 
-## 11. Browsing current stock
+## 12. Browsing current stock
 
 Open the **Stock Browse** module — a read-only list of current on-hand
-quantity per material + location, along with each material's moving
-average price and total value (`qty × average price`). No add/edit here;
-it's a live snapshot for reference.
+quantity (with its unit, e.g. `50 PCS`) per material + location, along with
+each material's moving average price and total value (`qty × average
+price`). No add/edit here; it's a live snapshot for reference.
 
-## 12. Checking usage
+## 13. Checking usage
 
 Open the **Usage Report** module — a read-only summary of total quantity
-issued and total cost per department + material, aggregated across every
-Stock Out transaction. Use it to answer "how much of what has each
-department consumed, and at what cost." No add/edit here either.
+issued (with unit) and total cost per department + material, aggregated
+across every Stock Out transaction. Use it to answer "how much of what has
+each department consumed, and at what cost." No add/edit here either. Use
+the **Start Date**/**End Date** fields and **Apply Filters** button above
+the table to narrow the report to a date range.
 
-## 13. Download and Upload Features
+## 14. Filtering and searching table data
+
+Every list screen (Users, Materials, Stock In, etc.) offers two ways to
+narrow down what's showing, in addition to the sortable column headers:
+
+### 14.1 Keyword search
+
+The search bar in the table's toolbar searches across that table's main
+text columns at once (e.g. code and name) — type a few characters and the
+list updates as you type.
+
+### 14.2 Per-column filters
+
+Click the **filter icon** in the table's toolbar to open a **filter row**
+just below the column headers, with one input aligned under each column.
+
+- Each field filters **live** — the list updates on every keystroke, no
+  "Apply" button to click.
+- A field's leading funnel icon marks it as filterable; its trailing **✕**
+  clears just that one column's filter and re-fetches immediately.
+- Numeric columns (like quantities or prices) accept operator syntax, not
+  just a plain number:
+  - `50` — exact match
+  - `>=50` — greater than or equal
+  - `<=50` — less than or equal
+  - `>50`, `<50`, `!=50` — greater/less than, not equal
+  - `>=10and<=50` — a range (join multiple conditions with `and`)
+- Keyword search and per-column filters are **mutually exclusive** — using
+  one clears the other, since they can't be combined on the same request.
+- Closing the filter row (click the filter icon again) clears every active
+  column filter, so a hidden row never leaves a filter silently applied.
+
+## 15. Download and Upload Features
 
 Most list screens (Users, Materials, Stock In, etc.) have a hamburger menu icon (☰) on the right side of their toolbar. This menu provides options for downloading the current data or uploading new data.
 
-### 13.1 Downloading Data
+### 15.1 Downloading Data
 
 Click the hamburger menu and select one of the "Download as..." options (CSV, XLSX, etc.). This will download a file containing **all** records that match the current search filter and sort order, not just the rows currently visible on the page.
 
-### 13.2 Uploading Data into a Table
+### 15.2 Uploading Data into a Table
 
 This feature allows you to populate editable fields in a table (like the item entry grid when issuing stock) directly from a CSV or XLSX file.
 
@@ -409,7 +476,7 @@ This feature allows you to populate editable fields in a table (like the item en
     -   If no key columns are found, it will populate rows sequentially.
     -   The data is only populated on the screen; you still need to click the main **Submit** button for the screen to save the changes.
 
-### 13.3 Bulk Creating New Records
+### 15.3 Bulk Creating New Records
 
 On screens where you create new records (like "Add New User" or "Add New Material"), the toolbar on the "New" screen has its own hamburger menu (☰). This allows you to create many records at once from a file.
 
