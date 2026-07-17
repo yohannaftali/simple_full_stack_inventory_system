@@ -31,8 +31,15 @@ from models.location import LocationModel
 from models.material import MaterialModel
 from models.receiving_item import ReceivingItemModel
 from models.stock import StockModel
+from models.stock_movement_item import StockMovementItemModel
 from models.stock_out_item import StockOutItemModel
 from services.bulk_service import BulkRowError
+
+
+class SameLocationMovementError(Exception):
+    """Raised when a stock movement's origin and destination location are
+    the same - a transfer to itself is a no-op that would otherwise pass
+    every other validation."""
 
 
 class InsufficientStockError(Exception):
@@ -295,3 +302,84 @@ def create_stock_out_item(
         session.commit()
         session.refresh(stock_out_item)
         return stock_out_item
+
+
+def create_stock_movement_item(
+    stock_movement_header_id: int,
+    material_id: int,
+    origin_location_id: int,
+    destination_location_id: int,
+    movement_qty: Decimal,
+    remarks: str,
+    created_by: int | None = None,
+) -> StockMovementItemModel:
+    """Transfer stock: deduct FIFO from the material's lots at
+    `origin_location_id` (same deduction as `create_stock_out_item`), then
+    create a brand new lot for `movement_qty` at `destination_location_id`
+    (same "new lot" shape `create_receiving_item` produces, but with
+    `receiving_item_id=None` - see `StockModel`'s updated docstring).
+
+    Deliberately does NOT touch `inventory_values.qty`/`average_price` for
+    the material - a transfer between two of that material's own locations
+    changes neither its total on-hand quantity nor its cost, only its
+    per-location distribution.
+
+    `plan_qty` is always set equal to `movement_qty` on create - this first
+    rollout is direct/immediate movement only (see `StockMovementItemModel`'s
+    docstring for the future plan/confirm split `plan_qty` is reserved for).
+
+    Raises SameLocationMovementError if origin == destination, or
+    InsufficientStockError if the origin location doesn't have enough.
+    """
+    if origin_location_id == destination_location_id:
+        raise SameLocationMovementError()
+
+    with SessionLocal() as session:
+        lots = (
+            session.query(StockModel)
+            .filter(
+                StockModel.material_id == material_id,
+                StockModel.location_id == origin_location_id,
+            )
+            .order_by(StockModel.id)
+            .all()
+        )
+        available = sum((lot.qty for lot in lots), Decimal("0"))
+        if available < movement_qty:
+            raise InsufficientStockError(available)
+
+        remaining = movement_qty
+        for lot in lots:
+            if remaining <= 0:
+                break
+            deduct = min(lot.qty, remaining)
+            lot.qty -= deduct
+            remaining -= deduct
+
+        movement_item = StockMovementItemModel(
+            stock_movement_header_id=stock_movement_header_id,
+            material_id=material_id,
+            origin_location_id=origin_location_id,
+            destination_location_id=destination_location_id,
+            plan_qty=movement_qty,
+            movement_qty=movement_qty,
+            remarks=remarks,
+            created_by=created_by,
+            updated_by=created_by,
+        )
+        session.add(movement_item)
+        session.flush()
+
+        session.add(
+            StockModel(
+                receiving_item_id=None,
+                stock_movement_item_id=movement_item.id,
+                material_id=material_id,
+                location_id=destination_location_id,
+                qty=movement_qty,
+            )
+        )
+
+        session.commit()
+        session.refresh(movement_item)
+        return movement_item

@@ -24,6 +24,8 @@ from models import (  # noqa: E402,F401
     receiving_header,
     receiving_item,
     stock,
+    stock_movement_header,
+    stock_movement_item,
     stock_out_header,
     stock_out_item,
     supplier,

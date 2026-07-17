@@ -50,7 +50,7 @@
 | #29 | feat(stock_browse): drill into stock-by-material with per-location breakdown + totals footer | closed | 2026-07-17 |
 | #28 | feat(stock_browse): drill into stock-by-material with per-location breakdown + totals footer (duplicate of #29) | closed | 2026-07-17 |
 | #30 | feat(frontend,backend): shared table footer (row-count + pagination/lazy-load toggle), port L_database metadata parity | closed | 2026-07-17 |
-| #31 | feat(inventory): stock movement module - transfer stock between locations | open | 2026-07-17 |
+| #31 | feat(inventory): stock movement module - transfer stock between locations | ready-for-review | 2026-07-17 |
 | #32 | fix(inventory): verify stock_in/stock_out header lists default to descending date sort | closed (no-op - already correct) | 2026-07-17 |
 
 ## Big Picture
@@ -1487,16 +1487,51 @@ Transactional tables, all in `backend/src/models/`:
   receiving's supplier join, which does extend keyword search) — narrowly
   scoped to closing the sort/filter gap that was actually reported, not a
   full parity pass with `stock_in`'s header search behavior.
+- `stock_movement_headers` / `stock_movement_items` (stock movement — issue
+  #31, transferring on-hand stock between two locations without it counting
+  as a stock-out or stock-in): header is `date` + `description` +
+  **`created_by`/`updated_by`** (nullable FKs to `users.id`, stamped from
+  the authenticated session user at write time — the first header table in
+  this codebase to track who performed the action; every other header
+  table here has neither field). Each item is `material_id` +
+  `origin_location_id` + `destination_location_id` (both FKs to
+  `locations.id` — must differ, enforced by
+  `inventory_service.SameLocationMovementError`) + `plan_qty` +
+  `movement_qty` + `remarks` + its own `created_by`/`updated_by`.
+  **`plan_qty` is reserved for a future two-step plan/confirm workflow** —
+  this first rollout is direct/immediate movement only, so `plan_qty` is
+  always set equal to `movement_qty` on create with no separate UI input
+  for it; the item sub-table's "Remaining" column (`plan_qty -
+  movement_qty`, computed by the router, not stored) is always `0` today
+  but will become meaningful once a plan/confirm split is actually built.
+  `stock_movement_repository.py::list_items_by_header` outer-joins
+  `LocationModel` **twice** via `sqlalchemy.orm.aliased` (once per
+  direction) so both `origin_location_code`/`name` and
+  `destination_location_code`/`name` are independently filterable/sortable
+  — the first two-location join in this codebase (every other item table
+  has exactly one location per row).
+  **Schema knock-on effect**: a stock movement's destination lot needs a
+  `stocks` row, but `stocks.receiving_item_id` was `NOT NULL` (every prior
+  lot came from a receiving item) — migration `0026` makes it nullable and
+  adds a new nullable `stocks.stock_movement_item_id` FK, so a lot is now
+  sourced from **either** a `receiving_item` **or** a `stock_movement_item`
+  (never both, `receiving_item_id IS NULL` for a movement-created lot).
+  `uq_stock_lot`'s existing unique constraint on
+  `(receiving_item_id, material_id, location_id)` still works unmodified —
+  both SQLite and MySQL/MariaDB treat `NULL` as distinct from every other
+  `NULL` in a unique index, so multiple movement-created lots at the same
+  material/location (each with `receiving_item_id=NULL`) don't collide.
 
 All business logic lives in `backend/src/services/inventory_service.py`,
 which — unlike every other service/repository in this codebase — manages its
 own `SessionLocal()` transaction directly instead of going through
 single-table repository methods, because one "receive" or "issue" call must
-touch `receiving_items`/`stocks`/`inventory_values` (or `stock_out_items`)
-atomically. Repositories for these tables (`receiving_repository.py`,
-`stock_repository.py`, `stock_out_repository.py`) are read-only for the
-transactional parts (header CRUD is plain repository methods same as
-everywhere else; only item writes route through the service).
+touch `receiving_items`/`stocks`/`inventory_values` (or `stock_out_items`,
+or `stock_movement_items`) atomically. Repositories for these tables
+(`receiving_repository.py`, `stock_repository.py`, `stock_out_repository.py`,
+`stock_movement_repository.py`) are read-only for the transactional parts
+(header CRUD is plain repository methods same as everywhere else; only item
+writes route through the service).
 
 - **Moving average price (MAP)**: receiving `new_qty` at `new_price` when the
   material already has `qty`/`average_price` on hand recomputes as
@@ -1531,6 +1566,54 @@ everywhere else; only item writes route through the service).
   reversing a FIFO deduction that may have spanned multiple lots would need
   a lot-allocation ledger, which is out of scope; to "undo" an issue today
   you'd receive it back in.
+- **Stock movement (transfer between locations) is FIFO-deduct-at-origin +
+  new-lot-at-destination, and deliberately never touches `inventory_values`**
+  (issue #31): `inventory_service.create_stock_movement_item(...)` deducts
+  `movement_qty` FIFO from the material's lots at `origin_location_id` —
+  identical deduction logic to `create_stock_out_item` (same oldest-lot-first
+  loop, same `InsufficientStockError` safety net for a stock change racing
+  an up-front check) — then creates a brand-new lot at
+  `destination_location_id` for that same qty, same "new lot" shape
+  `create_receiving_item` produces except `receiving_item_id=None` (see the
+  `stocks` schema note above). It does **not** call
+  `_apply_receiving_delta`/touch `InventoryValueModel.qty`/`average_price`
+  at all — a transfer between two of a material's own locations changes
+  neither its total on-hand quantity nor its cost, only its per-location
+  distribution, so there is nothing for the MAP calculation to do here.
+  Rejects `origin_location_id == destination_location_id`
+  (`SameLocationMovementError`) before touching anything. Same
+  user-picks-material-then-a-qty-per-origin-location UX as stock out's item
+  form — `stock_movement/item_new.py` additionally has a single
+  **Destination Location** dropdown (fed by
+  `C_stock_movement/call_location_id_select`) that applies to every row
+  submitted from that screen, since one `stock_movement_item` needs exactly
+  one destination but the origin-location table can span several rows;
+  `POST C_stock_movement/submit_items` validates every requested qty
+  against its origin location's current stock up front (same
+  reject-the-whole-submission-before-mutating-anything pattern as
+  `stock_out.py::submit_items`) and separately rejects any origin row that
+  matches the chosen destination. **No multi-material bulk endpoint** like
+  `stock_out`'s `submit_bulk_items` (issue #25) — the per-origin-location
+  table on `item_new` is a plain `is_inside_form=True` `Table` with
+  editable `movement_qty`/`remarks` columns, so it already gets a generic
+  CSV/XLSX upload menu for free (`components/table/menu.py::TableMenu`, see
+  "Table export/upload convention" below) once a material and destination
+  are already picked — no bespoke bulk-upload backend needed for that flow,
+  matching the issue's own scoped request (`Location | Qty Movement |
+  Remarks` columns only, not `Material`/`Location` like stock_out's
+  multi-material bulk).
+  **Stock movement items are immutable** (create-only, no edit/delete),
+  same rationale as stock out items.
+  Verified end-to-end (SQLite, `StaticPool` in-memory + `TestClient` against
+  the real FastAPI routes, `dependency_overrides` on the router's own
+  `_require_access` object): a 100-unit receipt at MAP 10 into location A,
+  then a 25-unit movement A→B via the actual HTTP endpoints — material's
+  `qty`/`average_price` unchanged (100 / 10) before and after, location A
+  drops to 75, location B gains 25 as a lot with `receiving_item_id=None`/
+  `stock_movement_item_id` set, a same-location submission and an
+  insufficient-stock submission both correctly rejected with no partial
+  mutation, `call_material_id_select`/`call_location_id_select` both return
+  the expected options. **Not yet confirmed in a live browser.**
 - Deleting a location/material that has any receiving/stock/issue history
   fails with a friendly `{"error": "Cannot delete: ..."}` (catches the
   FK `IntegrityError`) rather than a raw 500 or a silent cascade.
@@ -1604,6 +1687,23 @@ Routers (all under `backend/src/routers/`, each gated by
   by `stock_out.py`'s item form now, kept for parity/possible future use)
   and `call_supplier_id_select` for its header form; `stock_out.py`
   additionally exposes `call_department_id_select` for its header form.
+- `stock_movement.py` (issue #31): same header list/get/submit/
+  `submit_bulk`/`get_items` shape as `stock_in.py`/`stock_out.py`, except
+  `submit` stamps `created_by`/`updated_by` from the current session user
+  (`user.id`, resolved via the `_require_access` dependency every router
+  already depends on — no separate `get_current_user` call needed) rather
+  than accepting them as form fields. Reuses `get_stock_by_material`
+  (backed by `stock_repository.py`, the exact same repository method
+  `stock_out.py` calls) rather than duplicating it. `submit_items` (form:
+  `stock_movement_header_id`, `material_id`, `destination_location_id`,
+  repeated `origin_location_id`/`movement_qty`/`remarks`) is the only
+  item-write endpoint — no `submit_item`/`get_item` (items are create-only,
+  like `stock_out`, not editable like `stock_in`) and no
+  `submit_bulk_items` multi-material bulk endpoint (see the movement
+  business-logic note above for why that's not needed here). Exposes
+  `call_material_id_select` and `call_location_id_select` (the latter feeds
+  the item form's single destination dropdown, not a per-item location like
+  `stock_in.py`'s use of the same endpoint name).
 
 **Unit of material (UOM) display convention** (issue #16): every material
 links to exactly one unit of material (`materials.unit_id`, non-nullable —
@@ -1772,8 +1872,19 @@ with the parent form in **one** POST — the spec here is "click + to add
 one item via its own form," a separate transaction per item, not a bulk
 combined save.
 
+`stock_movement` (issue #31) reuses this exact pattern as its third
+consumer, closest in shape to `stock_out` (create-only items, own delete
+protection reasoning) — `stock_movement/{index,new,edit,item_table,item_new}.py`
+mirror `stock_out/{index,new,edit,item_table,item_new}.py` file-for-file,
+differing only in field lists (no `department_id`; the item form's table
+carries an extra **Destination Location** dropdown alongside the material
+picker, since a movement item needs both an origin — from the per-location
+stock table, same as `stock_out` — and one destination for the whole
+screen).
+
 The *item sub-list itself*, though, **is** built on the shared
-`components/table/table.py` (`stock_in/item_table.py`, `stock_out/item_table.py`
+`components/table/table.py` (`stock_in/item_table.py`, `stock_out/item_table.py`,
+`stock_movement/item_table.py`
 — thin wrapper classes, each building a `Table` with the header's own
 `get_items` endpoint and `custom_param={"header_id": ...}` to scope every
 request to that one header) — same paginated/lazy-loaded/searchable

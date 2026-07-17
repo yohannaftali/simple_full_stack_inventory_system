@@ -54,3 +54,15 @@ def format_time(value) -> str:
         except ValueError:
             return str(value)
     return parsed.strftime("%H:%M")
+
+
+def format_datetime(value) -> str:
+    """Format an ISO datetime value as "dd Mon yyyy HH:MM" - `format_date`
+    and `format_time` combined, for a column that needs both (e.g. stock
+    movement's "Datetime Actual")."""
+    if not value:
+        return ""
+    parsed = _parse_datetime(value)
+    if parsed is None:
+        return str(value)
+    return parsed.strftime("%d %b %Y %H:%M")

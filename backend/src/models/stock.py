@@ -1,12 +1,16 @@
-"""Stock ORM model — one lot row per receiving item: how much of that specific
-receipt remains at its location. Not edited directly; maintained by
-`services.inventory_service` (upserted 1:1 with its receiving item on stock in,
-decremented FIFO-within-location on stock out)."""
+"""Stock ORM model — one lot row per receiving item OR per stock movement
+item (never both): how much of that specific receipt/incoming-transfer
+remains at its location. Not edited directly; maintained by
+`services.inventory_service` (upserted 1:1 with its receiving item on stock
+in, decremented FIFO-within-location on stock out, and - since issue #31 -
+a new lot created 1:1 with its stock movement item at the destination
+location on a transfer, with `receiving_item_id` left `None`)."""
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -14,7 +18,8 @@ from models.base import Base
 
 
 class StockModel(Base):
-    """Database model for stock lots (one row per receiving item)."""
+    """Database model for stock lots (one row per receiving item or per
+    stock movement item)."""
 
     __tablename__ = "stocks"
     __table_args__ = (
@@ -24,8 +29,11 @@ class StockModel(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    receiving_item_id: Mapped[int] = mapped_column(
-        ForeignKey("receiving_items.id"), nullable=False, index=True
+    receiving_item_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("receiving_items.id"), nullable=True, index=True
+    )
+    stock_movement_item_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("stock_movement_items.id"), nullable=True, index=True
     )
     material_id: Mapped[int] = mapped_column(
         ForeignKey("materials.id"), nullable=False, index=True

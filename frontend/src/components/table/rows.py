@@ -2,13 +2,14 @@ import flet as ft
 
 from components.form.date import DateForm
 from components.table.columns import TableColumns
-from utils.formatting import format_date, format_number, format_time
+from utils.formatting import format_date, format_datetime, format_number, format_time
 from utils.http_client import HttpClient
 
 _FORMATTERS = {
     "number": format_number,
     "date": format_date,
     "time": format_time,
+    "datetime": format_datetime,
 }
 
 # Field types that render an editable control instead of read-only text -

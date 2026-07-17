@@ -18,6 +18,7 @@ from routers.module_group_admin import router as module_group_admin_router
 from routers.purchase_report import router as purchase_report_router
 from routers.stock_browse import router as stock_browse_router
 from routers.stock_in import router as stock_in_router
+from routers.stock_movement import router as stock_movement_router
 from routers.stock_out import router as stock_out_router
 from routers.usage_report import router as usage_report_router
 from routers.user_admin import router as user_admin_router
@@ -42,6 +43,7 @@ app.include_router(master_category_router)
 app.include_router(master_unit_of_material_router)
 app.include_router(stock_in_router)
 app.include_router(stock_out_router)
+app.include_router(stock_movement_router)
 app.include_router(stock_browse_router)
 app.include_router(usage_report_router)
 app.include_router(purchase_report_router)
