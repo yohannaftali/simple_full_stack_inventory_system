@@ -54,7 +54,7 @@ class LocationRepository:
                 query = apply_sort(query, sort_fields, _SORT_COLUMNS)
             else:
                 query = query.order_by(LocationModel.code)
-            return paginate(query, limit=limit, page=page, offset=offset)
+            return paginate(query, limit=limit, page=page, offset=offset, sort_fields=sort_fields)
 
     def create_location(self, code: str, name: str) -> LocationModel:
         with SessionLocal() as session:

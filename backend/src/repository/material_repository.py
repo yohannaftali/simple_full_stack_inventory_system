@@ -71,7 +71,7 @@ class MaterialRepository:
                 query = apply_sort(query, sort_fields, _FILTER_COLUMN_MAP)
             else:
                 query = query.order_by(MaterialModel.material_code)
-            return paginate(query, limit=limit, page=page, offset=offset)
+            return paginate(query, limit=limit, page=page, offset=offset, sort_fields=sort_fields)
 
     def create_material(
         self,

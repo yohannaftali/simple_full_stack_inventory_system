@@ -187,7 +187,7 @@ class UserRepository:
                 query = apply_sort(query, sort_fields, _FILTER_COLUMN_MAP)
             else:
                 query = query.order_by(UserModel.username)
-            return paginate(query, limit=limit, page=page, offset=offset)
+            return paginate(query, limit=limit, page=page, offset=offset, sort_fields=sort_fields)
 
     def update_user_by_id(
         self,

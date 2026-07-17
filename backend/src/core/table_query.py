@@ -21,12 +21,29 @@ list/pagination convention" section.
 """
 
 import math
+import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Mapping, Sequence
 
 from sqlalchemy import or_
 from sqlalchemy.orm import Query
+
+# L_database::return_rows_limited() always attaches db_sql (PHP's
+# $db->last_query() is free - it just reads back whatever the driver already
+# ran). SQLAlchemy has no equivalent: compiling a query's literal SQL
+# (`query.statement.compile(compile_kwargs={"literal_binds": True})`) is a
+# real per-request cost and isn't dialect-safe for every column type (e.g.
+# binary/JSON columns can't always render as a literal). Rather than pay that
+# cost on every list request for a field nothing currently consumes, db_sql
+# is only compiled when this env var is truthy - flip it on for local
+# debugging, leave it off (default) in normal operation. See AGENTS.md's
+# "Table list/pagination convention" section.
+TABLE_QUERY_DEBUG_SQL = os.getenv("TABLE_QUERY_DEBUG_SQL", "").lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 
 def resolve_offset(page: int, limit: int, offset: int) -> int:
@@ -245,6 +262,8 @@ class Pagination:
     limit: int
     offset: int
     page: int
+    sort_fields: list[tuple[str, str]] = field(default_factory=list)
+    sql: str | None = None
 
     @property
     def total_pages(self) -> int:
@@ -253,18 +272,27 @@ class Pagination:
     def to_meta(self) -> dict:
         """Field names match `L_database::return_rows_limited`'s `$r[0][...]`
         keys, which `components/table/table.py::get_data()` reads off
-        `response[0]`."""
+        `response[0]`. `db_sort_fields` mirrors the PHP's `$get['sort-fields']
+        ?? false` - the sort actually applied, or `False` if none was. `db_sql`
+        is `None` unless `TABLE_QUERY_DEBUG_SQL` is enabled (see module
+        docstring above `paginate()`)."""
         return {
             "db_num_rows": self.total,
             "db_offset": self.offset,
             "db_limit": self.limit,
             "db_page": self.page,
             "db_total_page": self.total_pages,
+            "db_sort_fields": self.sort_fields if self.sort_fields else False,
+            "db_sql": self.sql,
         }
 
 
 def paginate(
-    query: Query, limit: int, page: int = 1, offset: int = 0
+    query: Query,
+    limit: int,
+    page: int = 1,
+    offset: int = 0,
+    sort_fields: list[tuple[str, str]] | None = None,
 ) -> tuple[list, Pagination]:
     """Count + offset/limit a query in one call. Returns (rows, Pagination).
 
@@ -272,11 +300,40 @@ def paginate(
     works uniformly for both plain queries and grouped/aggregate queries
     (e.g. `stock_repository.py` / `usage_report_repository.py`), same as
     `L_database::return_rows_limited`'s `count_all_results`.
+
+    `sort_fields` (whatever `parse_sort_fields()` returned, if the caller
+    already has it - e.g. after passing it to `apply_sort()`) is only used to
+    populate `Pagination.db_sort_fields`; it doesn't affect ordering here,
+    that already happened via `apply_sort()` before `paginate()` is called.
+    Passing it is optional - existing `list_*` callers that don't sort yet
+    keep working with `db_sort_fields: false`, no per-repository change
+    required to get the field at all.
     """
     total = query.count()
     effective_offset = resolve_offset(page, limit, offset)
-    rows = query.offset(effective_offset).limit(limit).all() if limit else query.all()
-    return rows, Pagination(total=total, limit=limit, offset=effective_offset, page=page)
+    limited_query = query.offset(effective_offset).limit(limit) if limit else query
+    rows = limited_query.all()
+    sql = None
+    if TABLE_QUERY_DEBUG_SQL:
+        try:
+            sql = str(
+                limited_query.statement.compile(
+                    compile_kwargs={"literal_binds": True}
+                )
+            )
+        except Exception:
+            # Not every column type can render as a SQL literal (e.g.
+            # some binary/JSON values) - a debug-only convenience field
+            # failing to compile must never break the actual list request.
+            sql = None
+    return rows, Pagination(
+        total=total,
+        limit=limit,
+        offset=effective_offset,
+        page=page,
+        sort_fields=sort_fields or [],
+        sql=sql,
+    )
 
 
 def attach_pagination(rows: list[dict], pagination: Pagination) -> list[dict]:

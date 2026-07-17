@@ -3,6 +3,7 @@ import flet as ft
 from components.table.body import TableBody
 from components.table.columns import TABLE_OUTER_HORIZONTAL_PADDING, TableColumns
 from components.table.filter import TableFilter
+from components.table.footer import MODE_LAZY, TableFooter
 from components.table.header import TableHeader
 from components.table.menu import TableMenu
 from components.table.rows import TableRows
@@ -110,6 +111,15 @@ class Table:
             self.toolbar.add_filter_button(callback=self._toggle_filter_row)
         self.header: TableHeader | None = None
         self.body: TableBody | None = None
+        # Sticky footer (issue #30) - row-count message + lazy-load <->
+        # pagination toggle. Not built for is_inside_form tables (entry-mode
+        # grids like stock_out/item_new's per-location qty-entry table): those
+        # aren't a real dataset a user pages through, and never call
+        # get_data() at construction, so a "Record X of Y" message would be
+        # meaningless there.
+        self.footer: TableFooter | None = (
+            TableFooter(page=page, parent=self) if not is_inside_form else None
+        )
         self.is_loading_more = False
 
         self.table_container: ft.Container | None = None
@@ -162,6 +172,12 @@ class Table:
             if body_control:
                 controls.append(body_control)
 
+        # Always appended last (index 3, after toolbar/header/body) - purely
+        # additive, so the existing hardcoded col.controls[1]/[2] header/body
+        # indices used elsewhere in this file are never shifted.
+        if self.footer:
+            controls.append(self.footer.build())
+
         self.table_container = ft.Container(
             content=ft.Column(
                 controls=controls,
@@ -204,8 +220,11 @@ class Table:
         SAME `controls` list slot the toolbar alone used to occupy (index
         0), not a new slot of its own. `Table.load()`/`_handle_resize_commit()`/
         `_handle_sort_change()` all hardcode `col.controls[1]`/`[2]` as
-        header/body; inserting a fourth top-level control here would shift
-        those indices and silently corrupt every one of those call sites."""
+        header/body; inserting a control here would shift those indices and
+        silently corrupt every one of those call sites. The footer (issue
+        #30) avoids this the other way - it's appended as a brand new,
+        always-last slot (index 3) instead of folded into an existing one,
+        so `[1]`/`[2]` stay exactly where every other call site expects."""
         toolbar_control = self.toolbar.build() if self.toolbar else None
         if not self.filter_row.has_filters():
             return toolbar_control
@@ -241,6 +260,12 @@ class Table:
         print(
             f"Scroll end handler called - page: {self.page_number}/{self.total_pages}, loading: {self.is_loading_more}"
         )
+
+        # Infinite-scroll-load-more is the lazy-load mode's own behavior -
+        # once the footer's toggle (issue #30) switches to pagination mode,
+        # paging happens only via its buttons, not by scrolling further.
+        if self.footer is not None and self.footer.mode != MODE_LAZY:
+            return
 
         if self.is_loading_more or self.page_number >= self.total_pages:
             print("Skipping load - already loading or last page reached")
@@ -316,10 +341,11 @@ class Table:
                 new_header = self._build_header_with_resize_overlay()
             if self.body:
                 new_body = self.body.build()
+            new_footer = self.footer.build() if self.footer else None
 
-            # Replace header/body only - never rebuild the toolbar here.
-            # The toolbar holds the search bar, and this method runs on
-            # every keystroke (via on_filter_change -> get_data -> load);
+            # Replace header/body/footer only - never rebuild the toolbar
+            # here. The toolbar holds the search bar, and this method runs
+            # on every keystroke (via on_filter_change -> get_data -> load);
             # rebuilding it would replace the focused TextField with a new
             # control, dropping browser focus after each character typed.
             if isinstance(col.controls, list) and len(col.controls) >= 3:
@@ -327,6 +353,8 @@ class Table:
                     col.controls[1] = new_header
                 if new_body is not None:
                     col.controls[2] = new_body
+                if new_footer is not None and len(col.controls) >= 4:
+                    col.controls[3] = new_footer
                 # Trigger update for the column container and its parent
                 col.update()
                 self.table_container.update()
@@ -407,12 +435,18 @@ class Table:
                 self._build_header_with_resize_overlay() if self.header else None
             )
             new_body = self.body.build() if self.body else None
+            # Column widths don't affect the footer's own layout, but keep
+            # it wired into the same rebuild-in-place site as header/body
+            # (issue #30 AC) rather than leaving it a stale reference.
+            new_footer = self.footer.build() if self.footer else None
 
             if isinstance(col.controls, list) and len(col.controls) >= 3:
                 if new_header is not None:
                     col.controls[1] = new_header
                 if new_body is not None:
                     col.controls[2] = new_body
+                if new_footer is not None and len(col.controls) >= 4:
+                    col.controls[3] = new_footer
                 col.update()
                 self.table_container.update()
 
@@ -444,6 +478,34 @@ class Table:
                 col.update()
 
         self.get_data(page_no=self.page_number, offset=0)
+
+    def _handle_footer_mode_change(self, mode: str) -> None:
+        """`TableFooter`'s toggle switched between lazy-load and pagination
+        mode. Both directions restart at page 1 with a full (non-append)
+        refetch - simplest way to reconcile lazy-load's accumulated
+        multi-page `self.data` with pagination's single-page view, and
+        matches the pre-existing "only a page-size/mode change resets to
+        page 1" convention `_handle_sort_change`'s own docstring documents
+        for sort. Mode state itself lives only on `self.footer.mode` - never
+        persisted, resets whenever this Table is torn down and rebuilt."""
+        self.page_number = 1
+        self.get_data(page_no=1, offset=0, append=False)
+
+    def _handle_footer_page_change(self, page_no: int) -> None:
+        """A numbered/first/prev/next/last pagination button was clicked.
+        Pagination mode always replaces the current page's data (append=
+        False) - unlike lazy-load's infinite-scroll accumulation, each page
+        click shows exactly one page's worth of rows."""
+        self.page_number = page_no
+        self.get_data(page_no=page_no, offset=(page_no - 1) * self.limit, append=False)
+
+    def _handle_footer_limit_change(self, new_limit: int) -> None:
+        """The footer's rows-per-page input committed a new value (Enter or
+        blur) - matches `y.form.js`'s `#handleSetPageLimit`: resets to page
+        1, same as a keyword search reset (`on_filter_change`)."""
+        self.limit = new_limit
+        self.page_number = 1
+        self.get_data(page_no=1, offset=0, append=False)
 
     def on_page_resize(self) -> None:
         """Handle page resize events - called from main page resize handler"""

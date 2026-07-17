@@ -54,7 +54,7 @@ class CategoryRepository:
                 query = apply_sort(query, sort_fields, _FILTER_COLUMN_MAP)
             else:
                 query = query.order_by(CategoryModel.code)
-            return paginate(query, limit=limit, page=page, offset=offset)
+            return paginate(query, limit=limit, page=page, offset=offset, sort_fields=sort_fields)
 
     def create_category(self, code: str, name: str, description: str = "") -> CategoryModel:
         with SessionLocal() as session:

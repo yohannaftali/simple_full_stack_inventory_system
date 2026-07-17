@@ -83,7 +83,7 @@ class ReceivingRepository:
                 query = query.order_by(
                     ReceivingHeaderModel.date.desc(), ReceivingHeaderModel.id.desc()
                 )
-            return paginate(query, limit=limit, page=page, offset=offset)
+            return paginate(query, limit=limit, page=page, offset=offset, sort_fields=sort_fields)
 
     def create_header(
         self, date, description: str, supplier_id: Optional[int] = None
@@ -150,4 +150,4 @@ class ReceivingRepository:
                 query = apply_sort(query, sort_fields, _ITEM_FILTER_COLUMN_MAP)
             else:
                 query = query.order_by(ReceivingItemModel.id)
-            return paginate(query, limit=limit, page=page, offset=offset)
+            return paginate(query, limit=limit, page=page, offset=offset, sort_fields=sort_fields)

@@ -52,7 +52,7 @@ class SupplierRepository:
                 query = apply_sort(query, sort_fields, _FILTER_COLUMN_MAP)
             else:
                 query = query.order_by(SupplierModel.code)
-            return paginate(query, limit=limit, page=page, offset=offset)
+            return paginate(query, limit=limit, page=page, offset=offset, sort_fields=sort_fields)
 
     def create_supplier(self, code: str, name: str) -> SupplierModel:
         with SessionLocal() as session:

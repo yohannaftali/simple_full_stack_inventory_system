@@ -49,7 +49,7 @@
 | #27 | feat(frontend,backend): make multi-column sort a default on every table; fix header-icon bleed into first row; add table padding | closed | 2026-07-17 |
 | #29 | feat(stock_browse): drill into stock-by-material with per-location breakdown + totals footer | closed | 2026-07-17 |
 | #28 | feat(stock_browse): drill into stock-by-material with per-location breakdown + totals footer (duplicate of #29) | closed | 2026-07-17 |
-| #30 | feat(frontend,backend): shared table footer (row-count + pagination/lazy-load toggle), port L_database metadata parity | open | 2026-07-17 |
+| #30 | feat(frontend,backend): shared table footer (row-count + pagination/lazy-load toggle), port L_database metadata parity | ready-for-review | 2026-07-17 |
 
 ## Big Picture
 
@@ -228,6 +228,33 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
     `components/table/table.py::get_data()` on the frontend actually reads
     (`response[0]`). Do **not** manually compute `math.ceil(total/limit)` or
     an "effective offset" in a router — that belongs in `table_query.py`.
+  - **`db_sort_fields`/`db_sql` metadata parity** (issue #30, 2026-07-17):
+    `Pagination.to_meta()` now also emits `db_sort_fields` (whatever
+    `parse_sort_fields()` returned for this request, or `False` if none was
+    applied — mirrors `L_database::return_rows_limited`'s
+    `$get['sort-fields'] ?? false`) and `db_sql`. `paginate(query, limit,
+    page=1, offset=0, sort_fields=None)` gained the optional `sort_fields`
+    kwarg purely to echo it into the metadata — it does **not** affect
+    ordering (that already happened via `apply_sort()` before `paginate()`
+    runs); a `list_x` method that doesn't sort yet simply doesn't pass it,
+    and `db_sort_fields` comes back `False`, no per-repository code path
+    required to gain the field at all. Every existing `paginate(...)` call
+    site across every `list_*` repository method was mechanically updated
+    to pass `sort_fields=sort_fields` (already in scope in each one, since
+    every paginated method already accepts a `sort_fields` parameter for
+    `apply_sort()`) — a one-line addition per call site, not new
+    per-repository logic. **`db_sql` design decision** (the tension flagged
+    in issue #30's acceptance criteria): SQLAlchemy's ORM has no equivalent
+    to PHP's free `$db->last_query()` — compiling a query's literal SQL
+    (`query.statement.compile(compile_kwargs={"literal_binds": True})`) is
+    a real per-request cost and isn't dialect-safe for every column type
+    (e.g. some binary/JSON values can't render as a literal). Rather than
+    pay that cost on every list request for a field nothing in this
+    codebase consumes yet, `paginate()` only compiles it when the
+    `TABLE_QUERY_DEBUG_SQL` env var is truthy (`1`/`true`/`yes`) —
+    `db_sql` is `None` in normal operation, a real compiled SQL string only
+    when that debug flag is set, and any compile failure is swallowed
+    (falls back to `None`) rather than breaking the actual list request.
   - **Named structured filters** (`{field}-filter` query params, added for
     issue #8's purchase report): `table_query.py::apply_field_filters(query,
     [(column, operator, value), ...])` applies each `(column, operator,
@@ -683,6 +710,103 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
       aggregate `total_qty`. All touched backend files also verified via a
       full `main.py` app-wiring import (24 routes, same as before). Still
       not confirmed in a live browser.
+
+  **Sticky table footer + lazy-load/pagination toggle** (issue #30,
+  2026-07-17, ported from senar's `y.panel.js`'s
+  `#createRecordInfoPanel()`/`createPaginationButtonSet()`/
+  `createPaginationButton()` and `y.form.js`'s
+  `updateTableInfoMessage()`/`listenerPagination()`/`#handleSetPage()`/
+  `#handleSetPageLimit()`): every `Table` now gets a
+  `components/table/footer.py::TableFooter` for free — a two-row sticky
+  footer (`self.footer`, built in `Table.__init__`) sitting below the
+  body, appended as a brand-new **fourth** slot (index 3) in the table's
+  top-level `controls` list rather than folded into any existing slot —
+  `Table.build()`/`Table.load()`/`Table._handle_resize_commit()` all
+  hardcode `col.controls[1]`/`[2]` as header/body (see issue #20's
+  documented warning about exactly this fragility); appending purely
+  additively at the end means none of those indices had to change.
+  **Not built for `is_inside_form` tables** (entry-mode grids like
+  `stock_out/item_new.py`'s per-location qty-entry table) — those never
+  call `get_data()` at construction and aren't a real dataset a user
+  pages through, so a "Record X of Y" message would be meaningless there;
+  `self.footer` is `None` for those and every call site checks it before
+  touching it.
+  - **Two-row layout** (per the user's explicit clarification over the
+    original single-row sketch, confirmed via `/planner`): row 1 is the
+    totals message (`"Record {first} - {last} of {total}"`, or `"No
+    records"` for an empty table), sourced from the exact same
+    `db_num_rows`/`db_total_page` metadata `Table.get_data()` already
+    reads off `response[0]` — no new plumbing, just a new consumer
+    (`TableFooter._info_message()`). Row 2 is right-aligned: the
+    lazy-load/pagination mode-toggle icon button, plus — only in
+    pagination mode — the pagination controls themselves alongside it
+    (editable rows-per-page input, first/prev/numbered-with-ellipsis/
+    next/last buttons, current page highlighted with a filled `PRIMARY`
+    circle).
+  - **Mode toggle is a genuinely new idea for this app, not a senar
+    port** (confirmed with the user) — senar's own reference always
+    renders pagination buttons; it has no lazy-scroll mode to toggle
+    against (lazy-load, `Table._handle_scroll_end`, was this app's own
+    pre-existing addition). **Default mode is lazy-load** (explicit,
+    user-confirmed constraint) — `TableFooter.mode` starts at
+    `MODE_LAZY`, so no existing table's default look/behavior changes
+    until a user explicitly clicks the toggle. **Mode state is
+    session-only, never persisted** (explicit, user-confirmed constraint,
+    matches the existing "no new `repository/`-layer storage class"
+    precedent) — `self.mode` lives purely as an in-memory attribute on
+    the `TableFooter` instance, same lifetime as `TableColumns.sort_order`:
+    it resets whenever the owning `Table` is torn down and rebuilt (e.g.
+    navigating away and back). Toggling calls
+    `Table._handle_footer_mode_change(mode)`, which always resets to page
+    1 and does a full non-append refetch (`get_data(page_no=1, offset=0,
+    append=False)`) regardless of direction — the simplest way to
+    reconcile lazy-load's accumulated multi-page `self.data` with
+    pagination's single-page view, and consistent with the pre-existing
+    "only a page-size/mode change resets to page 1" rule
+    `_handle_sort_change`'s own docstring already documents for sort.
+  - **Pagination controls**: `Table._handle_footer_page_change(page_no)`
+    (first/prev/numbered/next/last buttons) always replaces the current
+    page's data (`append=False`, `offset=(page_no-1)*limit`) — unlike
+    lazy-load's infinite-scroll accumulation, one page click shows
+    exactly one page's rows. `Table._handle_footer_limit_change(new_limit)`
+    (the rows-per-page `TextField`, committing on Enter or blur) resets to
+    page 1, matching `#handleSetPageLimit`'s own reset-on-limit-change
+    behavior. Numbered-button generation
+    (`footer.py::_page_number_tokens(current, total)`) always keeps the
+    first page, the last page, and a small window around the current page
+    (`current-1`/`current`/`current+1`), inserting a `None` "..." gap
+    marker wherever the kept pages aren't contiguous — adapted from (not a
+    literal line-for-line port of) `y.panel.js`'s own ~7-visible-button
+    cap (`_MAX_VISIBLE_PAGE_BUTTONS`), verified via a standalone unit test
+    with `flet` stubbed out (pure function, no UI calls):
+    `tokens(1, 3) == [1, 2, 3]` (short list, no ellipsis needed),
+    `tokens(1, 20) == [1, 2, None, 20]`, `tokens(10, 20) == [1, None, 9,
+    10, 11, None, 20]` (both-side ellipsis around a middle page),
+    `tokens(20, 20) == [1, None, 19, 20]` (last page active), `tokens(4,
+    7) == [1..7]` (exactly at the cap, still no ellipsis).
+  - **Lazy-load mode is otherwise unchanged** — `Table._handle_scroll_end`
+    gained one guard clause (`if self.footer is not None and
+    self.footer.mode != MODE_LAZY: return`) so infinite-scroll-on-bottom
+    only fires in lazy mode; once toggled to pagination, paging happens
+    only via the footer's own buttons, matching the acceptance criteria's
+    "lazy-load mode must not regress" requirement.
+  - **Backend**: no new endpoint — same `GET .../get_detail?...&limit=&
+    page=&offset=` every table already calls, confirmed (via `/planner`,
+    reading `Table.get_data()`'s actual code before assuming) to already
+    serve both an infinite-scroll caller (`append=True`, ever-incrementing
+    `page_no`) and a jump-to-page caller (`append=False`, arbitrary
+    `page_no`/`offset`) identically — see the `db_sort_fields`/`db_sql`
+    metadata-parity entry above (same issue #30) for the one backend
+    change this issue needed.
+  - Verified: backend `paginate()`/`Pagination.to_meta()` against a real
+    SQLite session (`db_sort_fields`/`db_sql` present/absent correctly
+    under the debug flag, `db_num_rows`/`db_total_page` correct);
+    `footer.py::_page_number_tokens()` via the standalone unit test above.
+    **Not yet confirmed in a live browser** — before relying on this
+    further, click through: toggle to pagination on a multi-page table,
+    click through first/prev/numbered/next/last, change the rows-per-page
+    input, toggle back to lazy-load and confirm scroll-to-load-more still
+    works.
 
   **Table export/upload convention** (multi-format download 2026-07-14,
   CSV/XLSX upload added same day for issue #4): every `Table` gets a

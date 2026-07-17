@@ -81,7 +81,7 @@ class StockOutRepository:
                 query = query.order_by(
                     StockOutHeaderModel.date.desc(), StockOutHeaderModel.id.desc()
                 )
-            return paginate(query, limit=limit, page=page, offset=offset)
+            return paginate(query, limit=limit, page=page, offset=offset, sort_fields=sort_fields)
 
     def create_header(
         self, date, description: str, department_id: Optional[int] = None
@@ -140,4 +140,4 @@ class StockOutRepository:
                 query = apply_sort(query, sort_fields, _ITEM_FILTER_COLUMN_MAP)
             else:
                 query = query.order_by(StockOutItemModel.id)
-            return paginate(query, limit=limit, page=page, offset=offset)
+            return paginate(query, limit=limit, page=page, offset=offset, sort_fields=sort_fields)

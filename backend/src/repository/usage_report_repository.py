@@ -99,7 +99,7 @@ class UsageReportRepository:
                 query = apply_sort(query, sort_fields, column_map)
             else:
                 query = query.order_by(DepartmentModel.code, MaterialModel.material_code)
-            rows, pagination = paginate(query, limit=limit, page=page, offset=offset)
+            rows, pagination = paginate(query, limit=limit, page=page, offset=offset, sort_fields=sort_fields)
 
             return [
                 {
