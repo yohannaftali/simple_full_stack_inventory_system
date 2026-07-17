@@ -1521,6 +1521,14 @@ Transactional tables, all in `backend/src/models/`:
   both SQLite and MySQL/MariaDB treat `NULL` as distinct from every other
   `NULL` in a unique index, so multiple movement-created lots at the same
   material/location (each with `receiving_item_id=NULL`) don't collide.
+  **Home tile ordering**: `0027` originally seeded `stock_movement` at
+  `sort=25`, after `purchase_report`; a follow-up data-only migration,
+  `0028_reorder_stock_movement_module.py`, moved it to `sort=21` — between
+  `stock_in` (20) and `stock_out` (22) — per explicit user request,
+  bumping `stock_out`/`stock_browse`/`usage_report`/`purchase_report` up by
+  one each. Same "reassign `modules.sort` by name" pattern as
+  `0013_assign_module_groups.py`; safe since `modules.sort` has no unique
+  constraint, just a plain index.
 
 All business logic lives in `backend/src/services/inventory_service.py`,
 which — unlike every other service/repository in this codebase — manages its
