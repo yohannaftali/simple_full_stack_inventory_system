@@ -942,3 +942,10 @@
 - Flagged the same hardcoded-`col.controls[1]`/`[2]` index fragility already documented in AGENTS.md from issue #20's filter-row work, since a new footer slot touches the same rebuild call sites (`Table.build()`/`load()`/`_handle_resize_commit()`/`_handle_sort_change()`)
 - Scope: frontend, backend
 - Labels: enhancement, frontend, backend
+
+## [2026-07-17] — #28 closed as duplicate of #29
+- User confirmed #28 was already solved - investigation found it's an exact duplicate of #29 (identical title/body), created accidentally by a retried `curl` POST earlier in this session (the original creation call appeared to fail on a local `/tmp` file read, but the remote POST had actually already succeeded) - explains the #28/#29 numbering gap noted (but dismissed as "probably a PR") when #29 was first created
+- #29's implementation was already committed, pushed, and auto-closed via `Closes #29` in commit `ccdd2ff`
+- Posted a comment on #28 explaining the duplication and closed it with `state_reason: not_planned`
+- Committed pending doc updates from creating/refining #30 (`AGENTS.md`/`CHANGE_HISTORY.md`, no code changes) as `6af28b4` and pushed before closing #28, per user's "merge and push first" instruction
+- Scope: none (tracking only)
