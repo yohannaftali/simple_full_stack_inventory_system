@@ -973,3 +973,9 @@
 - Verified: backend `paginate()`/`Pagination.to_meta()` against a real in-memory SQLite session (`db_sort_fields`/`db_sql` correct with and without the debug flag, existing `db_num_rows`/`db_total_page` unaffected); `footer.py::_page_number_tokens()` via a standalone unit test with `flet` stubbed out (short lists, both-side ellipsis, edge-page-active, exactly-at-cap cases). Not yet confirmed in a live browser - click-through still needed after container restart
 - Files: `backend/src/core/table_query.py`, 14 `backend/src/repository/*.py` files (mechanical `sort_fields=sort_fields` addition), `frontend/src/components/table/footer.py` (new), `frontend/src/components/table/table.py`
 - Scope: frontend, backend
+
+## [2026-07-17] — docs(readme): pagination tutorial + #30 closed
+- Added README section 16 ("Paging through table data") documenting the new footer's lazy-load-vs-pagination toggle for end users: default mode, how to switch, rows-per-page input, first/prev/numbered/next/last buttons, and that the mode choice is session-only (resets on navigation) - not persisted
+- Committed as `6a18ac6` and pushed
+- Closed issue #30 on GitHub (`state_reason: completed`) at the user's explicit request, referencing the two implementation commits (`8c3f23f`, `bccdc42`) plus this doc commit
+- Scope: docs

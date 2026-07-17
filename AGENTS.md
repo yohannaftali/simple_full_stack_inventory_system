@@ -49,7 +49,7 @@
 | #27 | feat(frontend,backend): make multi-column sort a default on every table; fix header-icon bleed into first row; add table padding | closed | 2026-07-17 |
 | #29 | feat(stock_browse): drill into stock-by-material with per-location breakdown + totals footer | closed | 2026-07-17 |
 | #28 | feat(stock_browse): drill into stock-by-material with per-location breakdown + totals footer (duplicate of #29) | closed | 2026-07-17 |
-| #30 | feat(frontend,backend): shared table footer (row-count + pagination/lazy-load toggle), port L_database metadata parity | ready-for-review | 2026-07-17 |
+| #30 | feat(frontend,backend): shared table footer (row-count + pagination/lazy-load toggle), port L_database metadata parity | closed | 2026-07-17 |
 
 ## Big Picture
 
