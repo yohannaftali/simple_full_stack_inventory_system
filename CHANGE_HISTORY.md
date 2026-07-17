@@ -949,3 +949,10 @@
 - Posted a comment on #28 explaining the duplication and closed it with `state_reason: not_planned`
 - Committed pending doc updates from creating/refining #30 (`AGENTS.md`/`CHANGE_HISTORY.md`, no code changes) as `6af28b4` and pushed before closing #28, per user's "merge and push first" instruction
 - Scope: none (tracking only)
+
+## [2026-07-17] — clarified #30: one endpoint serves both pagination and lazy-load
+- User wants confirmation that the backend serves both modes through the same API (same `&limit=&page=` params), pointing at a live `senar` production request (`c_bm_data_invoice/get_detail?...&limit=25&page=2`) as the precedent - one endpoint handling filters, sort, and pagination together
+- Verified against this repo's own code before writing the update (not just trusting the request): `Table.get_data()` (`frontend/src/components/table/table.py`) already sends `&limit={self.limit}&page={page_no}&offset={offset}` to the same `self.endpoint` on every call, identically whether invoked from `_handle_scroll_end` (today's only mode, `append=True`) or a future pagination click (`append=False`) - confirms this is already true architecturally, not something #30 needs to newly build
+- Updated issue #30's Reference Material and Acceptance Criteria (both backend and frontend sections) to state this explicitly as an existing constraint to *preserve*, not new work - added a backend AC that no second endpoint may be introduced, and a frontend AC that mode-switching is purely a `Table.get_data(..., append=...)` behavior change
+- Hit and resolved a Bash quoting bug while editing: a trailing backslash immediately before a closing double-quote in a Windows path (`...scratchpad\"`) escapes the quote and breaks command parsing - worked around by writing the issue body to a file via the `Write` tool (not a bash heredoc) and PATCHing via `curl --data-binary @file` instead of inline JSON construction
+- Scope: none (tracking only, issue #30 body updated)
