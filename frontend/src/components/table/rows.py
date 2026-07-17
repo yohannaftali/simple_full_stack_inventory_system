@@ -15,6 +15,14 @@ _FORMATTERS = {
 # see _build_editable_cell() for what each one builds.
 _EDITABLE_TYPES = {"input", "textarea", "select", "option", "datepicker", "checkbox"}
 
+# Bounds an editable select/option cell's dropdown menu height to roughly
+# this many rows (scrollable for the rest) instead of a hard option-list cap
+# - see components/form/select.py's module docstring for why a hard cap +
+# "show more" indicator (issue #26's original design) was abandoned in favor
+# of Flutter's native, zero-round-trip enable_filter.
+_MENU_VISIBLE_ROWS = 5
+_MENU_ROW_HEIGHT = 48
+
 
 class TableRows:
     def __init__(self, page: ft.Page, columns: TableColumns, parent=None):
@@ -212,6 +220,7 @@ class TableRows:
                 if field_type == "option"
                 else self._get_select_options(field, name)
             )
+            enable_filter = field.get("enable_filter", True)
             control = ft.Dropdown(
                 options=[
                     ft.DropdownOption(
@@ -223,7 +232,9 @@ class TableRows:
                 value=str(raw_value) if has_value else None,
                 hint_text=field.get("hint_text", ""),
                 dense=True,
-                enable_filter=field.get("enable_filter", True),
+                enable_filter=enable_filter,
+                editable=field.get("editable", True) if enable_filter else False,
+                menu_height=_MENU_VISIBLE_ROWS * _MENU_ROW_HEIGHT,
                 width=width,
             )
             return control, control

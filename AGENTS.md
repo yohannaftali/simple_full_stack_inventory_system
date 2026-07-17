@@ -45,6 +45,7 @@
 | #23 | chore(frontend): rename table/form component files and classes for clearer, unambiguous naming | closed | 2026-07-16 |
 | #24 | feat(stock_in): bulk CSV/XLSX upload for receiving items on item_new | closed | 2026-07-16 |
 | #25 | feat(stock_out): multi-material bulk item upload + accept bare code (no " - Name") across all bulk uploads | closed | 2026-07-16 |
+| #26 | feat(frontend): limit select dropdown to first 5 results with "show more" indicator, position results below input | ready-for-review | 2026-07-17 |
 
 ## Big Picture
 
@@ -1636,6 +1637,49 @@ managed via `pyproject.toml` (uv/Poetry).
     `expand=True` on their control so they fill their `ResponsiveRow`
     column on web — a fix applied after `input`/`label` were initially
     missing it while `select` already had it.
+  - **Select filtering uses Flutter's native `enable_filter`, not a
+    server-driven cap** (issue #26, 2026-07-17 — final design, after three
+    failed attempts at a hard "cap to 5 + show more" list). Both `SelectForm`
+    (form select fields) and `TableRows._build_editable_cell()`'s
+    `"select"`/`"option"` editable table cells set `enable_filter=True` (the
+    field's own `"enable_filter"` config, default `True`) straight through
+    to `ft.Dropdown`, with the *full* option list always assigned — Flutter
+    filters entirely client-side (case-insensitive substring match against
+    each option's full `text`, i.e. its `"CODE - Name"` label, so it matches
+    code or name, anywhere in the string, with zero server round-trip) and
+    is the only thing driving what's shown while typing. A large
+    master-data-backed select (materials, locations, ...) is instead kept
+    from dumping its whole list open at once via `menu_height=
+    _MENU_VISIBLE_ROWS * _MENU_ROW_HEIGHT` (5 rows worth, defined in both
+    `components/form/select.py` and `components/table/rows.py`) — the menu
+    stays scrollable for the rest, no hard cut-off. `editable` follows
+    `enable_filter` (a non-filterable field, e.g. a locked-down static
+    picker, isn't typable either).
+  - **Why not a hard cap with a "Show more..." indicator**: the original
+    #26 design rebuilt `Dropdown.options` (capped to 5 + a trailing disabled
+    entry) on every `on_text_change` keystroke via a since-deleted
+    `utils/dropdown_filter.py` helper. This reliably broke Flutter's
+    `DropdownMenu` focus, through two rounds of fixes that both failed:
+    (1) an `async def on_text_change` awaiting `control.focus()` right
+    after `control.update()` — insufficient because `Control.update()`
+    (`base_control.py`) only queues a `PATCH_CONTROL` websocket message and
+    returns immediately, it does not wait for the client to actually apply
+    the patch and rebuild the widget (Flutter defers that to its next
+    frame), so the `focus()` call could reach the client before the rebuild
+    happened, targeting a `FocusNode` about to be discarded; (2) adding a
+    keystroke debounce plus a short settle delay before refocusing — this
+    measurably reduced the problem in an isolated `asyncio` simulation, but
+    the user still hit the field losing focus (and typing appearing to stop
+    working entirely) on the very first character in real use. Any design
+    that reassigns `Dropdown.options` from Python in response to typing is
+    fighting Flutter's `DropdownMenu` widget lifecycle across a network
+    round-trip and keeps finding new ways to break — Flutter's own
+    `enable_filter` has none of these problems because it never leaves the
+    client. If a hard "cap to N + show more" *option list* (not just a
+    scroll-bounded menu height) is ever revisited, it needs to happen
+    without touching `options` while the field has focus and text is being
+    typed — e.g. only re-capping on blur/selection, never on
+    `on_text_change` — or it will very likely reintroduce this exact bug.
   - `components/button.py::Button` (issue #21) — a shared Material 3
     button builder factoring out what used to be three near-identical
     inline `ft.IconButton(...)` constructions in `components/list/toolbar.py`,

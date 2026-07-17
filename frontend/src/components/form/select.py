@@ -2,6 +2,22 @@ import flet as ft
 
 from utils.http_client import HttpClient
 
+# Bounds the dropdown menu's visible height to roughly this many rows
+# (Material 3's default ~48dp row height) - the menu stays scrollable for
+# the rest, so a large master-data-backed select (materials, locations,
+# ...) never dumps its entire option list open at once. Deliberately not a
+# hard cap on the *option list itself* with a "show more" indicator (issue
+# #26's original design) - that requires rebuilding Dropdown.options on
+# every keystroke, which repeatedly broke Flutter's DropdownMenu focus
+# (see AGENTS.md's "Capped/'show more' select filtering" entry for the full
+# history). Flutter's own `enable_filter` does the actual typing-driven
+# search entirely client-side (case-insensitive substring match against
+# each option's full "CODE - Name" label, so it already matches code or
+# name, anywhere in the string) with zero server round-trip, which is what
+# makes it reliable.
+_MENU_VISIBLE_ROWS = 5
+_MENU_ROW_HEIGHT = 48
+
 
 class SelectForm:
 
@@ -59,21 +75,22 @@ class SelectForm:
             bgcolor=self.bgcolor,
             enable_filter=self.enable_filter,
             editable=self.editable,
+            menu_height=_MENU_VISIBLE_ROWS * _MENU_ROW_HEIGHT,
             expand=True,
         )
         return self.select
 
     def get_data(self, extra_params: dict = None):
         client = HttpClient(self.page)
-        
+
         params = self.custom_param.copy() if self.custom_param else {}
         if hasattr(self.parent, 'record_id') and self.parent.record_id:
             params['record_id'] = self.parent.record_id
-        
+
         # Add extra params (e.g., from depends_on field)
         if extra_params:
             params.update(extra_params)
-        
+
         response = client.get(self.endpoint, params if params else None)
         if isinstance(response, dict) and "error" in response:
             print(f"Error fetching data: {response.get('error')}")
@@ -87,13 +104,13 @@ class SelectForm:
         # but only if check strict dependency (optional logic, for now we assume strict if params missing)
         # Note: We now check if ALL required dependencies are present in extra_params if we want to be strict
         # For simple cascading, we just check if extra_params is provided at all
-        
+
         if self.depends_on and not extra_params:
             self.data = []
             if self.select:
                 self.select.options = []
             return
-        
+
         self.get_data(extra_params)
 
         if not isinstance(self.select, ft.Dropdown):
@@ -109,20 +126,20 @@ class SelectForm:
             self.options.append(ft.DropdownOption(
                 key=option_value, text=option_label))
         self.select.options = self.options
-    
+
     def refresh_with_values(self, form_values: dict):
         """Refresh options using current form values"""
         # Clear current value and options
         if self.select:
             self.select.value = None
             self.select.options = []
-        
+
         # If depends_on is set, check if the dependent value is present
         # Support single string depends_on for now, or we can logic check
         if self.depends_on:
             # depends_on can be a single field or list of fields (future proofing)
             deps = [self.depends_on] if isinstance(self.depends_on, str) else self.depends_on
-            
+
             # Check if primary dependency is present in form_values
             # and verify it has a value
             missing_dep = False
@@ -130,7 +147,7 @@ class SelectForm:
                 if not form_values.get(dep):
                     missing_dep = True
                     break
-            
+
             if missing_dep:
                 # Dependency missing or empty, clear options and return
                 self.data = []

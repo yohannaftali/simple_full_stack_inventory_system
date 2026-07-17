@@ -753,3 +753,46 @@
 - Added new Section 15.4 (Bulk Uploading Items into a Stock In or Stock Out Header) documenting the separate item-level bulk upload (issues #24/#25) — Stock In's Material | Location | Qty Received | Price | Remarks and Stock Out's Material | Location | Qty Issue | Remarks, both accepting multiple different materials in one file, Stock Out's upload menu being independent of its material dropdown, and the same code-or-full-label acceptance for Material/Location
 - Scope: docs
 - Files: `README.md`
+
+## [2026-07-17] — feat(frontend): limit select dropdown to first 5 results with "show more" indicator, position results below input
+- Issue #26 created on GitHub
+- Scope: frontend
+- Labels: enhancement, frontend
+
+## [2026-07-17] — feat(frontend): implement #26 - capped/"show more" select filtering
+- Added `frontend/src/utils/dropdown_filter.py::build_filtered_options()`, a shared helper filtering a select's options by the typed query, capping the visible list at 5 matches with a trailing disabled "Show more... (N more)" entry, and pinning the control's current/selected value to the front so its label always resolves
+- `SelectForm` (`components/form/select.py`) now disables Flutter's own `enable_filter` and drives filtering itself via a new `on_text_change` handler + `_apply_options()`, so the previous unbounded option list (slow for large master-data selects) is replaced by the capped list; a field explicitly setting `"enable_filter": False` (small static enumerations) keeps the old unbounded behavior since there's no typing path to cap from
+- `TableRows._build_editable_cell()`'s `"select"`/`"option"` editable table cells (`components/table/rows.py`) get the same treatment, plus `editable=True` by default so typing to filter actually works there (previously omitted, leaving `enable_filter=True` with no way to type)
+- Verified `build_filtered_options()` logic directly (cap+indicator count, query narrowing, selected-value pinning even when outside the cap/query) via a standalone script under `uv run --no-project --with flet`; did not launch the full podman stack/browser to visually confirm the live dropdown UI in this session
+- Updated AGENTS.md's `form/` field types section with a new "Capped/'show more' select filtering" sub-entry documenting the helper and why native `enable_filter` had to be disabled
+- Scope: frontend
+- Files: `frontend/src/utils/dropdown_filter.py`, `frontend/src/components/form/select.py`, `frontend/src/components/table/rows.py`, `AGENTS.md`
+
+## [2026-07-17] — fix(frontend): #26 select filter typing dropped focus every keystroke
+- User-reported regression right after #26's first pass: typing into a select to filter appeared to "not work" and the field visibly lost focus - same class of bug as issue #2's table search bar, but at the Flutter-widget level rather than Python-control-replacement: reassigning `Dropdown.options` (even on the same control instance) forces Flutter's `DropdownMenu` to rebuild its internal `TextField`, dropping focus; since an editable Dropdown recommits/reverts its displayed text on blur, losing focus mid-keystroke visibly stalled the typed query too
+- Both `on_text_change` handlers (`SelectForm._on_text_change` in `components/form/select.py`, the per-cell closure in `TableRows._build_editable_cell()` in `components/table/rows.py`) are now `async def` and `await control.focus()` immediately after `control.update()`, restoring focus before the next keystroke lands
+- Updated AGENTS.md's "Capped/'show more' select filtering" entry with this root cause/fix
+- Verified via `ast.parse()` syntax check only (`uv run --no-project --with flet`, per the documented `.venv` container-bind-mount gotcha) - did not launch the full podman stack/browser to confirm the live keystroke behavior in this session
+- Scope: frontend
+- Files: `frontend/src/components/form/select.py`, `frontend/src/components/table/rows.py`, `AGENTS.md`
+
+## [2026-07-17] — fix(frontend): #26 select filter still lost focus after the async-refocus attempt
+- User reported focus was still lost after typing even with the previous `async def` + `await control.focus()` fix
+- Root cause: `Control.update()` (Flet's `base_control.py`) only queues a `PATCH_CONTROL` websocket message and returns immediately - it does not wait for the client to actually apply the patch and rebuild the widget (Flutter defers that to its next frame). Calling `await control.focus()` right after `update()` on every keystroke could reach the client before that rebuild happened, targeting a `FocusNode` about to be discarded; rebuilding on every single keystroke (rather than once per pause) compounded the problem
+- Added `DEBOUNCE_SECONDS` (0.25s, generation-counter debounce - only the last keystroke in a burst rebuilds) and `FOCUS_SETTLE_SECONDS`/`refocus_after_update()` (0.05s settle delay before refocusing) to `frontend/src/utils/dropdown_filter.py`; wired into both `SelectForm._on_text_change` (`components/form/select.py`) and the per-cell closure in `TableRows._build_editable_cell()` (`components/table/rows.py`)
+- Updated AGENTS.md's "Capped/'show more' select filtering" entry with this root cause/fix, superseding the previous (incomplete) explanation
+- Verified the debounce/generation-counter logic with a standalone `asyncio` simulation (three rapid simulated keystrokes within the debounce window collapse into exactly one rebuild + one refocus using the last query) via `uv run --no-project --with flet`; still have not launched the full podman stack/browser to confirm the live keystroke/focus behavior in this session - **needs a real browser check** before this can be called fully verified
+- Scope: frontend
+- Files: `frontend/src/utils/dropdown_filter.py`, `frontend/src/components/form/select.py`, `frontend/src/components/table/rows.py`, `AGENTS.md`
+
+## [2026-07-17] — fix(frontend): #26 abandon server-driven select filtering, use Flutter's native enable_filter
+- User reported the debounce+refocus fix still failed: typing the very first character ("m") showed no matches and immediately dropped focus entirely, unable to type further - a real regression from the pre-#26 baseline, not an incremental improvement
+- Root cause (confirmed via research, not just local reasoning): every design so far reassigned `Dropdown.options` from Python in response to typing, requiring a full client round-trip through Flet's websocket per keystroke; this fights Flutter's `DropdownMenu` widget lifecycle directly, and known upstream Flutter issues (DropdownMenu focus loss, e.g. flutter/flutter#146737, #164978) confirm this widget's focus handling is fragile even without any custom server-round-trip involved
+- Reverted to Flutter's own native `enable_filter=True` (zero round-trip, entirely client-side, case-insensitive substring match against the full "CODE - Name" label - already satisfies "search by code or name, case-insensitive, anywhere in the string" without any custom matching code) in both `SelectForm.build()` (`components/form/select.py`) and `TableRows._build_editable_cell()`'s select/option branch (`components/table/rows.py`); the full, uncapped option list is always assigned again (native filtering needs the full list to search against)
+- Replaced the abandoned "cap to 5 + show more indicator" design with `menu_height=5*48` on both dropdowns - bounds the menu's *visible* height to ~5 rows (still scrollable for more) without ever touching `options` while the user types, so there's no more per-keystroke round-trip to race
+- Deleted `frontend/src/utils/dropdown_filter.py` (build_filtered_options, the debounce/refocus helpers) - fully unused once both call sites reverted
+- Updated AGENTS.md's select-filtering entry to document the final design and explicitly record why the hard-cap approach was abandoned, so a future change doesn't rediscover the same bug from scratch
+- Verified via `ast.parse()` only (`uv run --no-project --with flet`) and confirmed no remaining `dropdown_filter`/`asyncio` references in either file - still have not launched the podman stack/browser to confirm the live typing/focus behavior in this session; given native `enable_filter` is Flutter's own well-established mechanism (not custom code), confidence is higher than the previous two attempts, but this still needs a real browser check
+- Scope: frontend
+- Files: `frontend/src/components/form/select.py`, `frontend/src/components/table/rows.py`, `AGENTS.md`
+- Deleted: `frontend/src/utils/dropdown_filter.py`
