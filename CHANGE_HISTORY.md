@@ -884,3 +884,11 @@
 - Verified: computed column widths now sum to within ~2px of `get_usable_width()`'s budget (integer-rounding slack only), no artificial last-column bonus
 - Scope: frontend
 - Files: `frontend/src/components/table/columns.py`, `AGENTS.md`
+
+## [2026-07-17] — fix(frontend): header/body still misaligned with toolbar - two more fudge factors removed
+- User reported the header/body's right edge still didn't line up with the toolbar's (correctly symmetric) right edge, even after the last-column-padding fix
+- Root cause: `get_usable_width()` also subtracted `scrollbar_width` (10px, reserved unconditionally even though the body's scrollbar only takes space when content actually overflows vertically) and `safety_buffer` (literally `horizontal_margin` applied a *second* time on top of the already-correct `horizontal_margin * 2` deduction) - neither corresponds to a real, always-present rendered element, unlike the toolbar's plain `expand=True` sizing which has no equivalent deductions at all
+- Removed both from `get_usable_width()` - it now only subtracts the DataTable's own `horizontal_margin` (matches `header.py`/`body.py`'s real value), the outer `Table` padding, and inter-column spacing
+- Verified by reconstructing the DataTable's expected rendered footprint (`margin*2 + sum(column widths) + spacing*(n-1)`) against the true available space inside the padded container: 1px of slack now, versus ~20px before this fix
+- Scope: frontend
+- Files: `frontend/src/components/table/columns.py`, `AGENTS.md`

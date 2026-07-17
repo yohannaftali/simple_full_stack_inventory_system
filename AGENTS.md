@@ -1636,6 +1636,27 @@ itself grew two small hooks so a sub-table *can* reuse it:
     Verified: computed column widths now sum to within a couple pixels of
     `get_usable_width()`'s budget (only integer-rounding slack), with no
     artificial bonus on the last column.
+    - **`scrollbar_width`/`safety_buffer` fudge factors also removed, same
+      day**: user reported the header/body still had a visibly bigger right
+      gap than the (correctly symmetric, plain `expand=True`) toolbar even
+      after the last-column fix above. `get_usable_width()` was shrinking
+      its budget by two more constants with no matching real element:
+      `scrollbar_width` (10px, reserved unconditionally even though the
+      body's `ft.Column(scroll=AUTO)` scrollbar only takes space when
+      content actually overflows vertically - most tables never trigger
+      it) and `safety_buffer` (literally `= horizontal_margin`, i.e.
+      `TABLE_HORIZONTAL_MARGIN` applied a *second* time on top of the
+      already-correct `horizontal_margin * 2` deduction, no distinct
+      purpose). Removed both - `get_usable_width()` now only subtracts the
+      DataTable's own `horizontal_margin` (both sides, matches
+      `header.py`/`body.py`'s real `horizontal_margin=TABLE_HORIZONTAL_MARGIN`),
+      `TABLE_OUTER_HORIZONTAL_PADDING` (both sides), and inter-column
+      spacing - every deduction now traces to something actually rendered.
+      Verified by reconstructing the DataTable's expected rendered
+      footprint (`margin*2 + sum(column widths) + spacing*(n-1)`) against
+      the true available space inside the padded outer container
+      (`page.width - outer_padding*2`): 1px of slack, versus ~20px before
+      this fix.
   - **Manual column resize** (Excel/Sheets-style, ported from a
     plain-HTML/CSS reference implementation the same project already uses
     elsewhere): every column boundary except the very last one gets a

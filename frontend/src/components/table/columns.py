@@ -563,25 +563,28 @@ class TableColumns:
         """Calculate usable width for columns based on page/window size"""
         screen_width = self.get_screen_width()
         print(f"Screen width: {screen_width}")
-        scrollbar_width = 10  # typical Windows scrollbar width
         horizontal_margin = TABLE_HORIZONTAL_MARGIN
         column_spacing = TABLE_COLUMN_SPACING
         total_spacing = (num_columns - 1) * column_spacing
-        safety_buffer = horizontal_margin
-        # subtract both left and right margins and the Table's own outer
-        # padding (issue #27 - see TABLE_OUTER_HORIZONTAL_PADDING). No extra
-        # last-column gutter reserved here anymore - that used to compensate
-        # for a table sitting flush against the screen edge (padding=0), but
-        # stacking it on top of the now-symmetric TABLE_OUTER_HORIZONTAL_PADDING
-        # made the right side visibly wider than the left (12px last-column
-        # padding + 12px outer padding = 24px right vs. 12px left).
+        # Subtract the DataTable's own horizontal_margin (both sides - real,
+        # matches header.py/body.py's own `horizontal_margin=TABLE_HORIZONTAL_MARGIN`)
+        # and the Table's outer padding (issue #27 - real, matches
+        # Table.build()'s own default). No extra last-column gutter reserved
+        # here anymore (removed 2026-07-17 - it stacked with the outer
+        # padding and made the right side visibly wider than the left).
+        # Also no `scrollbar_width`/`safety_buffer` fudge factors anymore
+        # (removed same day) - neither corresponded to a real, always-present
+        # rendered element (the body's scrollbar only reserves space when it
+        # actually overflows, and `safety_buffer` was `horizontal_margin`
+        # applied a *second* time with no distinct purpose), and the toolbar
+        # sizes itself with a plain `expand=True` with no equivalent
+        # deductions - the extra shrinkage here was exactly what made the
+        # header/body's right edge sit visibly short of the toolbar's.
         usable_width = (
             screen_width
-            - scrollbar_width
             - (horizontal_margin * 2)
             - (TABLE_OUTER_HORIZONTAL_PADDING * 2)
             - total_spacing
-            - safety_buffer
         )
         print(f"Usable width: {usable_width}")
         return usable_width
