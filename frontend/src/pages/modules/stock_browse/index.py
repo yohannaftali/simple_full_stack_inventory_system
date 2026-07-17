@@ -15,7 +15,7 @@ class ModulePage:
         self.fields = [
             {
                 "name": "material_id",
-                "type": "hidden", "serialize": False
+                "type": "hidden", "key": True, "serialize": False
             },
             {
                 "name": "material_code", "label": "Material Code",
@@ -57,7 +57,8 @@ class ModulePage:
             page=page,
             parent=self,
             name="detail",
-            fields=self.fields
+            fields=self.fields,
+            edit_screen="stock_by_material"
         )
 
     def build(self):

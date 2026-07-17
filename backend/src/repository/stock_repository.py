@@ -107,32 +107,60 @@ class StockRepository:
             ]
             return summary, pagination
 
-    def list_stock_by_material(self, material_id: int) -> list[dict]:
+    def list_stock_by_material(
+        self,
+        material_id: int,
+        sort_fields: list[tuple[str, str]] | None = None,
+    ) -> list[dict]:
         """Current on-hand qty per location for one material, qty > 0 only.
 
-        Not paginated - feeds the stock-out item form's per-location qty
-        table, which is naturally small (one row per location actually
-        holding this material).
+        Not paginated - feeds both the stock-out item form's per-location
+        qty table (issue #25/before) and issue #29's stock-by-material
+        drill-down, each naturally small (one row per location actually
+        holding this material). `average_price`/`value` (issue #29) are the
+        material's single MAP outer-joined in, same technique as
+        `list_stock_summary` - constant across every row here since MAP is
+        per-material, not per-location; `stock_out`'s item form ignores
+        these two extra keys, since its own field config never reads them.
         """
         with SessionLocal() as session:
-            rows = (
+            qty_expr = func.sum(StockModel.qty)
+            average_price_expr = func.coalesce(InventoryValueModel.average_price, 0)
+            value_expr = qty_expr * average_price_expr
+            query = (
                 session.query(
                     LocationModel.id.label("location_id"),
                     LocationModel.code.label("location_code"),
                     LocationModel.name.label("location_name"),
                     UnitOfMaterialModel.code.label("unit_code"),
                     UnitOfMaterialModel.name.label("unit_name"),
-                    func.sum(StockModel.qty).label("qty"),
+                    qty_expr.label("qty"),
+                    average_price_expr.label("average_price"),
+                    value_expr.label("value"),
                 )
                 .join(LocationModel, LocationModel.id == StockModel.location_id)
                 .join(MaterialModel, MaterialModel.id == StockModel.material_id)
                 .join(UnitOfMaterialModel, UnitOfMaterialModel.id == MaterialModel.unit_id)
+                .outerjoin(
+                    InventoryValueModel, InventoryValueModel.material_id == MaterialModel.id
+                )
                 .filter(StockModel.material_id == material_id)
-                .group_by(LocationModel.id)
+                .group_by(LocationModel.id, InventoryValueModel.average_price)
                 .having(func.sum(StockModel.qty) > 0)
-                .order_by(LocationModel.code)
-                .all()
             )
+            column_map = {
+                "location_code": LocationModel.code,
+                "location_name": LocationModel.name,
+                "unit_name": UnitOfMaterialModel.name,
+                "qty": qty_expr,
+                "average_price": average_price_expr,
+                "value": value_expr,
+            }
+            if sort_fields:
+                query = apply_sort(query, sort_fields, column_map)
+            else:
+                query = query.order_by(LocationModel.code)
+            rows = query.all()
             return [
                 {
                     "location_id": row.location_id,
@@ -141,6 +169,8 @@ class StockRepository:
                     "unit_code": row.unit_code,
                     "unit_name": row.unit_name,
                     "qty": row.qty,
+                    "average_price": row.average_price,
+                    "value": row.value,
                 }
                 for row in rows
             ]

@@ -47,6 +47,7 @@
 | #25 | feat(stock_out): multi-material bulk item upload + accept bare code (no " - Name") across all bulk uploads | closed | 2026-07-16 |
 | #26 | feat(frontend): limit select dropdown to first 5 results with "show more" indicator, position results below input | closed | 2026-07-17 |
 | #27 | feat(frontend,backend): make multi-column sort a default on every table; fix header-icon bleed into first row; add table padding | closed | 2026-07-17 |
+| #29 | feat(stock_browse): drill into stock-by-material with per-location breakdown + totals footer | ready-for-review | 2026-07-17 |
 
 ## Big Picture
 
@@ -1510,10 +1511,13 @@ label; `stock_out`'s `new`/`edit` carry a required `department_id` select on
 the header form and `index` a read-only `department_name` label. `ap_module`
 itself also carries a `module_group_id` select on `new`/`edit` (optional —
 blank is valid) and a read-only `module_group_name` label on `index`.
-`stock_browse` and `usage_report` are `index.py` only (no `new`/`edit` — and
-deliberately no field marked `"key": True` in their `Table` config, since
-`TableRows.py` unconditionally wires a `"key"` field to row-tap-navigates-to-
-`edit/<id>`, and neither has an edit screen to navigate to). `purchase_report`
+`usage_report` is `index.py` only (no `new`/`edit` — and deliberately no
+field marked `"key": True` in its `Table` config, since `TableRows.py`
+unconditionally wires a `"key"` field to row-tap-navigates-to-`edit/<id>`,
+and it has no edit screen to navigate to). `stock_browse` used to be the
+same shape, until issue #29 (2026-07-17) added a genuine (non-"edit") row
+click target — see "Stock-by-material drill-down" below.
+`purchase_report`
 is the same shape, but with **two** `Table`s on one `index.py` (`by_supplier`/
 `by_material`, each defaulting its endpoint to `C_purchase_report/get_by_x`
 purely from its `name=` — no `endpoint=` override needed) plus two standalone
@@ -1530,6 +1534,56 @@ to 1, and calls `get_data()` on both. `usage_report/index.py` (issue #9)
 gained the same two standalone `DateForm`s + "Apply Filters" toolbar
 button pattern, minus the dropdowns/second table — its single `Table`'s
 `custom_param` gets just `start_date-filter`/`end_date-filter`.
+
+**Stock-by-material drill-down** (issue #29, 2026-07-17): clicking a row in
+`stock_browse/index` now navigates to
+`/modules/stock_browse/stock_by_material/<material_id>` — the first
+non-"edit" row-click target this module has ever had, enabled by marking
+the (already-hidden) `material_id` field `"key": True` and passing
+`Table(..., edit_screen="stock_by_material")`, same mechanism `stock_in`/
+`stock_out`'s item tables already use for a non-`"edit"` target.
+`pages/modules/stock_browse/stock_by_material.py` is a new,
+`record_id`-accepting `ModulePage` (matches `master_location/edit.py`'s
+`def __init__(self, page, module, screen=str, record_id=None)` shape) that
+is otherwise read-only, same as `stock_browse`/`usage_report` themselves —
+no add/edit/delete. It does two things a plain sub-table screen doesn't:
+- **Heading fetched via a small dedicated GET**
+  (`C_stock_browse/get_material?material_id=<id>` → `{"material_code",
+  "material_name"}`) before `self.table` is even constructed, since a
+  material has no edit screen of its own for this page to inherit context
+  from the way `stock_in`/`stock_out`'s item sub-tables inherit their
+  header's own already-fetched data — same "a small extra GET up front"
+  precedent `stock_in/item_edit.py` already established for learning
+  context the route's own id doesn't carry.
+- **Totals footer** (`Total Qty` / `MAP` / `Total Value`) — the first of
+  its kind in this app; no existing `Table` has a totals row. Deliberately
+  kept screen-level (a plain `ft.Text` built from `self.table.data` right
+  after constructing `self.table`, since `Table.__init__` already runs
+  `get_data()` synchronously when not `is_inside_form`) rather than adding
+  a generic footer feature to `components/table/table.py` - nothing else
+  needs one yet, and a screen-level summary is a few lines against a
+  meaningful blast-radius increase for the shared component. `average_price`
+  (the material's single MAP, constant across every returned row) is read
+  straight off any one row rather than recomputed; `total_value` is the
+  simple sum of each row's own already-correct `value`.
+
+Backend: `stock_repository.py::list_stock_by_material(material_id,
+sort_fields=None)` (pre-existing, previously only feeding `stock_out`'s
+item form's per-location qty table) gained the same `InventoryValueModel`
+outer-join `list_stock_summary` already uses, so `average_price`/`value`
+are now real columns on every row here too — `stock_out`'s existing
+consumer is unaffected, it never reads those two keys. Also gained
+`sort_fields`/`apply_sort` support (previously `.order_by(LocationModel.code)`
+unconditionally) — backward compatible, since the parameter defaults to
+`None` and `stock_out`'s call site never passes it.
+`routers/stock_browse.py` gained `get_stock_by_material`
+(`request: Request` + `parse_sort_fields`, mirroring every other sortable
+list endpoint), `export_stock_by_material` (same "every list gets an
+export twin" convention as everywhere else in this app), and `get_material`.
+Verified against a real SQLite session (qty/average_price/value computed
+correctly per location, sort by `qty` DESC correct) and via
+`starlette.testclient.TestClient` hitting the actual FastAPI routes
+end-to-end (not just the repository directly).
 
 `master_config` and `mail_config` are a **different, simpler shape**: a
 **singleton settings screen**, not list+CRUD. Each is just one
