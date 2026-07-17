@@ -866,3 +866,13 @@
 - Fixed operationally, not by code change: `podman compose restart backend frontend` - confirmed both came back healthy (`podman compose ps`) and the backend immediately started serving fresh requests correctly (`podman logs sfsis-backend`)
 - This is the same class of gotcha already documented for `entrypoint.sh` edits in project memory (`sfsis-dev-env-gotchas`) - a running container silently serving stale in-memory code after a source change, requiring an explicit restart - just triggered here by an ordinary Python source edit instead of an entrypoint script edit, and worth remembering as the general case: **any backend code change requires `podman compose restart backend` (or `frontend` for frontend-only changes) to actually take effect**, since neither service reloads on file change
 - Scope: infra (no source files changed)
+
+## [2026-07-17] — fix(frontend,backend): stock_out header department_name missing sort icon
+- User noticed `stock_out/index`'s "Department" column had no sort icon at all, unlike its `date`/`description` siblings
+- Root cause: `department_name` is a join-derived display value with no real column in `stock_out_repository.py::list_headers`'s own query (documented "Known gap" from the #10/#27 rollouts) - `stock_in`'s equivalent `supplier_name` already had this closed via an outer join to `SupplierModel` (issue #7), but `stock_out` never got the same treatment for `DepartmentModel`
+- Added `.outerjoin(DepartmentModel, DepartmentModel.id == StockOutHeaderModel.department_id)` to `list_headers` and `"department_name": DepartmentModel.name` to `_HEADER_FILTER_COLUMN_MAP` (reused for both filtering and, via `_HEADER_SORT_COLUMN_MAP`, sorting) - same pattern as `receiving_repository.py`'s existing supplier join. Marked `"sort": True` on `stock_out/index.py`'s `department_name` field
+- Deliberately did not also extend keyword search to match department code/name (unlike receiving's supplier join, which does) - narrowly scoped to the sort/filter gap actually reported
+- Verified with a real in-memory SQLite session (`StaticPool`): sorting by `department_name` ASC correctly orders null (no department) first, then alphabetically by department name
+- Updated AGENTS.md's "Known gap" note (per-column filters section) and the stock_out transactional-tables section
+- Scope: frontend, backend
+- Files: `backend/src/repository/stock_out_repository.py`, `frontend/src/pages/modules/stock_out/index.py`, `AGENTS.md`

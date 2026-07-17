@@ -317,9 +317,10 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
     `.having()` instead of `.filter()`, which this helper doesn't support;
     #8/#9's own hand-rolled `apply_field_filters` usage on those aggregate
     reports is unaffected, still using its own narrower, named-filter
-    mechanism. **Known gap**: a few fields are join-derived/denormalized
-    display values with no real column in their own repository's query
-    (e.g. `stock_out`'s header `department_name`, item tables'
+    mechanism. **Known gap** (`stock_out`'s header `department_name` closed
+    2026-07-17 — see below; the rest remain open): a few fields are
+    join-derived/denormalized display values with no real column in their
+    own repository's query (item tables'
     `material_code`/`location_code`, `master_material`'s
     `supplier_name`/`category_name`) — the frontend still shows a filter
     box for these by default (no way to know from the frontend field
@@ -1304,6 +1305,16 @@ Transactional tables, all in `backend/src/models/`:
   usage report possible); each item is `material_id` + `location_id` +
   `qty_out` + the **captured** `price` (that material's MAP at the moment of
   issue) + `total_value` (`qty_out * price`) + `remarks`.
+  `stock_out_repository.py::list_headers` outer-joins `DepartmentModel`
+  (2026-07-17) so `department_name` is filterable/sortable like
+  `receiving_repository.py::list_headers`'s own `SupplierModel` join —
+  added after issue #27's sort rollout left `department_name` as the one
+  header column with no sort icon at all (unlike `stock_in`'s equivalent
+  `supplier_name`, which already had this join from #7). Deliberately
+  **not** also added to the keyword search across `[Description]` (unlike
+  receiving's supplier join, which does extend keyword search) — narrowly
+  scoped to closing the sort/filter gap that was actually reported, not a
+  full parity pass with `stock_in`'s header search behavior.
 
 All business logic lives in `backend/src/services/inventory_service.py`,
 which — unlike every other service/repository in this codebase — manages its

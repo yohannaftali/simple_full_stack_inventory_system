@@ -16,10 +16,14 @@ from core.table_query import (
     paginate,
 )
 from models.base import SessionLocal
+from models.department import DepartmentModel
 from models.stock_out_header import StockOutHeaderModel
 from models.stock_out_item import StockOutItemModel
 
-_HEADER_FILTER_COLUMN_MAP = {"description": StockOutHeaderModel.description}
+_HEADER_FILTER_COLUMN_MAP = {
+    "description": StockOutHeaderModel.description,
+    "department_name": DepartmentModel.name,
+}
 # date isn't a per-column *filter* (no {field}-filter UI for it - the usage
 # report already owns date-range filtering), but it's a real column worth
 # sorting a transaction list by, so it's sort-only, kept out of
@@ -55,7 +59,9 @@ class StockOutRepository:
         sort_fields: list[tuple[str, str]] | None = None,
     ) -> tuple[list[StockOutHeaderModel], Pagination]:
         with SessionLocal() as session:
-            query = session.query(StockOutHeaderModel)
+            query = session.query(StockOutHeaderModel).outerjoin(
+                DepartmentModel, DepartmentModel.id == StockOutHeaderModel.department_id
+            )
             query = apply_keyword_filter(query, [StockOutHeaderModel.description], keyword)
             if query_params is not None:
                 query = apply_column_filters(query, query_params, _HEADER_FILTER_COLUMN_MAP)

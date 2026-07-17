@@ -27,7 +27,7 @@ class ModulePage:
             },
             {
                 "name": "department_name", "label": "Department",
-                "type": "label"
+                "type": "label", "sort": True
             }
         ]
 
