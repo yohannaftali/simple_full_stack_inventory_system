@@ -27,11 +27,11 @@ class ModulePage:
             },
             {
                 "name": "username", "label": "Username",
-                "type": "label"
+                "type": "label", "sort": True
             },
             {
                 "name": "email", "label": "Email",
-                "type": "label"
+                "type": "label", "sort": True
             },
             {
                 "name": "is_active", "label": "Active",

@@ -52,6 +52,16 @@ _RESIZE_HANDLE_VISIBLE_WIDTH = 2
 TABLE_HORIZONTAL_MARGIN = 10
 TABLE_COLUMN_SPACING = 5
 
+# Must match Table.build()'s own default `padding` (issue #27) - the outer
+# Container wrapping header+body is now padded left/right by default instead
+# of sitting flush against the screen edge, which shrinks the actual
+# available rendering width by this much on each side. get_usable_width()
+# below must subtract it from the budget it hands out to columns, or the
+# column widths it computes overflow the real (now-narrower) visible area -
+# with no horizontal scroll, an overflowing rightmost column simply renders
+# off-screen instead of clipping visibly.
+TABLE_OUTER_HORIZONTAL_PADDING = 12
+
 
 class TableColumns:
     def __init__(self, page: ft.Page, fields: list):
@@ -119,11 +129,18 @@ class TableColumns:
         self.on_sort_change = None
         self.parse_field(self.fields)
 
-    def build(self) -> list:
+    def build(self, interactive: bool = True) -> list:
         # Build and return a FRESH list of DataColumn objects each call.
         # This avoids shared-list aliasing between header/body consumers
         # while keeping `self.widths` as the source-of-truth for sizes.
-        return self._build_data_columns()
+        # `interactive=False` (used by TableBody, whose DataTable exists
+        # purely for structural column-width alignment - its heading row is
+        # hidden via heading_row_height=0) strips every sort icon/on_sort
+        # handler: Flutter's DataTable doesn't fully clip a zero-height
+        # heading row's content, so a real sort icon there could visually
+        # bleed into the first data row. The body's own header row is never
+        # shown, so it never needs to be interactive in the first place.
+        return self._build_data_columns(interactive=interactive)
 
     def parse_field(self, fields) -> None:
         self.columns = []
@@ -156,25 +173,31 @@ class TableColumns:
                 content = field_icon
 
             self.columns.append(
-                ft.DataColumn(label=content, numeric=False, on_sort=self.on_sort)
+                ft.DataColumn(label=content, numeric=False, on_sort=None)
             )
             self.index.append(field_name)
 
-    def on_sort(self, e) -> None:
-        """Header cell tap (Flutter's own DataColumn tap handling - wired
-        to any DataColumn with on_sort set, no custom GestureDetector
-        needed here). Cycles that column's sort state
-        none -> ASC -> DESC -> none and, for a *different* column clicked
-        while another is still active, appends it as an additional sort
-        key rather than replacing - true multi-column sort, same as the
-        senar reference's `#setOrderByAsc`/`#setOrderByDesc`/
-        `#resetOrderBy` (y.form.js), no shift/ctrl modifier needed."""
-        if e.column_index is None or e.column_index >= len(self.index):
-            return
-        field_name = self.index[e.column_index]
-        if not self.fields_by_name.get(field_name, {}).get("sort"):
-            return
-
+    def _on_header_click(self, field_name: str) -> None:
+        """Sortable header cell tap - wired directly per-column via
+        `Container.on_click` (see _build_data_columns()), NOT
+        `DataColumn.on_sort`. Flutter's `DataColumn.onSort` reserves space
+        for its own native sort-arrow indicator whenever it's non-null,
+        *even though nothing ever paints there* (this table never sets
+        `sort_column_index`, and draws its own icon instead) - confirmed via
+        Flutter's own API docs. That hidden reservation inflated every
+        sortable header cell wider than its `Container(width=w)`, while the
+        body's plain DataCell (never given `on_sort`) had no such
+        reservation - the actual cause of the header/body column-width
+        mismatch that survived three earlier attempts at the icon's own
+        layout. Leaving `on_sort` permanently `None` on every `DataColumn`
+        (see `parse_field()`/`_build_data_columns()`) removes that
+        reservation entirely; this method reproduces the same
+        none -> ASC -> DESC -> none cycling `on_sort()` used to do, and a
+        *different* column clicked while one is already active still
+        appends as an additional sort key rather than replacing - true
+        multi-column sort, same as the senar reference's
+        `#setOrderByAsc`/`#setOrderByDesc`/`#resetOrderBy` (y.form.js), no
+        shift/ctrl modifier needed."""
         index, state = self._find_sort_state(field_name)
         if state == "ASC":
             self.sort_order[index] = (field_name, "DESC")
@@ -212,7 +235,7 @@ class TableColumns:
         """Rebuild columns with new widths"""
         self.columns = self._build_data_columns()
 
-    def _build_data_columns(self) -> list:
+    def _build_data_columns(self, interactive: bool = True) -> list:
         print("TableColumns.build (fresh)")
         print(self.widths)
         visible_fields = [
@@ -232,7 +255,7 @@ class TableColumns:
                 if self.widths and visible_idx < len(self.widths)
                 else None
             )
-            is_sortable = bool(field.get("sort"))
+            is_sortable = interactive and bool(field.get("sort"))
             # Excel-style: a shrunk column truncates its label to one
             # ellipsized line rather than wrapping onto multiple lines
             # (which used to visibly grow into - "behind" - the row below
@@ -263,15 +286,18 @@ class TableColumns:
             else:
                 left_content = ft.Row(row_children, spacing=4, tight=True)
 
-            # Sort icon sits at the column's far right edge (SPACE_BETWEEN
-            # against the field icon/label on the left), not glued directly
-            # onto the label text - a non-tight Row fills the fixed-width
-            # Container below it (no `alignment` set there, so the
-            # Container passes its own width down as a tight constraint -
-            # same mechanism components/form/date.py's docstring documents
-            # for why an alignment-less Container forces full-width on its
-            # child), so SPACE_BETWEEN has the whole column width to work
-            # with.
+            # Label stays on the left, sort icon pins to the column's right
+            # edge (SPACE_BETWEEN on a non-tight Row - it fills the
+            # fixed-width Container below it, since no `alignment` is set
+            # on that Container, so the Container passes its own width down
+            # as a tight constraint - same mechanism components/form/date.py's
+            # docstring documents). Two earlier attempts at this exact
+            # layout ran into what turned out to be a red herring: the real
+            # bug (see `_on_header_click()`) was Flutter's own
+            # `DataColumn.onSort` silently reserving native sort-arrow
+            # space whenever it's non-null, which made the header cell
+            # wider than its body counterpart regardless of how this Row
+            # was laid out - SPACE_BETWEEN was never the problem.
             if is_sortable and show_label:
                 sort_icon = self._build_sort_icon(field["name"])
                 label_content = ft.Row(
@@ -288,28 +314,39 @@ class TableColumns:
             else:
                 label_content = left_content
 
-            final_content = label_content
-            # Apply width if available (use integer pixel values). No
-            # resize handle attached here anymore - handles live in a
-            # separate overlay Stack (get_resize_overlay()) positioned on
-            # top of the header, entirely independent of this DataColumn.
-            if w is not None:
-                final_content = ft.Container(
-                    content=label_content,
-                    width=w,
-                    padding=ft.Padding.symmetric(horizontal=8, vertical=6),
-                )
+            # Always wrap in a Container - width when available (use
+            # integer pixel values; no resize handle attached here anymore,
+            # handles live in a separate overlay Stack, see
+            # get_resize_overlay()), and unconditionally so a sortable
+            # column has somewhere to attach `on_click` even on a first
+            # build before widths are computed (plain ft.Row has no
+            # on_click of its own).
+            final_content = ft.Container(
+                content=label_content,
+                width=w,
+                padding=ft.Padding.symmetric(horizontal=8, vertical=6),
+                # Click handling lives here, on the Container, instead of
+                # on DataColumn.on_sort - see _on_header_click()'s
+                # docstring for why on_sort is never set on any DataColumn
+                # in this table anymore (it silently inflates the header
+                # cell's rendered width beyond this Container's own
+                # explicit `width`, which was the real cause of a
+                # persistent header/body column-width mismatch). A column
+                # without "sort": True in its field config gets no
+                # `on_click` at all, matching the reference's `icon ==
+                # null` no-op guard for non-sortable headers.
+                on_click=(
+                    (lambda e, name=field["name"]: self._on_header_click(name))
+                    if is_sortable
+                    else None
+                ),
+            )
 
             cols.append(
                 ft.DataColumn(
                     label=final_content,
                     numeric=is_numeric,
-                    # Only sortable columns get Flutter's built-in
-                    # tap-anywhere-on-the-header handling - a column
-                    # without "sort": True in its field config just isn't
-                    # interactive here at all, matching the reference's
-                    # `icon == null` no-op guard for non-sortable headers.
-                    on_sort=self.on_sort if is_sortable else None,
+                    on_sort=None,
                 )
             )
 
@@ -537,12 +574,15 @@ class TableColumns:
         column_spacing = TABLE_COLUMN_SPACING
         total_spacing = (num_columns - 1) * column_spacing
         safety_buffer = horizontal_margin
-        # subtract both left and right margins, plus the extra gutter
-        # reserved for the last column (added back onto it below)
+        # subtract both left and right margins, the Table's own outer
+        # padding (issue #27 - see TABLE_OUTER_HORIZONTAL_PADDING), plus the
+        # extra gutter reserved for the last column (added back onto it
+        # below)
         usable_width = (
             screen_width
             - scrollbar_width
             - (horizontal_margin * 2)
+            - (TABLE_OUTER_HORIZONTAL_PADDING * 2)
             - total_spacing
             - safety_buffer
             - _LAST_COLUMN_RIGHT_PADDING

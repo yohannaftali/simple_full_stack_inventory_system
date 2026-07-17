@@ -45,7 +45,7 @@ class ItemTable:
             },
             {
                 "name": "qty_out", "label": "Qty Out",
-                "type": "label", "format": "number"
+                "type": "label", "format": "number", "sort": True
             },
             {
                 "name": "unit_name", "label": "Unit",
@@ -53,15 +53,15 @@ class ItemTable:
             },
             {
                 "name": "price", "label": "Price",
-                "type": "label", "format": "number"
+                "type": "label", "format": "number", "sort": True
             },
             {
                 "name": "total_value", "label": "Total Value",
-                "type": "label", "format": "number"
+                "type": "label", "format": "number", "sort": True
             },
             {
                 "name": "remarks", "label": "Remarks",
-                "type": "label"
+                "type": "label", "sort": True
             }
         ]
 

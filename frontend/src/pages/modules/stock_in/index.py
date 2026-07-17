@@ -19,15 +19,15 @@ class ModulePage:
             },
             {
                 "name": "date", "label": "Date",
-                "type": "label", "format": "date"
+                "type": "label", "format": "date", "sort": True
             },
             {
                 "name": "description", "label": "Description",
-                "type": "label"
+                "type": "label", "sort": True
             },
             {
                 "name": "supplier_name", "label": "Supplier",
-                "type": "label"
+                "type": "label", "sort": True
             }
         ]
 

@@ -45,7 +45,7 @@ class ItemTable:
             },
             {
                 "name": "qty_received", "label": "Qty",
-                "type": "label", "format": "number"
+                "type": "label", "format": "number", "sort": True
             },
             {
                 "name": "unit_name", "label": "Unit",
@@ -53,11 +53,11 @@ class ItemTable:
             },
             {
                 "name": "price_buy", "label": "Price",
-                "type": "label", "format": "number"
+                "type": "label", "format": "number", "sort": True
             },
             {
                 "name": "remarks", "label": "Remarks",
-                "type": "label"
+                "type": "label", "sort": True
             }
         ]
 

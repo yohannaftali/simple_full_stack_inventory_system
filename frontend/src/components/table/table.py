@@ -1,7 +1,7 @@
 import flet as ft
 
 from components.table.body import TableBody
-from components.table.columns import TableColumns
+from components.table.columns import TABLE_OUTER_HORIZONTAL_PADDING, TableColumns
 from components.table.filter import TableFilter
 from components.table.header import TableHeader
 from components.table.menu import TableMenu
@@ -125,7 +125,19 @@ class Table:
         if not is_inside_form:
             self.get_data()
 
-    def build(self, padding: int = 0):
+    def build(
+        self,
+        padding: ft.PaddingValue = ft.Padding.symmetric(
+            horizontal=TABLE_OUTER_HORIZONTAL_PADDING
+        ),
+    ):
+        # Every module's index.py calls Table.build() with no override, so
+        # this default is the app-wide table padding - small horizontal
+        # breathing room instead of sitting flush against the screen edge.
+        # Must match TABLE_OUTER_HORIZONTAL_PADDING, which
+        # Columns.get_usable_width() subtracts from its column-width budget
+        # - a caller passing a different padding value here would silently
+        # desync the two and reintroduce the off-screen-column overflow bug.
         self.header = TableHeader(page=self.page, columns=self.columns)
         self.body = TableBody(
             page=self.page,

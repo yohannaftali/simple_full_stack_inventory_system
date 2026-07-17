@@ -54,7 +54,7 @@ from decimal import Decimal, InvalidOperation
 from fastapi import APIRouter, Depends, Form, Query, Request
 
 from core.table_export import export_response
-from core.table_query import attach_pagination
+from core.table_query import attach_pagination, parse_sort_fields
 from models.user import UserModel
 from repository.department_repository import DepartmentRepository
 from repository.location_repository import LocationRepository
@@ -139,8 +139,14 @@ def get_detail(
     offset: int = Query(0),
     user: UserModel = Depends(_require_access),
 ) -> list:
+    sort_fields = parse_sort_fields(request.query_params)
     rows, pagination = _stock_out_repository.list_headers(
-        keyword=keyword, query_params=request.query_params, limit=limit, page=page, offset=offset
+        keyword=keyword,
+        query_params=request.query_params,
+        limit=limit,
+        page=page,
+        offset=offset,
+        sort_fields=sort_fields,
     )
     return attach_pagination([_serialize_header(header) for header in rows], pagination)
 
@@ -152,8 +158,14 @@ def export_detail(
     keyword: str = Query("", alias="table-keyword-filter"),
     user: UserModel = Depends(_require_access),
 ):
+    sort_fields = parse_sort_fields(request.query_params)
     rows, _pagination = _stock_out_repository.list_headers(
-        keyword=keyword, query_params=request.query_params, limit=0, page=1, offset=0
+        keyword=keyword,
+        query_params=request.query_params,
+        limit=0,
+        page=1,
+        offset=0,
+        sort_fields=sort_fields,
     )
     return export_response(
         [_serialize_header(header) for header in rows], _EXPORT_DETAIL_COLUMNS, format, "stock_out"
@@ -168,8 +180,15 @@ def export_items(
     keyword: str = Query("", alias="table-keyword-filter"),
     user: UserModel = Depends(_require_access),
 ):
+    sort_fields = parse_sort_fields(request.query_params)
     items, _pagination = _stock_out_repository.list_items_by_header(
-        header_id, keyword=keyword, query_params=request.query_params, limit=0, page=1, offset=0
+        header_id,
+        keyword=keyword,
+        query_params=request.query_params,
+        limit=0,
+        page=1,
+        offset=0,
+        sort_fields=sort_fields,
     )
     return export_response(
         [_serialize_item(item) for item in items],
@@ -252,6 +271,7 @@ def get_items(
     offset: int = Query(0),
     user: UserModel = Depends(_require_access),
 ) -> list:
+    sort_fields = parse_sort_fields(request.query_params)
     items, pagination = _stock_out_repository.list_items_by_header(
         header_id,
         keyword=keyword,
@@ -259,6 +279,7 @@ def get_items(
         limit=limit,
         page=page,
         offset=offset,
+        sort_fields=sort_fields,
     )
     return attach_pagination([_serialize_item(item) for item in items], pagination)
 

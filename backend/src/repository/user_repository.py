@@ -3,7 +3,13 @@
 from typing import Optional, Tuple
 from sqlalchemy import Row
 
-from core.table_query import Pagination, apply_column_filters, apply_keyword_filter, paginate
+from core.table_query import (
+    Pagination,
+    apply_column_filters,
+    apply_keyword_filter,
+    apply_sort,
+    paginate,
+)
 from models.base import SessionLocal
 from models.user import UserModel
 
@@ -149,7 +155,13 @@ class UserRepository:
             return session.query(UserModel).filter(UserModel.id == user_id).first()
 
     def list_users(
-        self, keyword: str = "", query_params=None, limit: int = 20, page: int = 1, offset: int = 0
+        self,
+        keyword: str = "",
+        query_params=None,
+        limit: int = 20,
+        page: int = 1,
+        offset: int = 0,
+        sort_fields: list[tuple[str, str]] | None = None,
     ) -> tuple[list[UserModel], Pagination]:
         """List users matching an optional keyword, paginated."""
         with SessionLocal() as session:
@@ -159,7 +171,10 @@ class UserRepository:
             )
             if query_params is not None:
                 query = apply_column_filters(query, query_params, _FILTER_COLUMN_MAP)
-            query = query.order_by(UserModel.username)
+            if sort_fields:
+                query = apply_sort(query, sort_fields, _FILTER_COLUMN_MAP)
+            else:
+                query = query.order_by(UserModel.username)
             return paginate(query, limit=limit, page=page, offset=offset)
 
     def update_user_by_id(

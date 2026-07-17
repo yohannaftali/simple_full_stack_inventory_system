@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Form, Query, Request
 from sqlalchemy.exc import IntegrityError
 
 from core.table_export import export_response
-from core.table_query import attach_pagination
+from core.table_query import attach_pagination, parse_sort_fields
 from models.module_group import ModuleGroupModel
 from models.user import UserModel
 from repository.module_group_repository import ModuleGroupRepository
@@ -39,12 +39,14 @@ def get_detail(
     offset: int = Query(0),
     user: UserModel = Depends(_require_access),
 ) -> list:
+    sort_fields = parse_sort_fields(request.query_params)
     rows, pagination = _module_group_repository.list_groups(
         keyword=keyword,
         query_params=request.query_params,
         limit=limit,
         page=page,
         offset=offset,
+        sort_fields=sort_fields,
     )
     return attach_pagination([_serialize(group) for group in rows], pagination)
 
@@ -56,8 +58,14 @@ def export_detail(
     keyword: str = Query("", alias="table-keyword-filter"),
     user: UserModel = Depends(_require_access),
 ):
+    sort_fields = parse_sort_fields(request.query_params)
     rows, _pagination = _module_group_repository.list_groups(
-        keyword=keyword, query_params=request.query_params, limit=0, page=1, offset=0
+        keyword=keyword,
+        query_params=request.query_params,
+        limit=0,
+        page=1,
+        offset=0,
+        sort_fields=sort_fields,
     )
     return export_response(
         [_serialize(group) for group in rows], _EXPORT_COLUMNS, format, "master_module_group"

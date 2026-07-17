@@ -7,7 +7,13 @@ atomically — not something a plain single-table repository method should do.
 
 from typing import Optional
 
-from core.table_query import Pagination, apply_column_filters, apply_keyword_filter, paginate
+from core.table_query import (
+    Pagination,
+    apply_column_filters,
+    apply_keyword_filter,
+    apply_sort,
+    paginate,
+)
 from models.base import SessionLocal
 from models.receiving_header import ReceivingHeaderModel
 from models.receiving_item import ReceivingItemModel
@@ -17,6 +23,11 @@ _HEADER_FILTER_COLUMN_MAP = {
     "description": ReceivingHeaderModel.description,
     "supplier_name": SupplierModel.name,
 }
+# date isn't a per-column *filter* (no {field}-filter UI for it - the
+# purchase/usage reports already own date-range filtering), but it's a real
+# column worth sorting a transaction list by, so it's sort-only, kept out of
+# _HEADER_FILTER_COLUMN_MAP.
+_HEADER_SORT_COLUMN_MAP = {**_HEADER_FILTER_COLUMN_MAP, "date": ReceivingHeaderModel.date}
 _ITEM_FILTER_COLUMN_MAP = {
     "remarks": ReceivingItemModel.remarks,
     "qty_received": ReceivingItemModel.qty_received,
@@ -37,7 +48,13 @@ class ReceivingRepository:
             )
 
     def list_headers(
-        self, keyword: str = "", query_params=None, limit: int = 20, page: int = 1, offset: int = 0
+        self,
+        keyword: str = "",
+        query_params=None,
+        limit: int = 20,
+        page: int = 1,
+        offset: int = 0,
+        sort_fields: list[tuple[str, str]] | None = None,
     ) -> tuple[list[ReceivingHeaderModel], Pagination]:
         with SessionLocal() as session:
             query = session.query(ReceivingHeaderModel).outerjoin(
@@ -50,9 +67,12 @@ class ReceivingRepository:
             )
             if query_params is not None:
                 query = apply_column_filters(query, query_params, _HEADER_FILTER_COLUMN_MAP)
-            query = query.order_by(
-                ReceivingHeaderModel.date.desc(), ReceivingHeaderModel.id.desc()
-            )
+            if sort_fields:
+                query = apply_sort(query, sort_fields, _HEADER_SORT_COLUMN_MAP)
+            else:
+                query = query.order_by(
+                    ReceivingHeaderModel.date.desc(), ReceivingHeaderModel.id.desc()
+                )
             return paginate(query, limit=limit, page=page, offset=offset)
 
     def create_header(
@@ -101,6 +121,7 @@ class ReceivingRepository:
         limit: int = 20,
         page: int = 1,
         offset: int = 0,
+        sort_fields: list[tuple[str, str]] | None = None,
     ) -> tuple[list[ReceivingItemModel], Pagination]:
         with SessionLocal() as session:
             query = session.query(ReceivingItemModel).filter(
@@ -111,5 +132,8 @@ class ReceivingRepository:
                 query = apply_column_filters(
                     query, query_params, _ITEM_FILTER_COLUMN_MAP, _ITEM_FILTER_NUMERIC_FIELDS
                 )
-            query = query.order_by(ReceivingItemModel.id)
+            if sort_fields:
+                query = apply_sort(query, sort_fields, _ITEM_FILTER_COLUMN_MAP)
+            else:
+                query = query.order_by(ReceivingItemModel.id)
             return paginate(query, limit=limit, page=page, offset=offset)

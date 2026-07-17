@@ -19,7 +19,14 @@ class TableBody:
 
     def build(self):
         self.data_table = ft.DataTable(
-            columns=self.columns.build(),
+            # interactive=False: this DataTable's heading row exists purely
+            # for structural column-width alignment and is hidden
+            # (heading_row_height=0 below) - the real, visible header lives
+            # in TableHeader. A sort icon built into this hidden row could
+            # visually bleed into the first data row (Flutter's DataTable
+            # doesn't fully clip a zero-height heading row's content), so
+            # this row never gets sort icons/on_sort handlers at all.
+            columns=self.columns.build(interactive=False),
             rows=self.rows.build(),
             column_spacing=TABLE_COLUMN_SPACING,
             horizontal_margin=TABLE_HORIZONTAL_MARGIN,
@@ -90,7 +97,7 @@ class TableBody:
         print("TableBody.update")
         print(self.columns.widths)
         if self.data_table is not None:
-            self.data_table.columns = self.columns.columns
+            self.data_table.columns = self.columns.build(interactive=False)
             self.data_table.rows = self.rows.rows
             self.data_table.update()
             print("data_table updated")

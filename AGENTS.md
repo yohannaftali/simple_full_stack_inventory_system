@@ -46,6 +46,7 @@
 | #24 | feat(stock_in): bulk CSV/XLSX upload for receiving items on item_new | closed | 2026-07-16 |
 | #25 | feat(stock_out): multi-material bulk item upload + accept bare code (no " - Name") across all bulk uploads | closed | 2026-07-16 |
 | #26 | feat(frontend): limit select dropdown to first 5 results with "show more" indicator, position results below input | closed | 2026-07-17 |
+| #27 | feat(frontend,backend): make multi-column sort a default on every table; fix header-icon bleed into first row; add table padding | ready-for-review | 2026-07-17 |
 
 ## Big Picture
 
@@ -405,16 +406,54 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
     silently skipped, matching the PHP's leniency. A `list_x(...,
     sort_fields=None)` param takes this and, when given, replaces (not adds
     to) the method's own default `.order_by(...)`.
-    - **Reference implementation** (verify the mechanism here before
-      extending it further): `location_repository.py::list_locations` /
+    - **Reference implementation**: `location_repository.py::list_locations` /
       `routers/master_location.py::get_detail` on the backend,
       `pages/modules/master_location/index.py`'s `code`/`name` fields
-      marked `"sort": True` on the frontend. **Not yet rolled out to the
-      rest of the paginated `list_*` methods above** — same mechanical
-      per-endpoint change (add `sort_fields` param + `column_map` + a
-      `request: Request` param) needed for each, plus marking whichever
-      fields make sense `"sort": True` per module (some, like a free-text
-      `remarks` column, may deliberately stay unsortable).
+      marked `"sort": True` on the frontend.
+    - **Rolled out to every paginated `list_*` method as the default**
+      (issue #27, 2026-07-17) — same mechanical per-endpoint change (add a
+      `sort_fields` param + `apply_sort(query, sort_fields, column_map)` +
+      `parse_sort_fields(request.query_params)` in the router) applied to
+      `supplier_repository.py`, `department_repository.py`,
+      `category_repository.py`, `material_repository.py`,
+      `module_repository.py`, `user_repository.py`,
+      `module_group_repository.py`, `unit_of_material_repository.py` (found
+      via a repo-wide grep for `list_*` methods during implementation — not
+      in the issue's own list, but the exact same shape and just as much
+      "every table" as anything else), `receiving_repository.py`
+      (`list_headers` and `list_items_by_header`), `stock_out_repository.py`
+      (`list_headers` and `list_items_by_header`) — every one of these
+      repositories' existing `_FILTER_COLUMN_MAP`/`_SORT_COLUMNS` dict from
+      the #10 per-column-filter rollout is reused as-is for `apply_sort`'s
+      own `column_map`, since it's already exactly "field name -> real
+      column". Each affected `get_detail`/`export_detail`/`get_items`/
+      `export_items` router endpoint now also calls `parse_sort_fields` and
+      passes it through, so an export honors whatever sort is currently
+      applied on screen, same as `master_location`'s own export already did.
+      `receiving_repository.py`/`stock_out_repository.py`'s header
+      `list_headers` additionally gained a **sort-only** `date` entry (a
+      real column, but not part of the per-column *filter* map — no
+      `date-filter` UI exists for these headers, that's the purchase/usage
+      reports' job) via a small `_HEADER_SORT_COLUMN_MAP = {**_HEADER_FILTER_COLUMN_MAP,
+      "date": ...}` spread, since sorting a transaction list by date is
+      clearly useful even though filtering by it isn't wired here.
+      **Deliberately still unsortable**: every join-derived/denormalized
+      display field with no real column in its own repository's query —
+      the exact same list already documented as a filtering gap under
+      "Generic per-column filters" above (`stock_out`'s header
+      `department_name`, item tables' `material_code`/`location_code`/
+      `unit_name`, `master_material`'s `category_name`/`unit_name`,
+      `ap_module`'s `module_group_name`, `ap_master_user`'s
+      `department_name`) — marking one of these `"sort": True` on the
+      frontend without a matching `column_map` entry would render a
+      clickable sort icon that silently does nothing (`apply_sort` skips
+      unrecognized fields), so none of them are marked sortable. The three
+      aggregate/grouped repositories (`stock_repository.py`,
+      `usage_report_repository.py`, `purchase_report_repository.py`) are
+      also out of scope, same documented exception as the filter rollout —
+      `apply_sort`'s plain `.order_by()` doesn't need `HAVING`-aware routing
+      the way an aggregate column would, but no aggregate list screen is
+      wired onto sort yet either, so it wasn't extended speculatively.
     - Frontend half lives entirely in `components/table/columns.py`:
       `TableColumns.sort_order` is an ordered `[(field_name, "ASC"|"DESC"), ...]`
       list (list order = priority, mirrors `y.form.js`'s
@@ -462,6 +501,141 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
       in-memory `this.orderBy[table]` there too), so it resets whenever a
       `Table`/`TableColumns` instance itself is torn down and rebuilt (e.g.
       navigating away and back).
+    - **`TableBody`'s hidden header row never gets sort icons** (fixed
+      alongside the #27 rollout above): `TableBody` builds its own,
+      separate `ft.DataTable` purely for structural column-width alignment
+      (`heading_row_height=0` hides it — the real, visible header is a
+      different `DataTable` in `TableHeader`). Before this fix, that hidden
+      row was built identically to the real header (same
+      `TableColumns.build()` call, complete with sort icons and `on_sort`
+      handlers), and Flutter's `DataTable` doesn't fully clip a
+      zero-height heading row's content — a sort icon there could visibly
+      bleed into the first data row once any column was marked
+      `"sort": True`, which went unnoticed until #27 turned sort on
+      everywhere. `TableColumns.build(interactive: bool = True)` /
+      `_build_data_columns(interactive)` now gate `is_sortable` on
+      `interactive` as well as the field's own `"sort"` flag;
+      `TableBody.build()` calls `self.columns.build(interactive=False)`
+      (also fixed in the otherwise-dead `TableBody.update()`, so a future
+      caller of that method doesn't reintroduce the same bug), guaranteeing
+      no `ft.Icon`/`on_sort` control ever exists in the body's hidden
+      header row, regardless of Flutter's exact zero-height clipping
+      behavior — verified directly by walking the built `DataColumn.label`
+      control tree for both `interactive=True`/`False` and asserting zero
+      `ft.Icon` instances in the latter.
+    - **Small horizontal table padding by default** (#27): `Table.build()`'s
+      `padding` parameter default changed from `0` to
+      `ft.Padding.symmetric(horizontal=TABLE_OUTER_HORIZONTAL_PADDING)`
+      (12px, `components/table/columns.py`) — every module's `index.py`
+      calls `self.table.build()` with no override, so this is the app-wide
+      default now, giving every table a small left/right clear space
+      instead of sitting flush against the screen edge.
+    - **Two follow-up layout bugs found once sort was actually turned on
+      broadly** (user-reported after #27 landed, fixed same day):
+      1. **Sort icon positioned too far from its label on any column wider
+         than a narrow reference one.** The original layout put the icon at
+         the column's far-right edge (`ft.Row(..., alignment=SPACE_BETWEEN)`
+         filling the whole fixed-width header `Container`) — barely
+         noticeable on `master_location`'s two narrow `code`/`name` columns
+         (the only sortable columns that existed before #27), but glaringly
+         disconnected from the label on any wider column (e.g. `stock_in`'s
+         `description`), since SPACE_BETWEEN had the *entire* column width
+         to stretch across. Changed to a tight `ft.Row(spacing=4,
+         tight=True)` (default `START` alignment) so the icon always sits
+         immediately next to the label regardless of the column's width —
+         verified directly against `TableColumns.build()`'s output for both
+         a narrow and a ~700px-wide column.
+      2. **A column could render off-screen entirely** (reported as
+         "supplier is missing from screen" on `stock_in`). Root cause: the
+         table-padding default above (`Table.build()`) shrinks the *actual*
+         rendering width by `TABLE_OUTER_HORIZONTAL_PADDING * 2` (24px), but
+         `Columns.get_usable_width()` — the budget every column width is
+         computed from — didn't know about it and kept handing out the full
+         `page.width`. With no horizontal scroll (this table only scrolls
+         vertically), a column-width sum that fits the *stale, too-generous*
+         budget but exceeds the *real* visible area doesn't clip visibly —
+         it just renders past the right edge, invisible. Fixed by exporting
+         `TABLE_OUTER_HORIZONTAL_PADDING` from `columns.py`, having
+         `Table.build()`'s own default padding reference it (so the two
+         can't silently drift apart again), and subtracting
+         `TABLE_OUTER_HORIZONTAL_PADDING * 2` in `get_usable_width()`'s
+         budget calculation — verified with a reproduction at `page.width=1000`
+         (stock_in's 3 sortable columns + realistic content: summed column
+         width 925px against a corrected 976px real visible area — no
+         overflow — versus 925px against the old, uncorrected 1000px "budget"
+         that still left only 976px of *actual* room once padding was
+         subtracted, i.e. a confirmed real overflow before this fix).
+      Both bugs were introduced in the same #27 change (table padding landed
+      alongside the broad sort rollout, and #27's own reference
+      implementation only ever exercised two narrow columns), which is why
+      neither surfaced until sort was live on a wider, more realistic table.
+    - **Third round: the `tight=True` fix above (point 1) itself broke
+      header/body column-width sync**, reported as the icon now sitting
+      right after the label but the label+icon group no longer reading as
+      anchored to the column, *and* the header cell's rendered width no
+      longer matching its body column's width. Root cause: a `tight=True`
+      `ft.Row` reports a *smaller* intrinsic width than the fixed-width
+      `Container` wrapping it, and Flutter's `DataTable` sizes each column
+      from the header cell's own intrinsic content width when that content
+      is allowed to shrink — not strictly from the wrapping Container's
+      explicit `width` — while the body's plain-`Text` `DataCell` Container
+      (nothing tight-sized inside it) kept reporting the full computed
+      width. The two columns' rendered widths diverged. Fixed by keeping
+      the Row **non-tight** (so it fills the fixed-width Container, same
+      intrinsic-width behavior as every other/non-sortable column) and
+      using `alignment=ft.MainAxisAlignment.END` instead of `tight=True`'s
+      implicit `START` — this keeps the label and its sort icon adjacent
+      to each other (same `[left_content, sort_icon]` grouping,
+      `spacing=4`) while anchoring that whole group to the column's right
+      edge as a unit, restoring header/body width parity. Verified
+      directly against `TableColumns.build()`'s output: `row.tight is
+      False`, `alignment is END`, and the header `Container`'s explicit
+      `width` matches `self.widths[i]` for both a narrow and a ~700px
+      column; the icon-stripping-for-body fix re-verified intact again.
+    - **Fourth round — the actual root cause**: header/body width still
+      didn't match, and the user's originally-desired layout all along was
+      just label-left/icon-right (`SPACE_BETWEEN`) — the very first design,
+      which three rounds of icon-layout tweaks never should have needed to
+      leave. The real bug had nothing to do with the icon's `Row`:
+      **`DataColumn.onSort`, whenever non-null, makes Flutter's `DataTable`
+      reserve space for its own native sort-arrow indicator — even though
+      nothing ever paints there** (confirmed via Flutter's own
+      `DataColumn.onSort` API docs; this table never sets
+      `sort_column_index`, and draws its own icon separately, so Flutter's
+      native arrow is always invisible, but the *space* for it was still
+      being reserved on every sortable header cell). That hidden
+      reservation inflated every sortable header cell wider than its own
+      `Container(width=w)`, while the body's plain `DataCell` (never given
+      `on_sort`) had no such reservation — a mismatch entirely independent
+      of how the icon `Row` inside was laid out, which is why nothing in
+      rounds one through three could have fixed it. (This is adjacent to,
+      but a different finding than, the earlier "phantom icon" guess noted
+      above under Multi-column sort's reference-implementation section —
+      that one was about whether Flutter draws its own arrow, correctly
+      concluded no; this one is about whether Flutter still reserves the
+      *space* for it regardless, which it does.) Fixed by never setting
+      `DataColumn.on_sort` at all (`parse_field()`/`_build_data_columns()`
+      both always pass `on_sort=None` now) and instead wiring
+      `Container.on_click` directly on each sortable header cell's own
+      fixed-width Container — `TableColumns._on_header_click(field_name)`
+      replaces the old `on_sort(self, e)` (same none→ASC→DESC→none
+      cycling logic, just driven by a closure-captured field name instead
+      of `e.column_index`), and every header `Container` is now
+      unconditionally built (previously skipped when `w is None`, e.g. a
+      pre-first-load render) so a sortable column always has something to
+      attach `on_click` to (`ft.Row` has no `on_click` of its own). With
+      Flutter's native reservation gone, label-left/icon-right
+      (`SPACE_BETWEEN`) was restored as the final layout — the label
+      correctly stays on the left and the icon correctly pins to the
+      column's true right edge, since that edge now actually matches the
+      body's. Verified directly: every `DataColumn.on_sort is None`;
+      every sortable header `Container.on_click` is set (non-sortable:
+      `None`); simulated clicks through the new `on_click` closures
+      correctly cycle `sort_order` (single column ASC→DESC→removed,
+      multi-column append-while-another-active) and fire
+      `on_sort_change` each time; the icon-stripping-for-body fix and
+      `on_sort` full removal (no dangling `parse_field()` reference)
+      re-verified. Still not confirmed in a live browser.
 
   **Table export/upload convention** (multi-format download 2026-07-14,
   CSV/XLSX upload added same day for issue #4): every `Table` gets a
@@ -1518,19 +1692,23 @@ itself grew two small hooks so a sub-table *can* reuse it:
       narrow column truncates to one line, it doesn't wrap). Below
       `_MIN_LABEL_VISIBLE_WIDTH` (24px) a header label is dropped
       entirely rather than rendered as one unreadable clipped character.
-    - Every `DataColumn` sets `on_sort=self.on_sort` unconditionally -
-      sorting itself isn't implemented yet (`TableColumns.on_sort()` is a
-      `print()`-only stub, kept intentionally for whenever that lands).
-      An earlier pass here guessed that `on_sort`'s presence makes
-      Flutter reserve extra width for a sort-indicator icon on *every*
-      sortable column regardless of active sort state, and shrank every
-      header label `Container` by an assumed icon footprint to
-      compensate - that guess was wrong (Flutter's `DataColumn` only
-      draws the icon for the column matching `DataTable.sort_column_index`,
-      which this app never sets, so no icon is ever actually drawn) and
-      visibly shrank every header label for nothing; reverted. If a real
-      divider/label misalignment resurfaces, re-diagnose from scratch
-      rather than reapplying that fix.
+    - **Superseded** (kept for history): this paragraph originally said
+      every `DataColumn` sets `on_sort=self.on_sort` unconditionally, and
+      recorded an early, wrong guess that `on_sort`'s presence makes
+      Flutter reserve extra header width for a sort-indicator icon -
+      "wrong" because Flutter's `DataColumn` only *draws* that icon for
+      the column matching `DataTable.sort_column_index` (never set here),
+      so no icon is ever actually drawn. That part remains true. What this
+      pass missed is that Flutter reserves the *space* for that icon
+      whenever `on_sort` is non-null regardless of whether anything paints
+      into it (confirmed via Flutter's own `DataColumn.onSort` docs) - a
+      real, persistent header/body column-width mismatch once sort was
+      rolled out broadly (issue #27), finally root-caused and fixed by
+      removing `on_sort` from every `DataColumn` entirely (`on_sort=None`
+      always) and driving header clicks through `Container.on_click`
+      instead - see `_on_header_click()` under "Multi-column sort" above
+      for the full fix. If a real divider/label misalignment resurfaces
+      again, start from that fix's docstring, not this superseded one.
       `TableColumns._min_width_for()` still floors every column at
       `_RESIZE_HANDLE_HIT_WIDTH` (unrelated to the icon guess) so a
       column can't end up narrower than its own two half-handles (this

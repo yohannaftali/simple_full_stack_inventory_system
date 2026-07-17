@@ -30,7 +30,7 @@ from fastapi import APIRouter, Depends, Form, Query, Request
 
 from core.security import hash_password
 from core.table_export import export_response
-from core.table_query import attach_pagination
+from core.table_query import attach_pagination, parse_sort_fields
 from models.user import UserModel
 from repository.department_repository import DepartmentRepository
 from repository.module_repository import ModuleRepository
@@ -92,8 +92,14 @@ def get_detail(
     user: UserModel = Depends(_require_access),
 ) -> list:
     """Paginated user list for the admin list screen."""
+    sort_fields = parse_sort_fields(request.query_params)
     rows, pagination = _user_repository.list_users(
-        keyword=keyword, query_params=request.query_params, limit=limit, page=page, offset=offset
+        keyword=keyword,
+        query_params=request.query_params,
+        limit=limit,
+        page=page,
+        offset=offset,
+        sort_fields=sort_fields,
     )
     return attach_pagination([_serialize_user(row_user) for row_user in rows], pagination)
 
@@ -105,8 +111,14 @@ def export_detail(
     keyword: str = Query("", alias="table-keyword-filter"),
     user: UserModel = Depends(_require_access),
 ):
+    sort_fields = parse_sort_fields(request.query_params)
     rows, _pagination = _user_repository.list_users(
-        keyword=keyword, query_params=request.query_params, limit=0, page=1, offset=0
+        keyword=keyword,
+        query_params=request.query_params,
+        limit=0,
+        page=1,
+        offset=0,
+        sort_fields=sort_fields,
     )
     return export_response(
         [_serialize_user(row_user) for row_user in rows], _EXPORT_COLUMNS, format, "ap_master_user"

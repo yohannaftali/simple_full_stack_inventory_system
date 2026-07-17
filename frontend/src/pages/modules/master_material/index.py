@@ -19,11 +19,11 @@ class ModulePage:
             },
             {
                 "name": "material_code", "label": "Code",
-                "type": "label"
+                "type": "label", "sort": True
             },
             {
                 "name": "material_name", "label": "Name",
-                "type": "label"
+                "type": "label", "sort": True
             },
             {
                 "name": "category_name", "label": "Category",

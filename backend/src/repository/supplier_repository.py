@@ -2,10 +2,18 @@
 
 from typing import Optional
 
-from core.table_query import Pagination, apply_column_filters, apply_keyword_filter, paginate
+from core.table_query import (
+    Pagination,
+    apply_column_filters,
+    apply_keyword_filter,
+    apply_sort,
+    paginate,
+)
 from models.base import SessionLocal
 from models.supplier import SupplierModel
 
+# Reused as both the per-column filter map (apply_column_filters) and the
+# multi-column sort map (apply_sort) - same field names, same columns.
 _FILTER_COLUMN_MAP = {"code": SupplierModel.code, "name": SupplierModel.name}
 
 
@@ -25,7 +33,13 @@ class SupplierRepository:
             return session.query(SupplierModel).order_by(SupplierModel.code).all()
 
     def list_suppliers(
-        self, keyword: str = "", query_params=None, limit: int = 20, page: int = 1, offset: int = 0
+        self,
+        keyword: str = "",
+        query_params=None,
+        limit: int = 20,
+        page: int = 1,
+        offset: int = 0,
+        sort_fields: list[tuple[str, str]] | None = None,
     ) -> tuple[list[SupplierModel], Pagination]:
         with SessionLocal() as session:
             query = session.query(SupplierModel)
@@ -34,7 +48,10 @@ class SupplierRepository:
             )
             if query_params is not None:
                 query = apply_column_filters(query, query_params, _FILTER_COLUMN_MAP)
-            query = query.order_by(SupplierModel.code)
+            if sort_fields:
+                query = apply_sort(query, sort_fields, _FILTER_COLUMN_MAP)
+            else:
+                query = query.order_by(SupplierModel.code)
             return paginate(query, limit=limit, page=page, offset=offset)
 
     def create_supplier(self, code: str, name: str) -> SupplierModel:

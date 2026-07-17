@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Form, Query, Request
 from sqlalchemy.exc import IntegrityError
 
 from core.table_export import export_response
-from core.table_query import attach_pagination
+from core.table_query import attach_pagination, parse_sort_fields
 from models.department import DepartmentModel
 from models.user import UserModel
 from repository.department_repository import DepartmentRepository
@@ -36,8 +36,14 @@ def get_detail(
     offset: int = Query(0),
     user: UserModel = Depends(_require_access),
 ) -> list:
+    sort_fields = parse_sort_fields(request.query_params)
     rows, pagination = _department_repository.list_departments(
-        keyword=keyword, query_params=request.query_params, limit=limit, page=page, offset=offset
+        keyword=keyword,
+        query_params=request.query_params,
+        limit=limit,
+        page=page,
+        offset=offset,
+        sort_fields=sort_fields,
     )
     return attach_pagination([_serialize(department) for department in rows], pagination)
 
@@ -49,8 +55,14 @@ def export_detail(
     keyword: str = Query("", alias="table-keyword-filter"),
     user: UserModel = Depends(_require_access),
 ):
+    sort_fields = parse_sort_fields(request.query_params)
     rows, _pagination = _department_repository.list_departments(
-        keyword=keyword, query_params=request.query_params, limit=0, page=1, offset=0
+        keyword=keyword,
+        query_params=request.query_params,
+        limit=0,
+        page=1,
+        offset=0,
+        sort_fields=sort_fields,
     )
     return export_response(
         [_serialize(department) for department in rows], _EXPORT_COLUMNS, format, "master_department"

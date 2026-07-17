@@ -2,7 +2,13 @@
 
 from typing import Optional
 
-from core.table_query import Pagination, apply_column_filters, apply_keyword_filter, paginate
+from core.table_query import (
+    Pagination,
+    apply_column_filters,
+    apply_keyword_filter,
+    apply_sort,
+    paginate,
+)
 from models.base import SessionLocal
 from models.module_group import ModuleGroupModel
 
@@ -36,7 +42,13 @@ class ModuleGroupRepository:
             return session.query(ModuleGroupModel).order_by(ModuleGroupModel.sort).all()
 
     def list_groups(
-        self, keyword: str = "", query_params=None, limit: int = 20, page: int = 1, offset: int = 0
+        self,
+        keyword: str = "",
+        query_params=None,
+        limit: int = 20,
+        page: int = 1,
+        offset: int = 0,
+        sort_fields: list[tuple[str, str]] | None = None,
     ) -> tuple[list[ModuleGroupModel], Pagination]:
         """List module groups matching an optional keyword, paginated.
 
@@ -52,7 +64,10 @@ class ModuleGroupRepository:
                 query = apply_column_filters(
                     query, query_params, _FILTER_COLUMN_MAP, _FILTER_NUMERIC_FIELDS
                 )
-            query = query.order_by(ModuleGroupModel.sort)
+            if sort_fields:
+                query = apply_sort(query, sort_fields, _FILTER_COLUMN_MAP)
+            else:
+                query = query.order_by(ModuleGroupModel.sort)
             return paginate(query, limit=limit, page=page, offset=offset)
 
     def create_group(self, name: str, sort: int = 0) -> ModuleGroupModel:

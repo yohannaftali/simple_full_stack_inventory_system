@@ -27,15 +27,15 @@ class ModulePage:
             },
             {
                 "name": "name", "label": "Name",
-                "type": "label"
+                "type": "label", "sort": True
             },
             {
                 "name": "label", "label": "Label",
-                "type": "label"
+                "type": "label", "sort": True
             },
             {
                 "name": "sort", "label": "Sort",
-                "type": "label"
+                "type": "label", "sort": True
             },
             {
                 "name": "icon", "label": "Icon",
@@ -43,7 +43,7 @@ class ModulePage:
             },
             {
                 "name": "description", "label": "Description",
-                "type": "label"
+                "type": "label", "sort": True
             },
             {
                 "name": "module_group_name", "label": "Group",

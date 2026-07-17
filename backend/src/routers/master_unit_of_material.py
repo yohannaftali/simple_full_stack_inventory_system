@@ -13,7 +13,7 @@ integrity. Gated by `require_module_access("master_unit_of_material")`.
 from fastapi import APIRouter, Depends, Form, Query, Request
 
 from core.table_export import export_response
-from core.table_query import attach_pagination
+from core.table_query import attach_pagination, parse_sort_fields
 from models.unit_of_material import UnitOfMaterialModel
 from models.user import UserModel
 from repository.unit_of_material_repository import UnitOfMaterialRepository
@@ -41,8 +41,14 @@ def get_detail(
     offset: int = Query(0),
     user: UserModel = Depends(_require_access),
 ) -> list:
+    sort_fields = parse_sort_fields(request.query_params)
     rows, pagination = _unit_repository.list_units(
-        keyword=keyword, query_params=request.query_params, limit=limit, page=page, offset=offset
+        keyword=keyword,
+        query_params=request.query_params,
+        limit=limit,
+        page=page,
+        offset=offset,
+        sort_fields=sort_fields,
     )
     return attach_pagination([_serialize(unit) for unit in rows], pagination)
 
@@ -54,8 +60,14 @@ def export_detail(
     keyword: str = Query("", alias="table-keyword-filter"),
     user: UserModel = Depends(_require_access),
 ):
+    sort_fields = parse_sort_fields(request.query_params)
     rows, _pagination = _unit_repository.list_units(
-        keyword=keyword, query_params=request.query_params, limit=0, page=1, offset=0
+        keyword=keyword,
+        query_params=request.query_params,
+        limit=0,
+        page=1,
+        offset=0,
+        sort_fields=sort_fields,
     )
     return export_response(
         [_serialize(unit) for unit in rows], _EXPORT_COLUMNS, format, "master_unit_of_material"

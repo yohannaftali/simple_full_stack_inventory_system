@@ -19,15 +19,15 @@ class ModulePage:
             },
             {
                 "name": "code", "label": "Code",
-                "type": "label"
+                "type": "label", "sort": True
             },
             {
                 "name": "name", "label": "Name",
-                "type": "label"
+                "type": "label", "sort": True
             },
             {
                 "name": "description", "label": "Description",
-                "type": "label"
+                "type": "label", "sort": True
             }
         ]
 

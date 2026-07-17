@@ -8,12 +8,23 @@ atomically.
 
 from typing import Optional
 
-from core.table_query import Pagination, apply_column_filters, apply_keyword_filter, paginate
+from core.table_query import (
+    Pagination,
+    apply_column_filters,
+    apply_keyword_filter,
+    apply_sort,
+    paginate,
+)
 from models.base import SessionLocal
 from models.stock_out_header import StockOutHeaderModel
 from models.stock_out_item import StockOutItemModel
 
 _HEADER_FILTER_COLUMN_MAP = {"description": StockOutHeaderModel.description}
+# date isn't a per-column *filter* (no {field}-filter UI for it - the usage
+# report already owns date-range filtering), but it's a real column worth
+# sorting a transaction list by, so it's sort-only, kept out of
+# _HEADER_FILTER_COLUMN_MAP.
+_HEADER_SORT_COLUMN_MAP = {**_HEADER_FILTER_COLUMN_MAP, "date": StockOutHeaderModel.date}
 _ITEM_FILTER_COLUMN_MAP = {
     "remarks": StockOutItemModel.remarks,
     "qty_out": StockOutItemModel.qty_out,
@@ -35,16 +46,25 @@ class StockOutRepository:
             )
 
     def list_headers(
-        self, keyword: str = "", query_params=None, limit: int = 20, page: int = 1, offset: int = 0
+        self,
+        keyword: str = "",
+        query_params=None,
+        limit: int = 20,
+        page: int = 1,
+        offset: int = 0,
+        sort_fields: list[tuple[str, str]] | None = None,
     ) -> tuple[list[StockOutHeaderModel], Pagination]:
         with SessionLocal() as session:
             query = session.query(StockOutHeaderModel)
             query = apply_keyword_filter(query, [StockOutHeaderModel.description], keyword)
             if query_params is not None:
                 query = apply_column_filters(query, query_params, _HEADER_FILTER_COLUMN_MAP)
-            query = query.order_by(
-                StockOutHeaderModel.date.desc(), StockOutHeaderModel.id.desc()
-            )
+            if sort_fields:
+                query = apply_sort(query, sort_fields, _HEADER_SORT_COLUMN_MAP)
+            else:
+                query = query.order_by(
+                    StockOutHeaderModel.date.desc(), StockOutHeaderModel.id.desc()
+                )
             return paginate(query, limit=limit, page=page, offset=offset)
 
     def create_header(
@@ -85,6 +105,7 @@ class StockOutRepository:
         limit: int = 20,
         page: int = 1,
         offset: int = 0,
+        sort_fields: list[tuple[str, str]] | None = None,
     ) -> tuple[list[StockOutItemModel], Pagination]:
         with SessionLocal() as session:
             query = session.query(StockOutItemModel).filter(
@@ -95,5 +116,8 @@ class StockOutRepository:
                 query = apply_column_filters(
                     query, query_params, _ITEM_FILTER_COLUMN_MAP, _ITEM_FILTER_NUMERIC_FIELDS
                 )
-            query = query.order_by(StockOutItemModel.id)
+            if sort_fields:
+                query = apply_sort(query, sort_fields, _ITEM_FILTER_COLUMN_MAP)
+            else:
+                query = query.order_by(StockOutItemModel.id)
             return paginate(query, limit=limit, page=page, offset=offset)
