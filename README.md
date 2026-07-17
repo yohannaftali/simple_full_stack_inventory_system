@@ -28,6 +28,7 @@ department usage/cost reporting.
 13. [Checking usage](#13-checking-usage)
 14. [Filtering and searching table data](#14-filtering-and-searching-table-data)
 15. [Download and Upload Features](#15-download-and-upload-features)
+16. [Paging through table data (lazy-load vs. pagination)](#16-paging-through-table-data-lazy-load-vs-pagination)
 
 ## 1. Deploying the application
 
@@ -499,3 +500,33 @@ Beyond bulk-creating headers (above), the item-entry screens under a Stock In or
 - **Stock Out** (`Stock Out` → open a header → **Issue Stock** → ☰, next to the Material dropdown — the bulk upload here is independent of that dropdown, so you don't need to select a material first): columns **Material | Location | Qty Issue | Remarks**.
 
 Material and Location accept either the full `"CODE - Name"` text or just the bare code — e.g. both `SKU-1 - Widget` and `SKU-1` are accepted for Material, and both `A1 - A1` and `A1` for Location. Like every other bulk upload, this is **all or nothing**: for Stock Out specifically, if any row would exceed what's currently on hand at that material/location, the whole batch is rejected before anything is deducted.
+
+## 16. Paging through table data (lazy-load vs. pagination)
+
+Every list screen shows a small footer strip below the table with a
+**"Record X - Y of Z"** count on the left, and a **mode toggle** button on
+the right. There are two ways to page through a long list:
+
+### 16.1 Lazy load (the default)
+
+By default, a table simply loads more rows automatically as you scroll
+down — no page numbers, no clicking. This is how every list screen has
+always worked, and nothing changes here unless you switch modes yourself.
+
+### 16.2 Pagination
+
+Click the toggle button in the footer's bottom-right corner to switch to
+classic numbered pagination instead. Once switched, the footer shows:
+
+- An editable **rows-per-page** box — type a new number and press Enter
+  (or click away) to apply it; this also jumps you back to page 1.
+- **First / Previous / [page numbers] / Next / Last** buttons — the
+  current page is highlighted. On a long list, only a handful of page
+  numbers are shown around the current page (with `...` gaps), not every
+  page number at once.
+
+Click the toggle again to switch back to lazy-load scrolling at any time.
+
+**The mode you pick isn't saved** — it only applies to the screen you're
+currently on. Navigating away and back (or reloading the page) always
+starts fresh in lazy-load mode.
