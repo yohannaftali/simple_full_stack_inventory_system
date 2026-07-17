@@ -796,3 +796,12 @@
 - Scope: frontend
 - Files: `frontend/src/components/form/select.py`, `frontend/src/components/table/rows.py`, `AGENTS.md`
 - Deleted: `frontend/src/utils/dropdown_filter.py`
+
+## [2026-07-17] — committed and pushed #26 fix
+- Committed as `27f005a` (`fix(frontend): use Flutter's native filter for select search, drop hard cap (#26)`), pushed to `origin/main`
+- Also fixed a CRLF→LF line-ending regression in `select.py` introduced by the last rewrite (repo convention is CRLF, confirmed against `git show HEAD`) before staging, so the diff only shows the real changes instead of the whole file
+- `Closes #26` in the commit message auto-closes the issue on GitHub
+
+## [2026-07-17] — #26 status changed: open → closed
+- Title: feat(frontend): limit select dropdown to first 5 results with "show more" indicator, position results below input
+- Platform: GitHub (auto-closed by the "Closes #26" line in the pushed commit)
