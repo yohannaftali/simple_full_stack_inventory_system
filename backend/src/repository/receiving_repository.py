@@ -33,6 +33,7 @@ _HEADER_FILTER_COLUMN_MAP = {
 _HEADER_SORT_COLUMN_MAP = {**_HEADER_FILTER_COLUMN_MAP, "date": ReceivingHeaderModel.date}
 _ITEM_FILTER_COLUMN_MAP = {
     "remarks": ReceivingItemModel.remarks,
+    "qty_plan": ReceivingItemModel.qty_plan,
     "qty_received": ReceivingItemModel.qty_received,
     "price_buy": ReceivingItemModel.price_buy,
     # Join-derived display columns (material/location/unit are looked up
@@ -43,7 +44,7 @@ _ITEM_FILTER_COLUMN_MAP = {
     "location_code": LocationModel.code,
     "unit_name": UnitOfMaterialModel.name,
 }
-_ITEM_FILTER_NUMERIC_FIELDS = {"qty_received", "price_buy"}
+_ITEM_FILTER_NUMERIC_FIELDS = {"qty_plan", "qty_received", "price_buy"}
 
 
 class ReceivingRepository:

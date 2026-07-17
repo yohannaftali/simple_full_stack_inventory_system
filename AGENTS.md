@@ -51,7 +51,7 @@
 | #28 | feat(stock_browse): drill into stock-by-material with per-location breakdown + totals footer (duplicate of #29) | closed | 2026-07-17 |
 | #30 | feat(frontend,backend): shared table footer (row-count + pagination/lazy-load toggle), port L_database metadata parity | closed | 2026-07-17 |
 | #31 | feat(inventory): stock movement module - transfer stock between locations | ready-for-review | 2026-07-17 |
-| #33 | feat(inventory): add qty_plan to receiving_items and stock_out_items | open | 2026-07-17 |
+| #33 | feat(inventory): add qty_plan to receiving_items and stock_out_items | ready-for-review | 2026-07-17 |
 | #34 | chore(backend): standardize created_at/created_by/updated_at/updated_by across every table | open | 2026-07-17 |
 | #32 | fix(inventory): verify stock_in/stock_out header lists default to descending date sort | closed (no-op - already correct) | 2026-07-17 |
 
@@ -1453,8 +1453,13 @@ Transactional tables, all in `backend/src/models/`:
   nullable since a header can predate the supplier link, or the shipment's
   supplier may simply be unknown; unlike `stock_out_headers.department_id`,
   this is never required on submit); each item is one `material_id` +
-  `location_id` + `price_buy` + `qty_received` + `remarks`. **`location_id`
-  lives on the item**, not the header — inferred, not explicitly specified,
+  `location_id` + `price_buy` + `qty_plan` + `qty_received` + `remarks`.
+  **`qty_plan`** (issue #33) is reserved for a future plan/confirm split,
+  same precedent as `stock_movement_items.plan_qty` (#31) — always equal to
+  `qty_received` on create, untouched by `update_receiving_item` (editing
+  the actual received qty doesn't retroactively rewrite what was
+  originally planned), no separate UI input for it yet.
+  **`location_id` lives on the item**, not the header — inferred, not explicitly specified,
   since the `stocks` table needs a location per lot and nothing else
   supplies one. `receiving_repository.py::list_headers` outer-joins
   `SupplierModel` so its `apply_keyword_filter` also matches the linked
@@ -1477,8 +1482,10 @@ Transactional tables, all in `backend/src/models/`:
   new create/update, so every transaction going forward is attributed to
   exactly one department, which is what makes a "consumption by department"
   usage report possible); each item is `material_id` + `location_id` +
-  `qty_out` + the **captured** `price` (that material's MAP at the moment of
-  issue) + `total_value` (`qty_out * price`) + `remarks`.
+  `qty_plan` + `qty_out` + the **captured** `price` (that material's MAP at
+  the moment of issue) + `total_value` (`qty_out * price`) + `remarks`.
+  **`qty_plan`** (issue #33) is the same reserved-for-later-use column as
+  `receiving_items.qty_plan` above — always equal to `qty_out` on create.
   `stock_out_repository.py::list_headers` outer-joins `DepartmentModel`
   (2026-07-17) so `department_name` is filterable/sortable like
   `receiving_repository.py::list_headers`'s own `SupplierModel` join —

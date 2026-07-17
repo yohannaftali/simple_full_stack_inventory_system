@@ -1013,3 +1013,11 @@
 - Noted stock_movement_headers/items' own updated_at column (issue #31) currently gets a timestamp at INSERT too (NOT NULL, server_default+onupdate both set) and will need the same "nullable, onupdate-only" fix as every other table once #34 is implemented - flagged explicitly in the issue so it isn't missed as "already done"
 - Both scoped: backend (#34 also frontend, though no frontend changes are expected)
 - Labels: #33 enhancement/backend/frontend, #34 chore/backend
+
+## [2026-07-17] — feat(inventory): implement #33 - qty_plan on receiving_items/stock_out_items
+- Backend: added qty_plan (Numeric(18,4), NOT NULL) to ReceivingItemModel and StockOutItemModel, same reserved-for-a-future-plan/confirm-split precedent as stock_movement_items.plan_qty (issue #31). Migration 0029 adds both columns and backfills existing rows (qty_plan = qty_received / qty_out)
+- inventory_service.create_receiving_item/create_receiving_items_bulk set qty_plan=qty_received; create_stock_out_item sets qty_plan=qty_out. update_receiving_item deliberately does NOT touch qty_plan on edit (the originally-planned qty shouldn't be silently overwritten by editing the actually-received qty) - verified directly
+- receiving_repository.py/stock_out_repository.py item column_maps gained qty_plan (numeric, sortable/filterable); routers/stock_in.py + stock_out.py serialize qty_plan in get_items and include it in their export columns
+- Frontend: stock_in/item_table.py and stock_out/item_table.py each gained a sortable "Qty Plan" label column, positioned right before the actual qty column, matching stock_movement/item_table.py's existing column order
+- Verified: SQLite service-level tests (create sets qty_plan correctly for both single and bulk receiving, update leaves qty_plan untouched, stock-out create sets qty_plan=qty_out); full backend+frontend py_compile sweep clean
+- Files: backend/src/models/{receiving_item,stock_out_item}.py, backend/alembic/versions/0029_add_qty_plan_to_receiving_and_stock_out_items.py, backend/src/services/inventory_service.py, backend/src/repository/{receiving_repository,stock_out_repository}.py, backend/src/routers/{stock_in,stock_out}.py, frontend/src/pages/modules/{stock_in,stock_out}/item_table.py

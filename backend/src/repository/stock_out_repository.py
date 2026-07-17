@@ -34,6 +34,7 @@ _HEADER_FILTER_COLUMN_MAP = {
 _HEADER_SORT_COLUMN_MAP = {**_HEADER_FILTER_COLUMN_MAP, "date": StockOutHeaderModel.date}
 _ITEM_FILTER_COLUMN_MAP = {
     "remarks": StockOutItemModel.remarks,
+    "qty_plan": StockOutItemModel.qty_plan,
     "qty_out": StockOutItemModel.qty_out,
     "price": StockOutItemModel.price,
     "total_value": StockOutItemModel.total_value,
@@ -45,7 +46,7 @@ _ITEM_FILTER_COLUMN_MAP = {
     "location_code": LocationModel.code,
     "unit_name": UnitOfMaterialModel.name,
 }
-_ITEM_FILTER_NUMERIC_FIELDS = {"qty_out", "price", "total_value"}
+_ITEM_FILTER_NUMERIC_FIELDS = {"qty_plan", "qty_out", "price", "total_value"}
 
 
 class StockOutRepository:

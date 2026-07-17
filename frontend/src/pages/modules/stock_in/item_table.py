@@ -44,6 +44,10 @@ class ItemTable:
                 "type": "label", "sort": True
             },
             {
+                "name": "qty_plan", "label": "Qty Plan",
+                "type": "label", "format": "number", "sort": True
+            },
+            {
                 "name": "qty_received", "label": "Qty",
                 "type": "label", "format": "number", "sort": True
             },

@@ -1,5 +1,11 @@
 """Receiving item ORM model — one received line (material/location/qty/price)
-within a receiving header. Each item owns exactly one `StockModel` lot row."""
+within a receiving header. Each item owns exactly one `StockModel` lot row.
+
+`qty_plan` (issue #33) is reserved for a future two-step plan/confirm
+workflow, same precedent as `stock_movement_items.plan_qty` (issue #31) -
+this rollout has no plan/confirm split yet, so `qty_plan` is always set
+equal to `qty_received` on create (see `services.inventory_service`), with
+no separate UI input for it."""
 
 from datetime import datetime
 from decimal import Decimal
@@ -27,6 +33,7 @@ class ReceivingItemModel(Base):
         ForeignKey("locations.id"), nullable=False, index=True
     )
     price_buy: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    qty_plan: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     qty_received: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     remarks: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(

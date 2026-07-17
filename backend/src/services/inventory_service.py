@@ -96,6 +96,7 @@ def create_receiving_item(
             material_id=material_id,
             location_id=location_id,
             price_buy=price_buy,
+            qty_plan=qty_received,
             qty_received=qty_received,
             remarks=remarks,
         )
@@ -184,6 +185,7 @@ def create_receiving_items_bulk(receiving_header_id: int, rows: list[dict]) -> d
                     material_id=material_id,
                     location_id=location_id,
                     price_buy=price_buy,
+                    qty_plan=qty_received,
                     qty_received=qty_received,
                     remarks=str(row.get("remarks", "")).strip(),
                 )
@@ -221,6 +223,12 @@ def update_receiving_item(
 
     Recomputes the material's stock lot and MAP by reversing the item's old
     contribution and applying the new one.
+
+    Deliberately does NOT touch `qty_plan` (issue #33) - it's the originally
+    planned quantity, which editing the actually-received quantity shouldn't
+    silently overwrite. Once a real plan/confirm workflow exists, `qty_plan`
+    will have its own explicit edit path; for now it stays fixed at whatever
+    `create_receiving_item`/`create_receiving_items_bulk` set it to.
     """
     with SessionLocal() as session:
         item = (
@@ -292,6 +300,7 @@ def create_stock_out_item(
             stock_out_header_id=stock_out_header_id,
             material_id=material_id,
             location_id=location_id,
+            qty_plan=qty_out,
             qty_out=qty_out,
             price=price,
             total_value=qty_out * price,

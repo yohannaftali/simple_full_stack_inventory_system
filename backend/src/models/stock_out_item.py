@@ -1,6 +1,12 @@
 """Stock out item ORM model — one issued line (material/location/qty) within a
 stock out header. Captures the material's moving average price at the moment
-of issue, since MAP is not retroactively editable."""
+of issue, since MAP is not retroactively editable.
+
+`qty_plan` (issue #33) is reserved for a future two-step plan/confirm
+workflow, same precedent as `stock_movement_items.plan_qty` (issue #31) -
+this rollout has no plan/confirm split yet, so `qty_plan` is always set
+equal to `qty_out` on create (see `services.inventory_service`), with no
+separate UI input for it."""
 
 from datetime import datetime
 from decimal import Decimal
@@ -27,6 +33,7 @@ class StockOutItemModel(Base):
     location_id: Mapped[int] = mapped_column(
         ForeignKey("locations.id"), nullable=False, index=True
     )
+    qty_plan: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     qty_out: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     price: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     total_value: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
