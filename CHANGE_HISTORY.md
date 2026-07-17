@@ -979,3 +979,9 @@
 - Committed as `6a18ac6` and pushed
 - Closed issue #30 on GitHub (`state_reason: completed`) at the user's explicit request, referencing the two implementation commits (`8c3f23f`, `bccdc42`) plus this doc commit
 - Scope: docs
+
+## [2026-07-17] — feat(inventory): stock movement module + descending-sort verification issues filed
+- Issue #31 created on GitHub: new stock_movement module - transfer stock between locations (origin -> destination) without affecting a material's total on-hand qty or moving-average price, modeled directly on the existing stock_out header/item master-detail pattern (bulk header create, item sub-table, item_new material-then-per-location-table flow, multi-row bulk item upload). New schema fields (created_by/updated_by on the header) are a first for this codebase - no existing header table has them
+- Issue #32 created on GitHub: stock_in/stock_out header lists should default to newest-first (descending date). Investigated before filing - both list_headers() repository methods already order_by(date.desc(), id.desc()) when no sort-fields are requested, so this may already be satisfied; filed as a verify-first issue (confirm in a live browser, only change code if something is actually overriding that default) rather than assuming a fix is needed
+- Both scoped: frontend, backend
+- Labels: #31 enhancement/backend/frontend, #32 bug/backend
