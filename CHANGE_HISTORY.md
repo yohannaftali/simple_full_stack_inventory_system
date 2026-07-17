@@ -985,3 +985,9 @@
 - Issue #32 created on GitHub: stock_in/stock_out header lists should default to newest-first (descending date). Investigated before filing - both list_headers() repository methods already order_by(date.desc(), id.desc()) when no sort-fields are requested, so this may already be satisfied; filed as a verify-first issue (confirm in a live browser, only change code if something is actually overriding that default) rather than assuming a fix is needed
 - Both scoped: frontend, backend
 - Labels: #31 enhancement/backend/frontend, #32 bug/backend
+
+## [2026-07-17] — verified #32: stock_in/stock_out header lists already default to descending date sort
+- No code change needed - verified both at the repository level (SQLite in-memory: headers inserted out of chronological order, list_headers() with no sort_fields correctly returned newest-first for both receiving_repository.py and stock_out_repository.py) and live against the actual running backend + dev database (logged in via C_login, called GET C_stock_in/get_detail and GET C_stock_out/get_detail with no sort-fields params - both returned newest date first)
+- Root cause of why this was already correct: both list_headers() methods order_by(date.desc(), id.desc()) whenever no explicit sort-fields query params are present, and the frontends TableColumns.sort_order starts empty on every fresh page load, so no sort params are ever sent until a user actively clicks a column - meaning the backends existing else branch was already the active code path all along
+- Closed issue #32 on GitHub as a no-op (state_reason: completed) - the acceptance criteria are satisfied by existing behavior, nothing to fix
+- Scope: none (verification only, no files changed)
