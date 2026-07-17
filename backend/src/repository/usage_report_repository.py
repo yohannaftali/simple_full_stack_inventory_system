@@ -12,7 +12,13 @@ from typing import Optional
 
 from sqlalchemy import func
 
-from core.table_query import Pagination, apply_field_filters, apply_keyword_filter, paginate
+from core.table_query import (
+    Pagination,
+    apply_field_filters,
+    apply_keyword_filter,
+    apply_sort,
+    paginate,
+)
 from models.base import SessionLocal
 from models.department import DepartmentModel
 from models.material import MaterialModel
@@ -32,12 +38,15 @@ class UsageReportRepository:
         limit: int = 20,
         page: int = 1,
         offset: int = 0,
+        sort_fields: list[tuple[str, str]] | None = None,
     ) -> tuple[list[dict], Pagination]:
         """Total qty issued + total cost per (department, material), summed
         across every stock-out item ever issued under that department,
         optionally narrowed to an inclusive `stock_out_headers.date` range
         (each bound independently optional - see issue #9)."""
         with SessionLocal() as session:
+            total_qty_out_expr = func.sum(StockOutItemModel.qty_out)
+            total_cost_expr = func.sum(StockOutItemModel.total_value)
             query = (
                 session.query(
                     DepartmentModel.id.label("department_id"),
@@ -48,8 +57,8 @@ class UsageReportRepository:
                     MaterialModel.material_name,
                     UnitOfMaterialModel.code.label("unit_code"),
                     UnitOfMaterialModel.name.label("unit_name"),
-                    func.sum(StockOutItemModel.qty_out).label("total_qty_out"),
-                    func.sum(StockOutItemModel.total_value).label("total_cost"),
+                    total_qty_out_expr.label("total_qty_out"),
+                    total_cost_expr.label("total_cost"),
                 )
                 .join(
                     StockOutHeaderModel,
@@ -77,7 +86,19 @@ class UsageReportRepository:
                     (StockOutHeaderModel.date, "<=", end_date),
                 ],
             )
-            query = query.order_by(DepartmentModel.code, MaterialModel.material_code)
+            column_map = {
+                "department_code": DepartmentModel.code,
+                "department_name": DepartmentModel.name,
+                "material_code": MaterialModel.material_code,
+                "material_name": MaterialModel.material_name,
+                "unit_name": UnitOfMaterialModel.name,
+                "total_qty_out": total_qty_out_expr,
+                "total_cost": total_cost_expr,
+            }
+            if sort_fields:
+                query = apply_sort(query, sort_fields, column_map)
+            else:
+                query = query.order_by(DepartmentModel.code, MaterialModel.material_code)
             rows, pagination = paginate(query, limit=limit, page=page, offset=offset)
 
             return [

@@ -11,9 +11,19 @@ from core.table_query import (
     paginate,
 )
 from models.base import SessionLocal
+from models.department import DepartmentModel
 from models.user import UserModel
 
-_FILTER_COLUMN_MAP = {"username": UserModel.username, "email": UserModel.email}
+_FILTER_COLUMN_MAP = {
+    "username": UserModel.username,
+    "email": UserModel.email,
+    "is_active": UserModel.is_active,
+    "is_superuser": UserModel.is_superuser,
+    # Join-derived display column (looked up per-row by the router's own
+    # _serialize_user(), not returned by this query) - outer-joined below
+    # purely so it can be filtered/sorted.
+    "department_name": DepartmentModel.name,
+}
 
 
 class UserRepository:
@@ -165,7 +175,9 @@ class UserRepository:
     ) -> tuple[list[UserModel], Pagination]:
         """List users matching an optional keyword, paginated."""
         with SessionLocal() as session:
-            query = session.query(UserModel)
+            query = session.query(UserModel).outerjoin(
+                DepartmentModel, DepartmentModel.id == UserModel.department_id
+            )
             query = apply_keyword_filter(
                 query, [UserModel.username, UserModel.email], keyword
             )

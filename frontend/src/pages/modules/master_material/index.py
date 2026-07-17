@@ -27,15 +27,15 @@ class ModulePage:
             },
             {
                 "name": "category_name", "label": "Category",
-                "type": "label"
+                "type": "label", "sort": True
             },
             {
                 "name": "unit_name", "label": "Unit",
-                "type": "label"
+                "type": "label", "sort": True
             },
             {
                 "name": "is_active", "label": "Active",
-                "type": "label"
+                "type": "label", "sort": True
             }
         ]
 

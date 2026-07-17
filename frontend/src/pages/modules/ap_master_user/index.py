@@ -35,15 +35,15 @@ class ModulePage:
             },
             {
                 "name": "is_active", "label": "Active",
-                "type": "label"
+                "type": "label", "sort": True
             },
             {
                 "name": "is_superuser", "label": "Superuser",
-                "type": "label"
+                "type": "label", "sort": True
             },
             {
                 "name": "department_name", "label": "Department",
-                "type": "label"
+                "type": "label", "sort": True
             }
         ]
 

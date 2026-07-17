@@ -21,7 +21,7 @@ from typing import Optional
 
 from sqlalchemy import func
 
-from core.table_query import Pagination, apply_field_filters, paginate
+from core.table_query import Pagination, apply_field_filters, apply_sort, paginate
 from models.base import SessionLocal
 from models.material import MaterialModel
 from models.receiving_header import ReceivingHeaderModel
@@ -41,17 +41,20 @@ class PurchaseReportRepository:
         limit: int = 20,
         page: int = 1,
         offset: int = 0,
+        sort_fields: list[tuple[str, str]] | None = None,
     ) -> tuple[list[dict], Pagination]:
         with SessionLocal() as session:
+            total_qty_expr = func.sum(ReceivingItemModel.qty_received)
+            total_purchase_expr = func.sum(
+                ReceivingItemModel.qty_received * ReceivingItemModel.price_buy
+            )
             query = (
                 session.query(
                     SupplierModel.id.label("supplier_id"),
                     SupplierModel.code.label("supplier_code"),
                     SupplierModel.name.label("supplier_name"),
-                    func.sum(ReceivingItemModel.qty_received).label("total_qty"),
-                    func.sum(
-                        ReceivingItemModel.qty_received * ReceivingItemModel.price_buy
-                    ).label("total_purchase"),
+                    total_qty_expr.label("total_qty"),
+                    total_purchase_expr.label("total_purchase"),
                 )
                 .join(
                     ReceivingHeaderModel,
@@ -68,7 +71,16 @@ class PurchaseReportRepository:
                     (SupplierModel.id, "==", supplier_id),
                 ],
             )
-            query = query.order_by(SupplierModel.code)
+            column_map = {
+                "supplier_code": SupplierModel.code,
+                "supplier_name": SupplierModel.name,
+                "total_qty": total_qty_expr,
+                "total_purchase": total_purchase_expr,
+            }
+            if sort_fields:
+                query = apply_sort(query, sort_fields, column_map)
+            else:
+                query = query.order_by(SupplierModel.code)
             rows, pagination = paginate(query, limit=limit, page=page, offset=offset)
 
             return [
@@ -90,8 +102,13 @@ class PurchaseReportRepository:
         limit: int = 20,
         page: int = 1,
         offset: int = 0,
+        sort_fields: list[tuple[str, str]] | None = None,
     ) -> tuple[list[dict], Pagination]:
         with SessionLocal() as session:
+            total_qty_expr = func.sum(ReceivingItemModel.qty_received)
+            total_purchase_expr = func.sum(
+                ReceivingItemModel.qty_received * ReceivingItemModel.price_buy
+            )
             query = (
                 session.query(
                     MaterialModel.id.label("material_id"),
@@ -99,10 +116,8 @@ class PurchaseReportRepository:
                     MaterialModel.material_name,
                     UnitOfMaterialModel.code.label("unit_code"),
                     UnitOfMaterialModel.name.label("unit_name"),
-                    func.sum(ReceivingItemModel.qty_received).label("total_qty"),
-                    func.sum(
-                        ReceivingItemModel.qty_received * ReceivingItemModel.price_buy
-                    ).label("total_purchase"),
+                    total_qty_expr.label("total_qty"),
+                    total_purchase_expr.label("total_purchase"),
                 )
                 .join(
                     ReceivingHeaderModel,
@@ -120,7 +135,17 @@ class PurchaseReportRepository:
                     (MaterialModel.id, "==", material_id),
                 ],
             )
-            query = query.order_by(MaterialModel.material_code)
+            column_map = {
+                "material_code": MaterialModel.material_code,
+                "material_name": MaterialModel.material_name,
+                "unit_name": UnitOfMaterialModel.name,
+                "total_qty": total_qty_expr,
+                "total_purchase": total_purchase_expr,
+            }
+            if sort_fields:
+                query = apply_sort(query, sort_fields, column_map)
+            else:
+                query = query.order_by(MaterialModel.material_code)
             rows, pagination = paginate(query, limit=limit, page=page, offset=offset)
 
             return [

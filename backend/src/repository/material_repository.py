@@ -10,11 +10,19 @@ from core.table_query import (
     paginate,
 )
 from models.base import SessionLocal
+from models.category import CategoryModel
 from models.material import MaterialModel
+from models.unit_of_material import UnitOfMaterialModel
 
 _FILTER_COLUMN_MAP = {
     "material_code": MaterialModel.material_code,
     "material_name": MaterialModel.material_name,
+    "is_active": MaterialModel.is_active,
+    # Join-derived display columns (category/unit are looked up per-row by
+    # the router's own _serialize(), not returned by this query) -
+    # outer/inner-joined below purely so these can be filtered/sorted.
+    "category_name": CategoryModel.name,
+    "unit_name": UnitOfMaterialModel.name,
 }
 
 
@@ -49,7 +57,11 @@ class MaterialRepository:
         sort_fields: list[tuple[str, str]] | None = None,
     ) -> tuple[list[MaterialModel], Pagination]:
         with SessionLocal() as session:
-            query = session.query(MaterialModel)
+            query = (
+                session.query(MaterialModel)
+                .outerjoin(CategoryModel, CategoryModel.id == MaterialModel.category_id)
+                .join(UnitOfMaterialModel, UnitOfMaterialModel.id == MaterialModel.unit_id)
+            )
             query = apply_keyword_filter(
                 query, [MaterialModel.material_code, MaterialModel.material_name], keyword
             )

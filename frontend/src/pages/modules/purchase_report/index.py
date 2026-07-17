@@ -37,23 +37,29 @@ class ModulePage:
 
         by_supplier_fields = [
             {"name": "supplier_id", "type": "hidden", "serialize": False},
-            {"name": "supplier_code", "label": "Code", "type": "label"},
-            {"name": "supplier_name", "label": "Supplier", "type": "label"},
-            {"name": "total_qty", "label": "Total Qty", "type": "label", "format": "number"},
+            {"name": "supplier_code", "label": "Code", "type": "label", "sort": True},
+            {"name": "supplier_name", "label": "Supplier", "type": "label", "sort": True},
+            {
+                "name": "total_qty", "label": "Total Qty",
+                "type": "label", "format": "number", "sort": True
+            },
             {
                 "name": "total_purchase", "label": "Total Purchase",
-                "type": "label", "format": "number"
+                "type": "label", "format": "number", "sort": True
             },
         ]
         by_material_fields = [
             {"name": "material_id", "type": "hidden", "serialize": False},
-            {"name": "material_code", "label": "Code", "type": "label"},
-            {"name": "material_name", "label": "Material", "type": "label"},
-            {"name": "total_qty", "label": "Total Qty", "type": "label", "format": "number"},
-            {"name": "unit_name", "label": "Unit", "type": "label"},
+            {"name": "material_code", "label": "Code", "type": "label", "sort": True},
+            {"name": "material_name", "label": "Material", "type": "label", "sort": True},
+            {
+                "name": "total_qty", "label": "Total Qty",
+                "type": "label", "format": "number", "sort": True
+            },
+            {"name": "unit_name", "label": "Unit", "type": "label", "sort": True},
             {
                 "name": "total_purchase", "label": "Total Purchase",
-                "type": "label", "format": "number"
+                "type": "label", "format": "number", "sort": True
             },
         ]
 

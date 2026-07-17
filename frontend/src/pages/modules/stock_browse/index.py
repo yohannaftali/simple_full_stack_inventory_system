@@ -19,35 +19,35 @@ class ModulePage:
             },
             {
                 "name": "material_code", "label": "Material Code",
-                "type": "label"
+                "type": "label", "sort": True
             },
             {
                 "name": "material_name", "label": "Material",
-                "type": "label"
+                "type": "label", "sort": True
             },
             {
                 "name": "location_code", "label": "Location Code",
-                "type": "label"
+                "type": "label", "sort": True
             },
             {
                 "name": "location_name", "label": "Location",
-                "type": "label"
+                "type": "label", "sort": True
             },
             {
                 "name": "qty", "label": "Qty",
-                "type": "label", "format": "number"
+                "type": "label", "format": "number", "sort": True
             },
             {
                 "name": "unit_name", "label": "Unit",
-                "type": "label"
+                "type": "label", "sort": True
             },
             {
                 "name": "average_price", "label": "Avg Price",
-                "type": "label", "format": "number"
+                "type": "label", "format": "number", "sort": True
             },
             {
                 "name": "value", "label": "Value",
-                "type": "label", "format": "number"
+                "type": "label", "format": "number", "sort": True
             }
         ]
 

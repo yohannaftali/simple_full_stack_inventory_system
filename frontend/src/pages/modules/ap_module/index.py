@@ -39,7 +39,7 @@ class ModulePage:
             },
             {
                 "name": "icon", "label": "Icon",
-                "type": "label"
+                "type": "label", "sort": True
             },
             {
                 "name": "description", "label": "Description",
@@ -47,7 +47,7 @@ class ModulePage:
             },
             {
                 "name": "module_group_name", "label": "Group",
-                "type": "label"
+                "type": "label", "sort": True
             }
         ]
 

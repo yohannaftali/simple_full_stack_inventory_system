@@ -15,9 +15,12 @@ from core.table_query import (
     paginate,
 )
 from models.base import SessionLocal
+from models.location import LocationModel
+from models.material import MaterialModel
 from models.receiving_header import ReceivingHeaderModel
 from models.receiving_item import ReceivingItemModel
 from models.supplier import SupplierModel
+from models.unit_of_material import UnitOfMaterialModel
 
 _HEADER_FILTER_COLUMN_MAP = {
     "description": ReceivingHeaderModel.description,
@@ -32,6 +35,13 @@ _ITEM_FILTER_COLUMN_MAP = {
     "remarks": ReceivingItemModel.remarks,
     "qty_received": ReceivingItemModel.qty_received,
     "price_buy": ReceivingItemModel.price_buy,
+    # Join-derived display columns (material/location/unit are looked up
+    # per-row by the router's own _serialize_item(), not returned by this
+    # query) - outer-joined below purely so these can be filtered/sorted.
+    "material_code": MaterialModel.material_code,
+    "material_name": MaterialModel.material_name,
+    "location_code": LocationModel.code,
+    "unit_name": UnitOfMaterialModel.name,
 }
 _ITEM_FILTER_NUMERIC_FIELDS = {"qty_received", "price_buy"}
 
@@ -124,8 +134,12 @@ class ReceivingRepository:
         sort_fields: list[tuple[str, str]] | None = None,
     ) -> tuple[list[ReceivingItemModel], Pagination]:
         with SessionLocal() as session:
-            query = session.query(ReceivingItemModel).filter(
-                ReceivingItemModel.receiving_header_id == header_id
+            query = (
+                session.query(ReceivingItemModel)
+                .outerjoin(MaterialModel, MaterialModel.id == ReceivingItemModel.material_id)
+                .outerjoin(LocationModel, LocationModel.id == ReceivingItemModel.location_id)
+                .outerjoin(UnitOfMaterialModel, UnitOfMaterialModel.id == MaterialModel.unit_id)
+                .filter(ReceivingItemModel.receiving_header_id == header_id)
             )
             query = apply_keyword_filter(query, [ReceivingItemModel.remarks], keyword)
             if query_params is not None:

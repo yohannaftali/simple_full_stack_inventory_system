@@ -23,10 +23,10 @@ Gated by `require_module_access("purchase_report")`.
 
 from datetime import date as date_type
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 
 from core.table_export import export_response
-from core.table_query import attach_pagination
+from core.table_query import attach_pagination, parse_sort_fields
 from models.user import UserModel
 from repository.material_repository import MaterialRepository
 from repository.purchase_report_repository import PurchaseReportRepository
@@ -69,6 +69,7 @@ def _parse_date(value: str):
 
 @router.get("/get_by_supplier")
 def get_by_supplier(
+    request: Request,
     start_date: str = Query("", alias="start_date-filter"),
     end_date: str = Query("", alias="end_date-filter"),
     supplier_id: str = Query("", alias="supplier_id-filter"),
@@ -77,6 +78,7 @@ def get_by_supplier(
     offset: int = Query(0),
     user: UserModel = Depends(_require_access),
 ) -> list:
+    sort_fields = parse_sort_fields(request.query_params)
     rows, pagination = _purchase_report_repository.list_by_supplier(
         start_date=_parse_date(start_date),
         end_date=_parse_date(end_date),
@@ -84,18 +86,21 @@ def get_by_supplier(
         limit=limit,
         page=page,
         offset=offset,
+        sort_fields=sort_fields,
     )
     return attach_pagination(rows, pagination)
 
 
 @router.get("/export_by_supplier")
 def export_by_supplier(
+    request: Request,
     format: str = Query(...),  # noqa: A002
     start_date: str = Query("", alias="start_date-filter"),
     end_date: str = Query("", alias="end_date-filter"),
     supplier_id: str = Query("", alias="supplier_id-filter"),
     user: UserModel = Depends(_require_access),
 ):
+    sort_fields = parse_sort_fields(request.query_params)
     rows, _pagination = _purchase_report_repository.list_by_supplier(
         start_date=_parse_date(start_date),
         end_date=_parse_date(end_date),
@@ -103,6 +108,7 @@ def export_by_supplier(
         limit=0,
         page=1,
         offset=0,
+        sort_fields=sort_fields,
     )
     return export_response(
         rows, _EXPORT_BY_SUPPLIER_COLUMNS, format, "purchase_report_by_supplier"
@@ -111,6 +117,7 @@ def export_by_supplier(
 
 @router.get("/get_by_material")
 def get_by_material(
+    request: Request,
     start_date: str = Query("", alias="start_date-filter"),
     end_date: str = Query("", alias="end_date-filter"),
     material_id: str = Query("", alias="material_id-filter"),
@@ -119,6 +126,7 @@ def get_by_material(
     offset: int = Query(0),
     user: UserModel = Depends(_require_access),
 ) -> list:
+    sort_fields = parse_sort_fields(request.query_params)
     rows, pagination = _purchase_report_repository.list_by_material(
         start_date=_parse_date(start_date),
         end_date=_parse_date(end_date),
@@ -126,18 +134,21 @@ def get_by_material(
         limit=limit,
         page=page,
         offset=offset,
+        sort_fields=sort_fields,
     )
     return attach_pagination(rows, pagination)
 
 
 @router.get("/export_by_material")
 def export_by_material(
+    request: Request,
     format: str = Query(...),  # noqa: A002
     start_date: str = Query("", alias="start_date-filter"),
     end_date: str = Query("", alias="end_date-filter"),
     material_id: str = Query("", alias="material_id-filter"),
     user: UserModel = Depends(_require_access),
 ):
+    sort_fields = parse_sort_fields(request.query_params)
     rows, _pagination = _purchase_report_repository.list_by_material(
         start_date=_parse_date(start_date),
         end_date=_parse_date(end_date),
@@ -145,6 +156,7 @@ def export_by_material(
         limit=0,
         page=1,
         offset=0,
+        sort_fields=sort_fields,
     )
     return export_response(
         rows, _EXPORT_BY_MATERIAL_COLUMNS, format, "purchase_report_by_material"

@@ -9,10 +9,10 @@
 Gated by `require_module_access("stock_browse")`.
 """
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 
 from core.table_export import export_response
-from core.table_query import attach_pagination
+from core.table_query import attach_pagination, parse_sort_fields
 from models.user import UserModel
 from repository.stock_repository import StockRepository
 from services.auth_service import require_module_access
@@ -36,23 +36,29 @@ _EXPORT_COLUMNS = [
 
 @router.get("/get_detail")
 def get_detail(
+    request: Request,
     keyword: str = Query("", alias="table-keyword-filter"),
     limit: int = Query(20),
     page: int = Query(1),
     offset: int = Query(0),
     user: UserModel = Depends(_require_access),
 ) -> list:
+    sort_fields = parse_sort_fields(request.query_params)
     rows, pagination = _stock_repository.list_stock_summary(
-        keyword=keyword, limit=limit, page=page, offset=offset
+        keyword=keyword, limit=limit, page=page, offset=offset, sort_fields=sort_fields
     )
     return attach_pagination([dict(row) for row in rows], pagination)
 
 
 @router.get("/export_detail")
 def export_detail(
+    request: Request,
     format: str = Query(...),  # noqa: A002
     keyword: str = Query("", alias="table-keyword-filter"),
     user: UserModel = Depends(_require_access),
 ):
-    rows, _pagination = _stock_repository.list_stock_summary(keyword=keyword, limit=0, page=1, offset=0)
+    sort_fields = parse_sort_fields(request.query_params)
+    rows, _pagination = _stock_repository.list_stock_summary(
+        keyword=keyword, limit=0, page=1, offset=0, sort_fields=sort_fields
+    )
     return export_response([dict(row) for row in rows], _EXPORT_COLUMNS, format, "stock_browse")

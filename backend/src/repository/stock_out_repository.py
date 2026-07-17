@@ -17,8 +17,11 @@ from core.table_query import (
 )
 from models.base import SessionLocal
 from models.department import DepartmentModel
+from models.location import LocationModel
+from models.material import MaterialModel
 from models.stock_out_header import StockOutHeaderModel
 from models.stock_out_item import StockOutItemModel
+from models.unit_of_material import UnitOfMaterialModel
 
 _HEADER_FILTER_COLUMN_MAP = {
     "description": StockOutHeaderModel.description,
@@ -34,6 +37,13 @@ _ITEM_FILTER_COLUMN_MAP = {
     "qty_out": StockOutItemModel.qty_out,
     "price": StockOutItemModel.price,
     "total_value": StockOutItemModel.total_value,
+    # Join-derived display columns (material/location/unit are looked up
+    # per-row by the router's own _serialize_item(), not returned by this
+    # query) - outer-joined below purely so these can be filtered/sorted.
+    "material_code": MaterialModel.material_code,
+    "material_name": MaterialModel.material_name,
+    "location_code": LocationModel.code,
+    "unit_name": UnitOfMaterialModel.name,
 }
 _ITEM_FILTER_NUMERIC_FIELDS = {"qty_out", "price", "total_value"}
 
@@ -114,8 +124,12 @@ class StockOutRepository:
         sort_fields: list[tuple[str, str]] | None = None,
     ) -> tuple[list[StockOutItemModel], Pagination]:
         with SessionLocal() as session:
-            query = session.query(StockOutItemModel).filter(
-                StockOutItemModel.stock_out_header_id == header_id
+            query = (
+                session.query(StockOutItemModel)
+                .outerjoin(MaterialModel, MaterialModel.id == StockOutItemModel.material_id)
+                .outerjoin(LocationModel, LocationModel.id == StockOutItemModel.location_id)
+                .outerjoin(UnitOfMaterialModel, UnitOfMaterialModel.id == MaterialModel.unit_id)
+                .filter(StockOutItemModel.stock_out_header_id == header_id)
             )
             query = apply_keyword_filter(query, [StockOutItemModel.remarks], keyword)
             if query_params is not None:

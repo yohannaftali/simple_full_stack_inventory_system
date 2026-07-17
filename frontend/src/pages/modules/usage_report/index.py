@@ -29,31 +29,31 @@ class ModulePage:
             },
             {
                 "name": "department_code", "label": "Dept Code",
-                "type": "label"
+                "type": "label", "sort": True
             },
             {
                 "name": "department_name", "label": "Department",
-                "type": "label"
+                "type": "label", "sort": True
             },
             {
                 "name": "material_code", "label": "Material Code",
-                "type": "label"
+                "type": "label", "sort": True
             },
             {
                 "name": "material_name", "label": "Material",
-                "type": "label"
+                "type": "label", "sort": True
             },
             {
                 "name": "total_qty_out", "label": "Total Qty",
-                "type": "label", "format": "number"
+                "type": "label", "format": "number", "sort": True
             },
             {
                 "name": "unit_name", "label": "Unit",
-                "type": "label"
+                "type": "label", "sort": True
             },
             {
                 "name": "total_cost", "label": "Total Cost",
-                "type": "label", "format": "number"
+                "type": "label", "format": "number", "sort": True
             }
         ]
 

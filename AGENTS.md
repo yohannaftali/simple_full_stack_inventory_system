@@ -317,20 +317,17 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
     `.having()` instead of `.filter()`, which this helper doesn't support;
     #8/#9's own hand-rolled `apply_field_filters` usage on those aggregate
     reports is unaffected, still using its own narrower, named-filter
-    mechanism. **Known gap** (`stock_out`'s header `department_name` closed
-    2026-07-17 — see below; the rest remain open): a few fields are
-    join-derived/denormalized display values with no real column in their
-    own repository's query (item tables'
-    `material_code`/`location_code`, `master_material`'s
-    `supplier_name`/`category_name`) — the frontend still shows a filter
-    box for these by default (no way to know from the frontend field
-    config alone that a name has no backend mapping), but since that
-    field name isn't in the repository's `column_map`, `apply_column_filters`
-    silently skips it — the box renders but is currently inert, same
-    "unmapped field silently skipped" leniency the mechanism already has
-    elsewhere. Wiring these would mean adding the same
-    `receiving_repository.py::list_headers`-style outer-join to each
-    affected repository; not done yet.
+    mechanism. **Known gap — closed 2026-07-17**: every join-derived/
+    denormalized display field that used to have no real column in its own
+    repository's query (`stock_out`'s header `department_name`; the
+    `stock_in`/`stock_out` item tables' `material_code`/`material_name`/
+    `location_code`/`unit_name`; `master_material`'s `category_name`/
+    `unit_name`; `ap_module`'s `module_group_name`; `ap_master_user`'s
+    `department_name`) is now outer-joined into its owning repository's
+    query and added to that repository's `column_map` — see "Multi-column
+    sort"'s own note below for the full rollout (sort was the actual
+    trigger; filtering came along for free since both mechanisms share the
+    same `column_map`). No fields remain in this gap.
     Frontend half: `components/table/filter.py::TableFilter` — a
     collapsible row of `ft.TextField`s, toggled via a toolbar button
     (`Table._toggle_filter_row`) only added when at least one field opts
@@ -637,6 +634,52 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
       `on_sort_change` each time; the icon-stripping-for-body fix and
       `on_sort` full removal (no dangling `parse_field()` reference)
       re-verified. Still not confirmed in a live browser.
+    - **Fifth round — sort rolled out to every remaining table**
+      (2026-07-17, user-reported per-page: `stock_in`/`stock_out` item
+      tables, `stock_browse`, `usage_report`, `purchase_report` (both
+      tables), `master_material`, `ap_module`, `ap_master_user`): closed
+      every remaining join-derived-field gap (see "Known gap — closed
+      2026-07-17" above) and extended sort to the three aggregate report
+      repositories, which #27's original rollout had left out of scope
+      alongside the per-column *filter* rollout — but sorting an
+      aggregate/grouped query doesn't need `HAVING`-aware routing the way
+      filtering one does (`ORDER BY` on a grouped column or an aggregate
+      expression like `func.sum(...)` is ordinary SQL), so there was no
+      structural reason to leave it out once actually requested.
+      `stock_repository.py::list_stock_summary` needed a real restructure,
+      not just a join: `average_price`/`value` used to be resolved in a
+      *separate*, post-pagination Python lookup (one extra query per page,
+      keyed by `material_id`), so neither was ever a SQL expression
+      `ORDER BY` could reference. Rewrote it to outer-join
+      `InventoryValueModel` directly into the main grouped query
+      (`func.coalesce(InventoryValueModel.average_price, 0)`, with `value`
+      computed in SQL as `qty_expr * average_price_expr`), added to
+      `group_by` alongside `MaterialModel.id`/`LocationModel.id` (safe -
+      one `InventoryValueModel` row per material, so it's functionally
+      dependent on the group) - `average_price`/`value` are now real,
+      sortable expressions with no separate post-query step at all.
+      `usage_report_repository.py`/`purchase_report_repository.py`
+      (`list_by_supplier`/`list_by_material`) needed no restructuring -
+      every field was already a real SQL column or `func.sum(...)`
+      expression in the query, just missing a `column_map`/`apply_sort`
+      call; the aggregate `func.sum(...)` expressions are bound to local
+      variables (`total_qty_expr`, etc.) so the same expression object can
+      be reused for both the `SELECT`/label and the `column_map` entry
+      `apply_sort` orders by. `stock_browse.py`/`usage_report.py`/
+      `purchase_report.py` routers each needed a `request: Request`
+      param added (none had one before, unlike every router #27 already
+      touched) purely to reach `parse_sort_fields(request.query_params)`.
+      Verified against real SQLite sessions: `stock_browse` sorted by
+      `value` DESC correctly ranks a smaller-qty/higher-price row above a
+      larger-qty/lower-price one (100×50=5000 before 10×5=50); `material_repository`/
+      `module_repository`/`user_repository` each correctly order by their
+      newly-joined `category_name`/`module_group_name`/`department_name`;
+      `receiving_repository::list_items_by_header` correctly orders by the
+      newly-joined `material_code`/`location_code`; `purchase_report_repository`
+      correctly orders `by_supplier` by both `supplier_name` and the
+      aggregate `total_qty`. All touched backend files also verified via a
+      full `main.py` app-wiring import (24 routes, same as before). Still
+      not confirmed in a live browser.
 
   **Table export/upload convention** (multi-format download 2026-07-14,
   CSV/XLSX upload added same day for issue #4): every `Table` gets a

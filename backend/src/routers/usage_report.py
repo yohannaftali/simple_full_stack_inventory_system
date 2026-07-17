@@ -18,10 +18,10 @@ Gated by `require_module_access("usage_report")`.
 
 from datetime import date as date_type
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 
 from core.table_export import export_response
-from core.table_query import attach_pagination
+from core.table_query import attach_pagination, parse_sort_fields
 from models.user import UserModel
 from repository.usage_report_repository import UsageReportRepository
 from services.auth_service import require_module_access
@@ -55,6 +55,7 @@ def _parse_date(value: str):
 
 @router.get("/get_detail")
 def get_detail(
+    request: Request,
     keyword: str = Query("", alias="table-keyword-filter"),
     start_date: str = Query("", alias="start_date-filter"),
     end_date: str = Query("", alias="end_date-filter"),
@@ -63,6 +64,7 @@ def get_detail(
     offset: int = Query(0),
     user: UserModel = Depends(_require_access),
 ) -> list:
+    sort_fields = parse_sort_fields(request.query_params)
     rows, pagination = _usage_report_repository.list_usage_by_department(
         keyword=keyword,
         start_date=_parse_date(start_date),
@@ -70,18 +72,21 @@ def get_detail(
         limit=limit,
         page=page,
         offset=offset,
+        sort_fields=sort_fields,
     )
     return attach_pagination([dict(row) for row in rows], pagination)
 
 
 @router.get("/export_detail")
 def export_detail(
+    request: Request,
     format: str = Query(...),  # noqa: A002
     keyword: str = Query("", alias="table-keyword-filter"),
     start_date: str = Query("", alias="start_date-filter"),
     end_date: str = Query("", alias="end_date-filter"),
     user: UserModel = Depends(_require_access),
 ):
+    sort_fields = parse_sort_fields(request.query_params)
     rows, _pagination = _usage_report_repository.list_usage_by_department(
         keyword=keyword,
         start_date=_parse_date(start_date),
@@ -89,5 +94,6 @@ def export_detail(
         limit=0,
         page=1,
         offset=0,
+        sort_fields=sort_fields,
     )
     return export_response([dict(row) for row in rows], _EXPORT_COLUMNS, format, "usage_report")

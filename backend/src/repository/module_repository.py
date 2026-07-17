@@ -11,12 +11,18 @@ from core.table_query import (
 )
 from models.base import SessionLocal
 from models.module import ModuleModel
+from models.module_group import ModuleGroupModel
 
 _FILTER_COLUMN_MAP = {
     "name": ModuleModel.name,
     "label": ModuleModel.label,
     "sort": ModuleModel.sort,
+    "icon": ModuleModel.icon,
     "description": ModuleModel.description,
+    # Join-derived display column (looked up per-row by the router's own
+    # _serialize(), not returned by this query) - outer-joined below purely
+    # so it can be filtered/sorted.
+    "module_group_name": ModuleGroupModel.name,
 }
 _FILTER_NUMERIC_FIELDS = {"sort"}
 
@@ -52,7 +58,9 @@ class ModuleRepository:
     ) -> tuple[list[ModuleModel], Pagination]:
         """List modules matching an optional keyword, paginated."""
         with SessionLocal() as session:
-            query = session.query(ModuleModel)
+            query = session.query(ModuleModel).outerjoin(
+                ModuleGroupModel, ModuleGroupModel.id == ModuleModel.module_group_id
+            )
             query = apply_keyword_filter(
                 query, [ModuleModel.name, ModuleModel.label], keyword
             )
