@@ -849,3 +849,12 @@
 - Verified directly: every `DataColumn.on_sort is None`; every sortable header `Container.on_click` is set (non-sortable columns: `None`); simulated `on_click` calls correctly cycle `sort_order` (single-column ASC→DESC→removed, and a second column clicked while one is active correctly appends rather than replaces) and fire `on_sort_change` each time; confirmed no dangling reference to the removed `on_sort` method anywhere in the class. Also updated the stale, superseded "on_sort's presence... that guess was wrong" paragraph elsewhere in AGENTS.md (from before real sort existed) to point at this fix instead of contradicting it. Did not launch the podman stack/browser to visually confirm in this session
 - Scope: frontend
 - Files: `frontend/src/components/table/columns.py`, `AGENTS.md`
+
+## [2026-07-17] — committed and pushed #27 (full sort rollout + all layout fixes)
+- User confirmed via live browser that the sort icon position/header-body width fix is finally correct - committed the entire #27 body of work (backend sort rollout to every repository, frontend "sort": True rollout, table padding, header-icon-bleed fix, and all four rounds of the icon-position/width-mismatch investigation) as one commit `cd87403` (`feat(frontend,backend): make multi-column sort a default on every table (#27)`), pushed to `origin/main`
+- Verified no line-ending regressions (repo's CRLF convention) and all 35 changed Python files parse cleanly before staging
+- `Closes #27` in the commit message auto-closes the issue on GitHub
+
+## [2026-07-17] — #27 status changed: open → closed
+- Title: feat(frontend,backend): make multi-column sort a default on every table; fix header-icon bleed into first row; add table padding
+- Platform: GitHub (auto-closed by the "Closes #27" line in the pushed commit)

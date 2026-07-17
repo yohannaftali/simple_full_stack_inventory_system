@@ -46,7 +46,7 @@
 | #24 | feat(stock_in): bulk CSV/XLSX upload for receiving items on item_new | closed | 2026-07-16 |
 | #25 | feat(stock_out): multi-material bulk item upload + accept bare code (no " - Name") across all bulk uploads | closed | 2026-07-16 |
 | #26 | feat(frontend): limit select dropdown to first 5 results with "show more" indicator, position results below input | closed | 2026-07-17 |
-| #27 | feat(frontend,backend): make multi-column sort a default on every table; fix header-icon bleed into first row; add table padding | ready-for-review | 2026-07-17 |
+| #27 | feat(frontend,backend): make multi-column sort a default on every table; fix header-icon bleed into first row; add table padding | closed | 2026-07-17 |
 
 ## Big Picture
 
