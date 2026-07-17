@@ -931,3 +931,14 @@
 - Updated AGENTS.md's "Stock-by-material drill-down" entry with the full root-cause chain
 - Scope: frontend
 - Files: `frontend/src/pages/modules/stock_browse/stock_by_material.py`, `frontend/src/utils/module_loader.py`, `AGENTS.md`
+
+## [2026-07-17] — feat(frontend,backend): shared table footer (row-count + pagination/lazy-load toggle), port L_database metadata parity
+- Issue #30 created on GitHub
+- User wants a new `components/table/footer.py::TableFooter` sitting below every table's body (sticky at the bottom), showing a row-count message on the left and a lazy-load/pagination-mode toggle on the right - pagination mode shows an editable rows-per-page input plus numbered page buttons (first/prev/current/next/last, "..." gap markers for large page counts)
+- Read the actual reference source at `C:\Users\IT\Git\senar` to ground the issue precisely rather than working from memory: `L_database.php::return_rows_limited()` (lines 460-531, the `db_num_rows`/.../`db_sort_fields`/`db_sql` metadata shape - this repo's `table_query.py::Pagination.to_meta()` already ports the first five fields but not the last two), `y.panel.js::#createRecordInfoPanel()`/`createPaginationButtonSet()` (lines 260-350, the footer DOM structure and max-7-visible-buttons ellipsis logic), `y.form.js::updateTableInfoMessage()`/`listenerPagination()` (lines 2780-2925, the row-count message format and prev/next/page-click/limit-input handlers)
+- Flagged that the lazy-load/pagination **toggle** is a new idea for this app, not a 1:1 port - `senar`'s reference always uses pagination buttons, it has no lazy-scroll mode to toggle against
+- Flagged a real design tension for `db_sql`: this app uses the SQLAlchemy ORM, not raw query strings, so there's no direct `$db->last_query()` equivalent - compiling every list query to a literal SQL string has a real cost, left as an explicit decision point in the acceptance criteria rather than prescribing an implementation
+- Confirmed via `grep` that `Table` currently has ONLY lazy-load-on-scroll (`_handle_scroll_end`), no pagination-button mode exists today - a genuinely new capability, not a duplicate of anything already built
+- Flagged the same hardcoded-`col.controls[1]`/`[2]` index fragility already documented in AGENTS.md from issue #20's filter-row work, since a new footer slot touches the same rebuild call sites (`Table.build()`/`load()`/`_handle_resize_commit()`/`_handle_sort_change()`)
+- Scope: frontend, backend
+- Labels: enhancement, frontend, backend
