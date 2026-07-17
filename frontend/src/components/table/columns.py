@@ -21,12 +21,6 @@ _DEFAULT_MIN_WIDTH = 40
 # Columns._build_data_columns().
 _MIN_LABEL_VISIBLE_WIDTH = 24
 
-# Extra width reserved for (and added onto) the last column, so its content
-# gets breathing room before the table's true right edge instead of butting
-# up against it - `get_usable_width()` carves this out of the shared budget
-# up front so adding it to the last column doesn't push the row's total
-# width past the screen.
-_LAST_COLUMN_RIGHT_PADDING = 12
 
 # Width reserved in a sortable column's label Container for its sort-state
 # icon (see _build_sort_icon()) - a real control we build and lay out
@@ -574,10 +568,13 @@ class TableColumns:
         column_spacing = TABLE_COLUMN_SPACING
         total_spacing = (num_columns - 1) * column_spacing
         safety_buffer = horizontal_margin
-        # subtract both left and right margins, the Table's own outer
-        # padding (issue #27 - see TABLE_OUTER_HORIZONTAL_PADDING), plus the
-        # extra gutter reserved for the last column (added back onto it
-        # below)
+        # subtract both left and right margins and the Table's own outer
+        # padding (issue #27 - see TABLE_OUTER_HORIZONTAL_PADDING). No extra
+        # last-column gutter reserved here anymore - that used to compensate
+        # for a table sitting flush against the screen edge (padding=0), but
+        # stacking it on top of the now-symmetric TABLE_OUTER_HORIZONTAL_PADDING
+        # made the right side visibly wider than the left (12px last-column
+        # padding + 12px outer padding = 24px right vs. 12px left).
         usable_width = (
             screen_width
             - scrollbar_width
@@ -585,7 +582,6 @@ class TableColumns:
             - (TABLE_OUTER_HORIZONTAL_PADDING * 2)
             - total_spacing
             - safety_buffer
-            - _LAST_COLUMN_RIGHT_PADDING
         )
         print(f"Usable width: {usable_width}")
         return usable_width
@@ -612,7 +608,6 @@ class TableColumns:
             if num_columns == 1
             else self._get_widths(num_columns, usable_width, min_widths, data)
         )
-        widths[-1] += _LAST_COLUMN_RIGHT_PADDING
 
         # ensure integer widths
         self.widths = [int(w) for w in widths]

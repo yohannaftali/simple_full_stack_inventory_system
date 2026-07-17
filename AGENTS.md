@@ -1620,12 +1620,22 @@ itself grew two small hooks so a sub-table *can* reuse it:
 
   `components/table/columns.py` also has two more general table behaviors,
   not specific to editable cells:
-  - **Last-column right padding**: `_LAST_COLUMN_RIGHT_PADDING` (12px) is
-    reserved out of `get_usable_width()`'s budget and added back onto only
-    the last column's width in `load()`, so its content gets breathing
-    room before the table's true right edge instead of butting up against
-    it (`get_widths()`'s "distribute extra space evenly" branch alone
-    wasn't enough - it can leave the last column exactly flush right).
+  - **Last-column right padding — removed 2026-07-17, superseded by
+    `TABLE_OUTER_HORIZONTAL_PADDING`**: this used to reserve an extra 12px
+    out of `get_usable_width()`'s budget and add it back onto only the
+    last column's width in `load()`, giving it breathing room before the
+    table's true right edge on a table that otherwise sat flush against
+    the screen (padding=0). Once issue #27 gave `Table.build()` a
+    symmetric default outer padding (`TABLE_OUTER_HORIZONTAL_PADDING`,
+    12px both sides), the two mechanisms stacked: the right edge got 12px
+    (outer padding) + 12px (last-column bonus) = 24px versus the left
+    edge's 12px, a visible, reported asymmetry. Deleted the last-column
+    mechanism entirely (`_LAST_COLUMN_RIGHT_PADDING` constant and both call
+    sites) - the outer Container's own padding is now the sole source of
+    left/right breathing room, and it's symmetric by construction.
+    Verified: computed column widths now sum to within a couple pixels of
+    `get_usable_width()`'s budget (only integer-rounding slack), with no
+    artificial bonus on the last column.
   - **Manual column resize** (Excel/Sheets-style, ported from a
     plain-HTML/CSS reference implementation the same project already uses
     elsewhere): every column boundary except the very last one gets a

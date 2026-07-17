@@ -876,3 +876,11 @@
 - Updated AGENTS.md's "Known gap" note (per-column filters section) and the stock_out transactional-tables section
 - Scope: frontend, backend
 - Files: `backend/src/repository/stock_out_repository.py`, `frontend/src/pages/modules/stock_out/index.py`, `AGENTS.md`
+
+## [2026-07-17] — fix(frontend): asymmetric table padding - right side too wide
+- User reported the table's right-side padding looked noticeably bigger than the left, not symmetric
+- Root cause: two separate right-padding mechanisms had stacked. `_LAST_COLUMN_RIGHT_PADDING` (12px) was original design for a table sitting flush against the screen edge (padding=0) - it reserved extra width and added it onto only the last column, giving it breathing room before the true screen edge. Issue #27 then added a symmetric outer `Table.build()` padding (`TABLE_OUTER_HORIZONTAL_PADDING`, 12px both sides) without removing the older mechanism, so the right edge ended up with 12px (outer) + 12px (last-column bonus) = 24px versus the left edge's 12px
+- Deleted `_LAST_COLUMN_RIGHT_PADDING` entirely (`components/table/columns.py` - the constant and both call sites in `get_usable_width()`/`load()`) - the outer Container's own padding is now the sole, symmetric source of left/right breathing room
+- Verified: computed column widths now sum to within ~2px of `get_usable_width()`'s budget (integer-rounding slack only), no artificial last-column bonus
+- Scope: frontend
+- Files: `frontend/src/components/table/columns.py`, `AGENTS.md`
