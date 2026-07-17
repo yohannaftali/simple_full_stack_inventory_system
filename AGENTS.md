@@ -1566,6 +1566,44 @@ no add/edit/delete. It does two things a plain sub-table screen doesn't:
   (the material's single MAP, constant across every returned row) is read
   straight off any one row rather than recomputed; `total_value` is the
   simple sum of each row's own already-correct `value`.
+  **Numeric fields must be converted before arithmetic, not just before
+  display**: a real bug found live (2026-07-17) — every numeric value
+  arrives over the wire as a JSON *string* (SQLAlchemy `Decimal` columns,
+  e.g. `"958.0000"`), which `components/table/rows.py`'s own
+  `"format": "number"` cell display already tolerates via
+  `utils/formatting.py::format_number()`'s internal `str(value)->float()`
+  conversion — but that only formats *for display*, it doesn't help code
+  that does its own arithmetic on the raw value first. The footer's
+  original `sum(row.get("qty", 0) ...)` summed raw strings directly,
+  raising `TypeError: unsupported operand type(s) for +: 'int' and 'str'`.
+  Fixed with a small `_to_number()` helper (`float(value)`, `0.0` on
+  `TypeError`/`ValueError`) applied to every field *before* summing, only
+  formatting the final totals for display. **Why this was hard to
+  diagnose from the logs alone**: the `TypeError` was raised inside
+  `ModulePage.__init__` (the footer is built during construction, right
+  after the `Table`), and `utils/module_loader.py::ModuleLoader.build()`
+  used to wrap the `PageClass(self.page, item, screen, record_id)` call in
+  a bare `try: ... except TypeError:` meant to detect "this ModulePage's
+  constructor doesn't accept `record_id`" (retrying without it) — but a
+  `TypeError` raised from *inside* the constructor body is
+  indistinguishable from one raised by Python's own argument-binding, so
+  the except clause caught it and silently **reran the entire
+  construction a second time, this time without `record_id`** (only
+  patched back on via `setattr` afterward, too late to affect the HTTP
+  calls already fired inside `__init__`) — producing a confusing HTTP 422
+  from `get_material`/`get_stock_by_material` being called with
+  `material_id=None`, two network calls removed from the actual bug, with
+  no trace of the original `TypeError` anywhere in the logs. Fixed
+  `module_loader.py` itself alongside the footer bug: replaced the
+  `except TypeError` dispatch with `"record_id" in
+  inspect.signature(PageClass).parameters` — a real signature check, not
+  exception-driven control flow, so an internal `TypeError` from any
+  future `ModulePage.__init__` now propagates to `build()`'s outer
+  `except Exception` (which already renders a real `ErrorPage` with the
+  actual exception message) instead of being silently swallowed and
+  retried. Verified against all 51 `ModulePage` classes and all
+  importable `ModalPage` classes in the app — `inspect.signature()`
+  correctly detects `record_id` acceptance for every one, no regressions.
 
 Backend: `stock_repository.py::list_stock_by_material(material_id,
 sort_fields=None)` (pre-existing, previously only feeding `stock_out`'s

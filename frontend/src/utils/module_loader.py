@@ -1,5 +1,6 @@
 import importlib
 import importlib.util
+import inspect
 import sys
 import traceback
 from pathlib import Path
@@ -226,10 +227,20 @@ class ModuleLoader:
         else:
             try:
                 PageClass = getattr(page_library, self.page_class)
-                page_class = None
-                try:
+                # Inspect the constructor's own parameter list rather than
+                # try/except TypeError - the latter used to retry the whole
+                # construction (a second round of HTTP GETs, this time
+                # missing `record_id`, since it's only patched on via
+                # setattr afterward) whenever __init__'s *body* raised any
+                # TypeError for an unrelated reason (e.g. summing a raw
+                # numeric string), misreading it as "this ModulePage doesn't
+                # accept record_id" - masking the real error behind a
+                # confusing, several-steps-removed HTTP 422 instead of a
+                # visible traceback.
+                accepts_record_id = "record_id" in inspect.signature(PageClass).parameters
+                if accepts_record_id:
                     page_class = PageClass(self.page, item, screen, record_id)
-                except TypeError:
+                else:
                     page_class = PageClass(self.page, item, screen)
                     if record_id is not None:
                         setattr(page_class, "record_id", record_id)

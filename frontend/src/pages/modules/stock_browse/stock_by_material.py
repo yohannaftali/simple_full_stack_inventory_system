@@ -69,6 +69,25 @@ class ModulePage:
             return f"Stock by Material - {response['material_code']} - {response['material_name']}"
         return "Stock by Material"
 
+    @staticmethod
+    def _to_number(value) -> float:
+        # Numeric fields arrive over the wire as JSON strings (the backend's
+        # SQLAlchemy Decimal columns, e.g. "958.0000") - components/table/rows.py's
+        # own "format": "number" display path tolerates this by going
+        # through format_number()'s str(value)->float() conversion per cell,
+        # but that only formats for display, it doesn't sum. Summing the raw
+        # strings directly (`sum(row.get("qty", 0) ...)`) raises TypeError
+        # ("unsupported operand type(s) for +: 'int' and 'str'") - which,
+        # thrown from inside ModulePage.__init__, module_loader.py's
+        # `except TypeError` around the constructor call misreads as "wrong
+        # constructor signature" and silently retries the whole page build
+        # without record_id, producing a confusing HTTP 422 two GETs later
+        # instead of a visible crash here.
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
     def _summarize(self) -> str:
         # Table.__init__ already ran get_data() synchronously (not
         # is_inside_form), so self.table.data is populated by the time this
@@ -76,9 +95,9 @@ class ModulePage:
         # single MAP, outer-joined in on the backend), so any row's value
         # works; 0 for a material with no current stock at all.
         rows = self.table.data if isinstance(self.table.data, list) else []
-        total_qty = sum(row.get("qty", 0) or 0 for row in rows)
-        total_value = sum(row.get("value", 0) or 0 for row in rows)
-        average_price = rows[0].get("average_price", 0) if rows else 0
+        total_qty = sum(self._to_number(row.get("qty")) for row in rows)
+        total_value = sum(self._to_number(row.get("value")) for row in rows)
+        average_price = self._to_number(rows[0].get("average_price")) if rows else 0.0
         return (
             f"Total Qty: {format_number(total_qty)}    "
             f"MAP: {format_number(average_price)}    "
