@@ -15,7 +15,7 @@ class ModulePage:
         self.fields = [
             {
                 "name": "material_id",
-                "type": "hidden", "key": True, "serialize": False
+                "type": "hidden", "serialize": False
             },
             {
                 "name": "location_id",
@@ -23,11 +23,13 @@ class ModulePage:
             },
             {
                 "name": "material_code", "label": "Material Code",
-                "type": "label", "sort": True
+                "type": "label", "sort": True,
+                "link_key_field": "material_id", "link_screen": "stock_by_material"
             },
             {
                 "name": "material_name", "label": "Material",
-                "type": "label", "sort": True
+                "type": "label", "sort": True,
+                "link_key_field": "material_id", "link_screen": "stock_by_material"
             },
             {
                 "name": "location_code", "label": "Location Code",
@@ -64,7 +66,6 @@ class ModulePage:
             parent=self,
             name="detail",
             fields=self.fields,
-            edit_screen="stock_by_material"
         )
 
     def build(self):

@@ -1892,11 +1892,21 @@ optionally `"link_screen"` (defaults to the table's own `edit_screen` if
 omitted) — `TableRows.load()` now computes a per-cell tap handler (falling
 back to the row's default `on_tap_handler` when a field has no override),
 so `location_code`/`location_name` link to a new hidden `location_id` field
-+ `stock_by_location`, while every other cell in the same row (including
-`material_code`/`material_name`) keeps navigating to `material_id` +
-`stock_by_material` exactly as before — verified live that both drill-downs
-work independently from the same index table with no regression to #29's
-existing behavior.
++ `stock_by_location`. **Same-day follow-up, requested directly by the
+user**: `material_code`/`material_name` were switched from the old row-wide
+`"key": True` + `Table(edit_screen="stock_by_material")` mechanism onto the
+same `link_key_field`/`link_screen` override (`"link_key_field":
+"material_id", "link_screen": "stock_by_material"`) instead of leaving them
+on the original mechanism — "edit_screen" was always a slightly misleading
+name for a target that was never actually an edit screen here, and there's
+no reason for the same table to drive two different-looking navigations
+through two different mechanisms once the more general one exists.
+`stock_browse/index` now has no `"key": True` field and no `edit_screen`
+override at all - every clickable column (`material_code`/`material_name`,
+`location_code`/`location_name`) goes through `link_key_field`/
+`link_screen` uniformly, and every other column (`qty`, `unit_name`, etc.)
+has no navigation, same as before - verified live that both drill-downs
+still work independently and a non-linked cell click does nothing.
 `pages/modules/stock_browse/stock_by_location.py` is the same shape as
 `stock_by_material.py` (a `record_id`-accepting, read-only `ModulePage`,
 heading fetched via a small dedicated GET — `get_location` — before the

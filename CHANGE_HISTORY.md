@@ -1,6 +1,12 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-20] — chore(stock_browse): switch stock_by_material's row-click to link_key_field/link_screen too
+- Follow-up to #40, requested directly by the user: now that `link_key_field`/`link_screen` exists for the location drill-down, use it for the material drill-down too instead of the old `"key": True` + `Table(edit_screen=...)` mechanism - "edit_screen" was always a slightly wrong name for a target that's never actually an edit screen here
+- `stock_browse/index.py`: removed `"key": True` from the hidden `material_id` field and `edit_screen="stock_by_material"` from the `Table(...)` call; added `"link_key_field": "material_id", "link_screen": "stock_by_material"` to `material_code`/`material_name` directly, the same way `location_code`/`location_name` already do for `stock_by_location`. Both drill-downs are now driven uniformly by the same per-field mechanism - no more row-wide `"key"` field on this table at all
+- Verified live: clicking Material Code still navigates to `/modules/stock_browse/stock_by_material/<id>`, clicking Location still navigates to `/modules/stock_browse/stock_by_location/<id>`, and clicking a non-linked cell (Qty) does nothing, as expected
+- Files: `frontend/src/pages/modules/stock_browse/index.py`
+
 ## [2026-07-20] — feat(stock_browse): drill into stock-by-location with per-material breakdown (implemented)
 - Issue #40 addressed on GitHub
 - **New generic Table capability needed first**: clicking Location Code/Location on `stock_browse/index` had to navigate somewhere different from clicking Material Code/Material in the *same row* - the existing single-key-per-table mechanism (`TableRows.load()`'s `key_field`/`edit_screen`, one per table) only supports one row-wide navigation target, wired to every non-editable `DataCell` uniformly. Added a field-level override: a field can set `"link_key_field"` (the hidden field holding the id to navigate with) and optionally `"link_screen"` (defaults to the table's own `edit_screen`) - `TableRows.load()` now computes a per-cell tap handler (falling back to the row-wide one when no override is set), so `stock_browse/index.py`'s `location_code`/`location_name` fields link to a new hidden `location_id` + `stock_by_location`, while every other cell in the same row still links to the row's own `material_id` + `stock_by_material` (issue #29) unchanged
