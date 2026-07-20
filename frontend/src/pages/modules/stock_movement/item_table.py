@@ -86,6 +86,7 @@ class ItemTable:
             fields=self.fields,
             endpoint=f"C_{module}/get_items",
             custom_param={"header_id": header_id},
+            fill_available_space=False,
         )
 
         self.table.toolbar.add_new_button(callback=self.callback_add_new)

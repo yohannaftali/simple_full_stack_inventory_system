@@ -4,14 +4,21 @@ numbered-pagination mode, ported from senar's `y.panel.js`/`y.form.js`
 footer (`#createRecordInfoPanel()`/`createPaginationButtonSet()`/
 `updateTableInfoMessage()`/`listenerPagination()`).
 
-Two rows, matching the user's explicit clarification over the original
-single-row sketch:
-  - Row 1: the totals message ("Record X-Y of Z"), sourced from the same
-    `db_num_rows`/`db_total_page` metadata `Table.get_data()` already reads
-    off `response[0]` - no new plumbing, just a new consumer.
-  - Row 2: right-aligned mode toggle, plus (in pagination mode) the
-    pagination controls themselves - rows-per-page input, first/prev/
-    numbered-with-ellipsis/next/last buttons, current page highlighted.
+One row on a normal-width screen (issue #37) - the totals message
+("Record X-Y of Z") left-aligned, the mode toggle + pagination controls
+right-aligned, `SPACE_BETWEEN` in between - wrapping to the original
+two-row layout only below `_NARROW_WIDTH_BREAKPOINT`, where the combined
+row would otherwise get too cramped:
+  - Row 1: the totals message, sourced from the same `db_num_rows`/
+    `db_total_page` metadata `Table.get_data()` already reads off
+    `response[0]` - no new plumbing, just a new consumer.
+  - Row 2 (or the right half of the single combined row): the mode
+    toggle, plus (in pagination mode) the pagination controls themselves -
+    rows-per-page input, first/prev/numbered-with-ellipsis/next/last
+    buttons, current page highlighted. The toggle button is always the
+    rightmost control (`_row2_controls()` appends it last) - it used to be
+    built first, sitting to the *left* of the pagination buttons instead
+    of at the row's true right edge.
 
 Mode state (`self.mode`) is session-only, in-memory on this `TableFooter`
 instance - never persisted (confirmed with the user via /planner), same
@@ -28,6 +35,15 @@ from components.button import Button
 # Matches y.panel.js's own visible-button cap (max 7, with "..." gap
 # markers once the page count exceeds it) - see _page_number_tokens().
 _MAX_VISIBLE_PAGE_BUTTONS = 7
+
+# Below this page width, the combined single-row layout (message left,
+# controls right) wraps back to the original two stacked rows instead -
+# a full set of pagination buttons plus the rows-per-page input doesn't
+# comfortably share a row with the message text on a narrow/mobile
+# screen. Matches this app's existing informal mobile-ish breakpoint
+# (see purchase_report/index.py's ResponsiveRow `col={"sm": 12, "md": 6}`
+# - Flet/Bootstrap's own `sm` cutoff is 576px, rounded up here to 600).
+_NARROW_WIDTH_BREAKPOINT = 600
 
 MODE_LAZY = "lazy"
 MODE_PAGINATION = "pagination"
@@ -73,26 +89,34 @@ class TableFooter:
         self.mode = MODE_LAZY
 
     def build(self) -> ft.Control:
+        info_text = ft.Text(
+            self._info_message(),
+            size=12,
+            color=ft.Colors.ON_SURFACE_VARIANT,
+        )
+        controls_row = ft.Row(
+            alignment=ft.MainAxisAlignment.END,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=8,
+            controls=self._row2_controls(),
+        )
+
+        is_narrow = (self.page.width or 0) < _NARROW_WIDTH_BREAKPOINT
+        content = (
+            ft.Column(spacing=4, controls=[info_text, controls_row])
+            if is_narrow
+            else ft.Row(
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[info_text, controls_row],
+            )
+        )
+
         return ft.Container(
             bgcolor=ft.Colors.SURFACE_CONTAINER_LOW,
             border=ft.Border.only(top=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
             padding=ft.Padding.symmetric(horizontal=16, vertical=8),
-            content=ft.Column(
-                spacing=4,
-                controls=[
-                    ft.Text(
-                        self._info_message(),
-                        size=12,
-                        color=ft.Colors.ON_SURFACE_VARIANT,
-                    ),
-                    ft.Row(
-                        alignment=ft.MainAxisAlignment.END,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                        spacing=8,
-                        controls=self._row2_controls(),
-                    ),
-                ],
-            ),
+            content=content,
         )
 
     def _info_message(self) -> str:
@@ -111,9 +135,13 @@ class TableFooter:
         return f"Record {first} - {last} of {total}"
 
     def _row2_controls(self) -> list:
-        controls = [self._build_toggle_button()]
+        # Toggle button always last (rightmost, issue #37) - it used to be
+        # built first, landing to the left of the pagination buttons
+        # instead of at the row's true right edge.
+        controls = []
         if self.mode == MODE_PAGINATION:
             controls.extend(self._build_pagination_controls())
+        controls.append(self._build_toggle_button())
         return controls
 
     def _build_toggle_button(self) -> ft.Control:

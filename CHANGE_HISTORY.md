@@ -1,6 +1,25 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-20] — fix(frontend): table footer layout — reposition toggle icon, combine rows, keep footer pinned to table body not page (implemented)
+- Issue #37 addressed on GitHub
+- `components/table/footer.py`: `_row2_controls()` now appends the lazy-load/pagination toggle button *last* instead of first, so it renders at the row's true right edge, after every pagination control; `build()` renders the "Record X-Y of Z" message and the toggle/pagination controls in one `SPACE_BETWEEN` row on screens ≥600px wide, falling back to the original two stacked rows below that (`_NARROW_WIDTH_BREAKPOINT`) - re-layout on resize comes for free through the existing `Table.on_page_resize()` → `load()` → `TableFooter.build()` rebuild chain, since `build()` reads `self.page.width` live
+- `components/table/table.py`: new `Table(..., fill_available_space: bool = True)` constructor param - `True` (default, unchanged behavior) keeps today's always-`expand=True` table/footer for a screen that's nothing but one table; `False` stops `Table.build()` from forcing `expand=True` on its own outer `Container`/`Column`, so the table (and its footer) size to their actual content instead of stretching to fill whatever height the caller's own wrapper gives them
+- Set `fill_available_space=False` on every screen that shares space with a `Form` or another `Table`: `stock_in/item_table.py`, `stock_out/item_table.py`, `stock_movement/item_table.py` (each header edit screen's item sub-table), and both tables in `purchase_report/index.py` - their existing fixed-height (350/400px) wrapper `Container`s were deliberately left in place unchanged (removing them entirely was judged too risky to verify blind against Flet/Flutter's bounded-scrollable-height requirements in this session), so there's still some reserved-but-unused space below a short table inside that box, but the footer itself now sits directly under the table's real content instead of stretching to the wrapper's full height
+- Verified live in the containerized web app: `master_location` (solo table) shows the combined single-row footer at 1280px wide with the toggle icon rightmost in both lazy-load and pagination mode, wraps to two rows at a native 400px viewport with all controls still visible; a receiving header's item sub-table (`stock_in/edit.py`, Form + Table) now shows its "No records" footer immediately under the header row instead of far down the box; `purchase_report`'s two tables each size to their one-row result instead of a mostly-empty 350px box
+- Known limitation, stated explicitly: the caller-side fixed-height wrapper `Container`s (350/400px) were not removed, so a short table inside one still reserves unused space up to that height even though the footer no longer artificially stretches to fill it - a genuine "auto-height, no wrapper needed at all" version would require verifying Flet/Flutter's bounded-scrollable-height behavior more thoroughly than this session's live-browser testing covered
+- Files: `frontend/src/components/table/footer.py`, `frontend/src/components/table/table.py`, `frontend/src/pages/modules/stock_in/item_table.py`, `frontend/src/pages/modules/stock_out/item_table.py`, `frontend/src/pages/modules/stock_movement/item_table.py`, `frontend/src/pages/modules/purchase_report/index.py`
+
+## [2026-07-20] — fix(frontend): table footer layout — reposition toggle icon, combine rows, keep footer pinned to table body not page
+- Issue #37 created on GitHub
+- Scope: frontend
+- Labels: enhancement, frontend
+
+## [2026-07-20] — fix(frontend): table header sort icon disappears when column label is truncated/hidden
+- Issue #38 created on GitHub
+- Scope: frontend
+- Labels: bug, frontend
+
 ## [2026-07-20] — #31, #33, #35 status changed: ready-for-review → closed
 - Title #31: feat(inventory): stock movement module - transfer stock between locations
 - Title #33: feat(inventory): add qty_plan to receiving_items and stock_out_items

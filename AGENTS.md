@@ -56,6 +56,8 @@
 | #35 | fix(frontend): table header/body text and footer page-size input unreadable (black) in dark mode | closed | 2026-07-20 |
 | #32 | fix(inventory): verify stock_in/stock_out header lists default to descending date sort | closed (no-op - already correct) | 2026-07-17 |
 | #36 | feat(frontend): restrict Server Configuration page to desktop/mobile; hide server URL entirely on web | closed | 2026-07-20 |
+| #37 | fix(frontend): table footer layout — reposition toggle icon, combine rows, keep footer pinned to table body not page | ready-for-review | 2026-07-20 |
+| #38 | fix(frontend): table header sort icon disappears when column label is truncated/hidden | open | 2026-07-20 |
 
 ## Big Picture
 

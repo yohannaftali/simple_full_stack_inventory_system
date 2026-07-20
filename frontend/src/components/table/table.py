@@ -25,6 +25,7 @@ class Table:
         is_inside_form: bool = False,
         edit_screen: str = "edit",
         custom_param: dict | None = None,
+        fill_available_space: bool = True,
     ):
         """
         Initialize Table
@@ -43,6 +44,20 @@ class Table:
             custom_param (dict, optional): Extra static query params merged
                 into every get_data() request (e.g. {"header_id": 3} for an
                 item sub-table scoped to one header).
+            fill_available_space (bool, optional): Defaults to True - the
+                table (and its footer) expands to fill all remaining
+                vertical space, which is the right look for a screen that's
+                nothing but this one table (most module `index.py` screens).
+                Set False (issue #37) for a table that shares its screen
+                with a `Form` or another `Table` (e.g. `stock_in/edit.py`'s
+                item sub-table, `purchase_report/index.py`'s two tables) -
+                the table then sizes to whatever its caller's own wrapping
+                Container gives it (still that caller's responsibility to
+                provide a bounded height, same as before this flag existed;
+                this only stops `Table` from *also* forcing `expand=True` on
+                top of that, which is what let the footer drift to the
+                bottom of the whole page instead of sitting right under the
+                table's actual content).
         """
         self.page = page
         self.storage: Storage = page.data["storage"]
@@ -56,6 +71,7 @@ class Table:
         self.custom_param = custom_param or {}
 
         self.is_inside_form = is_inside_form
+        self.fill_available_space = fill_available_space
 
         self.columns: TableColumns = TableColumns(page, fields)
         self.rows: TableRows = TableRows(page, self.columns, parent=self)
@@ -182,9 +198,9 @@ class Table:
             content=ft.Column(
                 controls=controls,
                 spacing=0,
-                expand=True,
+                expand=self.fill_available_space,
             ),
-            expand=True,
+            expand=self.fill_available_space,
             padding=padding,
         )
 

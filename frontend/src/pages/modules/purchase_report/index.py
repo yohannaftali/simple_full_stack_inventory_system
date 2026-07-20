@@ -64,10 +64,12 @@ class ModulePage:
         ]
 
         self.by_supplier_table = Table(
-            page=page, parent=self, name="by_supplier", fields=by_supplier_fields
+            page=page, parent=self, name="by_supplier", fields=by_supplier_fields,
+            fill_available_space=False,
         )
         self.by_material_table = Table(
-            page=page, parent=self, name="by_material", fields=by_material_fields
+            page=page, parent=self, name="by_material", fields=by_material_fields,
+            fill_available_space=False,
         )
 
         self._load_filter_options()
