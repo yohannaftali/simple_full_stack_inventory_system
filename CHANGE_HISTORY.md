@@ -1,6 +1,15 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-20] — #34 status changed: open → closed
+- Title: chore(backend): standardize created_at/created_by/updated_at/updated_by across every table
+- Platform: GitHub (auto-closed by "Closes #34" in the commit pushed directly to main)
+
+## [2026-07-20] — fix(frontend): table header/body text and footer page-size input unreadable (black) in dark mode
+- Issue #35 created on GitHub
+- Scope: frontend
+- Labels: bug, frontend
+
 ## [2026-07-20] — chore(backend): standardize created_at/created_by/updated_at/updated_by across every table
 - Issue #34 addressed on GitHub
 - Every model in `backend/src/models/` now carries `created_by`/`updated_by` (nullable FKs to `users.id`), generalizing the shape `stock_movement_headers`/`stock_movement_items` shipped with in issue #31 to every other table — including `inventory_values` and `user_module_permissions`, which had no `created_at`/`updated_at` at all before this
