@@ -396,8 +396,30 @@ class Table:
             if self.header:
                 # keep header.columns reference (already set on init)
                 new_header = self._build_header_with_resize_overlay()
-            if self.body:
+            # An append (lazy-load-more) patches the ALREADY-MOUNTED
+            # scrollable Column/DataTable in place (TableBody.update())
+            # instead of swapping in a brand new one - a freshly built
+            # ft.Column always starts the client at scroll offset 0, which
+            # used to need a corrective scroll_to() jump right after
+            # (restore_scroll_position()), visible as a "jump to top, then
+            # snap back down" glitch (reported after issue #39's own fix).
+            # Patching the same mounted Column/DataTable never resets its
+            # scroll position in the first place, so there's nothing left
+            # to correct - reassigning `.columns`/`.rows` to fresh built
+            # objects and calling `.update()` still gets Flutter to
+            # re-layout the DataTable's cells/widths correctly (the same
+            # "swap in fresh objects rather than patch a nested property"
+            # principle _handle_resize_commit's own docstring relies on for
+            # shrinking a column - it just doesn't also require recreating
+            # the *outer* scrollable wrapper). A fresh, non-append load
+            # (filter/sort/page change) is a new result set and should
+            # still reset to the top, which the full self.body.build()
+            # naturally does by handing the client a brand new Column.
+            if append and self.body and self.body.data_table is not None:
+                self.body.update()
+            elif self.body:
                 new_body = self.body.build()
+
             new_footer = self.footer.build() if self.footer else None
 
             # Replace header/body/footer only - never rebuild the toolbar
@@ -415,12 +437,6 @@ class Table:
                 # Trigger update for the column container and its parent
                 col.update()
                 self.table_container.update()
-                # Only an appended lazy-load-more should keep the user's
-                # scroll position - a fresh (non-append) load, e.g. a
-                # filter/sort change, is a new result set and should stay
-                # at the top like before.
-                if append and self.body:
-                    self.body.restore_scroll_position()
         else:
             # If not yet built, just ensure header/body objects are updated so
             # when `build()` is eventually called they use the latest widths.
