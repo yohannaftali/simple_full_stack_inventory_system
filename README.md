@@ -214,22 +214,21 @@ Open a browser to:
 - `https://localhost:8443` (HTTPS, self-signed certificate — your browser
   will warn about this the first time; that's expected for local dev)
 
-### 2.1 Server Configuration (first run only)
+### 2.1 First run
 
-The very first time you open the app it forces you to the **Server
-Configuration** screen, asking for the backend's address. The containerized
-setup already defaults this correctly out of the box
-(`http://backend:5000`, the internal Docker/Podman network name), so on a
-normal `podman compose up` deployment **you usually don't need to change
-anything** — just proceed to login.
+On this containerized (web) deployment there's no setup step before login —
+opening the app connects straight to the backend automatically
+(`http://backend:5000`, the internal Docker/Podman network name) and takes
+you directly to the **Login** screen. There's no Server Configuration
+screen at all on web, and no way to reach one — the address isn't
+user-editable here, so it's simply not shown. Just proceed to
+[log in](#22-log-in) below.
 
-If you do need to open Server Config again later (e.g. pointing at a
-different backend), the field is labeled **Server URL**. Enter the address
-and click **Save Configuration**. Important: because the frontend container
-itself makes the HTTP calls (not your browser), the address must be the
-backend's *container network name* (`http://backend:5000` or
-`https://backend:5443`), **not** `http://localhost:5000` — `localhost`
-inside the frontend container refers to the frontend container itself.
+(A native desktop/mobile build of the frontend still has a one-time
+**Server Configuration** screen for entering the backend's address, since
+that build genuinely lets you point it at a different backend. That's a
+separate build from the one `podman compose up` runs, so it doesn't apply
+to the setup this README walks through.)
 
 ### 2.2 Log in
 
