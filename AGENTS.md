@@ -59,7 +59,7 @@
 | #37 | fix(frontend): table footer layout — reposition toggle icon, combine rows, keep footer pinned to table body not page | ready-for-review | 2026-07-20 |
 | #38 | fix(frontend): table header sort icon disappears when column label is truncated/hidden | closed | 2026-07-20 |
 | #39 | fix(frontend): lazy-load scroll never fetches the next page (TableBody._on_scroll never calls on_scroll_end) | closed | 2026-07-20 |
-| #40 | feat(stock_browse): drill into stock-by-location with per-material breakdown | ready-for-review | 2026-07-20 |
+| #40 | feat(stock_browse): drill into stock-by-location with per-material breakdown | closed | 2026-07-20 |
 
 ## Big Picture
 
