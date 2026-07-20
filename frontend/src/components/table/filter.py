@@ -116,9 +116,17 @@ class TableFilter:
             dense=True,
             content_padding=ft.Padding.symmetric(horizontal=10, vertical=6),
             border_radius=10,  # Matches the table search bar (issue #19)
-            prefix_icon=ft.Icon(ft.Icons.FILTER_ALT, size=14),
+            # Must be set explicitly (issue #35) - same theme-aware-color
+            # gap as every other bare TextField in components/table/.
+            color=ft.Colors.ON_SURFACE,
+            border_color=ft.Colors.OUTLINE_VARIANT,
+            label_style=ft.TextStyle(color=ft.Colors.ON_SURFACE_VARIANT),
+            prefix_icon=ft.Icon(
+                ft.Icons.FILTER_ALT, size=14, color=ft.Colors.ON_SURFACE_VARIANT
+            ),
             suffix_icon=ft.IconButton(
                 icon=ft.Icons.CLEAR,
+                icon_color=ft.Colors.ON_SURFACE_VARIANT,
                 icon_size=14,
                 width=24,
                 height=24,

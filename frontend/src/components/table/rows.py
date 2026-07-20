@@ -147,12 +147,15 @@ class TableRows:
                 # max_lines=1 (alongside overflow=ELLIPSIS) guarantees a
                 # single truncated line rather than wrapping onto a second
                 # one when the column is narrow - same fix as the header
-                # label in Columns._build_data_columns().
+                # label in Columns._build_data_columns(). `color` must be
+                # set explicitly (issue #35) - Flet's plain Text doesn't
+                # inherit a theme-aware color inside a DataTable cell.
                 content = ft.Text(
                     str(value),
                     overflow=ft.TextOverflow.ELLIPSIS,
                     max_lines=1,
                     text_align=text_align,
+                    color=ft.Colors.ON_SURFACE,
                 )
                 if columns_widths is not None and i < len(columns_widths):
                     # Ensure integer pixel widths (Flet expects integers)
@@ -163,6 +166,7 @@ class TableRows:
                             overflow=ft.TextOverflow.ELLIPSIS,
                             max_lines=1,
                             text_align=text_align,
+                            color=ft.Colors.ON_SURFACE,
                         ),
                         width=w,
                         padding=ft.Padding.symmetric(horizontal=8, vertical=4),
@@ -203,6 +207,8 @@ class TableRows:
                 dense=True,
                 content_padding=ft.Padding.symmetric(horizontal=8, vertical=4),
                 width=width,
+                color=ft.Colors.ON_SURFACE,
+                border_color=ft.Colors.OUTLINE_VARIANT,
             )
             return control, control
 
@@ -237,6 +243,8 @@ class TableRows:
                 editable=field.get("editable", True) if enable_filter else False,
                 menu_height=_MENU_VISIBLE_ROWS * _MENU_ROW_HEIGHT,
                 width=width,
+                color=ft.Colors.ON_SURFACE,
+                border_color=ft.Colors.OUTLINE_VARIANT,
             )
             return control, control
 
@@ -259,6 +267,8 @@ class TableRows:
             dense=True,
             content_padding=ft.Padding.symmetric(horizontal=8, vertical=4),
             width=width,
+            color=ft.Colors.ON_SURFACE,
+            border_color=ft.Colors.OUTLINE_VARIANT,
         )
         return control, control
 

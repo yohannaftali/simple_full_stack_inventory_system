@@ -19,8 +19,10 @@ class SplashScreen:
         self.reload_button = ft.TextButton(
             content=ft.Row(
                 controls=[
-                    ft.Icon(ft.Icons.REFRESH, size=16),
-                    ft.Text("Reload Library", size=12),
+                    ft.Icon(ft.Icons.REFRESH, size=16, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ft.Text(
+                        "Reload Library", size=12, color=ft.Colors.ON_SURFACE_VARIANT
+                    ),
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
                 spacing=5,
@@ -42,7 +44,12 @@ class SplashScreen:
                         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                         spacing=12,
                         controls=[
-                            ft.Text("SFSIS", size=32, weight=ft.FontWeight.BOLD),
+                            ft.Text(
+                                "SFSIS",
+                                size=32,
+                                weight=ft.FontWeight.BOLD,
+                                color=ft.Colors.ON_SURFACE,
+                            ),
                             ft.Text(
                                 "Mobile Companion",
                                 size=13,

@@ -262,7 +262,17 @@ class TableColumns:
                 w is None or w >= _MIN_LABEL_VISIBLE_WIDTH
             )
             text = (
-                ft.Text(label, overflow=ft.TextOverflow.ELLIPSIS, max_lines=1)
+                ft.Text(
+                    label,
+                    overflow=ft.TextOverflow.ELLIPSIS,
+                    max_lines=1,
+                    # Must be set explicitly - Flet's DataColumn label Text
+                    # doesn't inherit a theme-aware color on its own (issue
+                    # #35), and heading_row_color=SECONDARY_CONTAINER
+                    # (header.py) needs its "on" contrast color, not
+                    # ON_SURFACE.
+                    color=ft.Colors.ON_SECONDARY_CONTAINER,
+                )
                 if show_label
                 else None
             )

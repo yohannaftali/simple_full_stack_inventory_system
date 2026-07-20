@@ -221,6 +221,11 @@ class TableFooter:
             keyboard_type=ft.KeyboardType.NUMBER,
             on_submit=self._on_limit_commit,
             on_blur=self._on_limit_commit,
+            # Must be set explicitly (issue #35) - a bare ft.TextField's
+            # text color isn't theme-aware, same gap as every other
+            # TextField in components/table/.
+            color=ft.Colors.ON_SURFACE,
+            border_color=ft.Colors.OUTLINE_VARIANT,
         )
 
     def _on_page_click(self, page_no: int) -> None:

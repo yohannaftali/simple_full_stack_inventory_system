@@ -25,8 +25,9 @@ class Body:
         self.server_url_field = ft.TextField(
             label="Server URL",
             hint_text="Enter base server URL (e.g., http://localhost:8000)",
-            prefix_icon=ft.Icons.CLOUD,
+            prefix_icon=ft.Icon(ft.Icons.CLOUD, color=ft.Colors.ON_SURFACE),
             border_radius=10,
+            border_color=ft.Colors.ON_SURFACE,
             color=ft.Colors.ON_SURFACE,
             label_style=ft.TextStyle(
                 size=14,
