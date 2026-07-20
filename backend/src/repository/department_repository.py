@@ -56,15 +56,19 @@ class DepartmentRepository:
                 query = query.order_by(DepartmentModel.code)
             return paginate(query, limit=limit, page=page, offset=offset, sort_fields=sort_fields)
 
-    def create_department(self, code: str, name: str) -> DepartmentModel:
+    def create_department(
+        self, code: str, name: str, created_by: Optional[int] = None
+    ) -> DepartmentModel:
         with SessionLocal() as session:
-            department = DepartmentModel(code=code, name=name)
+            department = DepartmentModel(code=code, name=name, created_by=created_by)
             session.add(department)
             session.commit()
             session.refresh(department)
             return department
 
-    def update_department(self, department_id: int, code: str, name: str) -> bool:
+    def update_department(
+        self, department_id: int, code: str, name: str, updated_by: Optional[int] = None
+    ) -> bool:
         with SessionLocal() as session:
             department = (
                 session.query(DepartmentModel)
@@ -76,6 +80,7 @@ class DepartmentRepository:
 
             department.code = code
             department.name = name
+            department.updated_by = updated_by
             session.commit()
             return True
 

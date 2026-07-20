@@ -156,6 +156,7 @@ def submit(
             unit_id=unit_id_value,
             category_id=category_id_value,
             is_active=active,
+            updated_by=user.id,
         )
         if not updated:
             return {"error": "Material not found"}
@@ -167,6 +168,7 @@ def submit(
         unit_id=unit_id_value,
         category_id=category_id_value,
         is_active=active,
+        created_by=user.id,
     )
     return {"message": "Material created successfully"}
 
@@ -222,6 +224,7 @@ async def submit_bulk(request: Request, user: UserModel = Depends(_require_acces
             unit_id=unit_id,
             category_id=category_id,
             is_active=_parse_bool(row.get("is_active", "true") or "true"),
+            created_by=user.id,
         )
 
     return bulk_create(rows, build)

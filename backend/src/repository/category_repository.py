@@ -56,16 +56,29 @@ class CategoryRepository:
                 query = query.order_by(CategoryModel.code)
             return paginate(query, limit=limit, page=page, offset=offset, sort_fields=sort_fields)
 
-    def create_category(self, code: str, name: str, description: str = "") -> CategoryModel:
+    def create_category(
+        self,
+        code: str,
+        name: str,
+        description: str = "",
+        created_by: Optional[int] = None,
+    ) -> CategoryModel:
         with SessionLocal() as session:
-            category = CategoryModel(code=code, name=name, description=description)
+            category = CategoryModel(
+                code=code, name=name, description=description, created_by=created_by
+            )
             session.add(category)
             session.commit()
             session.refresh(category)
             return category
 
     def update_category(
-        self, category_id: int, code: str, name: str, description: str = ""
+        self,
+        category_id: int,
+        code: str,
+        name: str,
+        description: str = "",
+        updated_by: Optional[int] = None,
     ) -> bool:
         with SessionLocal() as session:
             category = (
@@ -77,6 +90,7 @@ class CategoryRepository:
             category.code = code
             category.name = name
             category.description = description
+            category.updated_by = updated_by
             session.commit()
             return True
 

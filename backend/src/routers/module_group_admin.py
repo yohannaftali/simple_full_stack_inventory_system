@@ -93,12 +93,14 @@ def submit(
         return {"error": "Sort must be a number"}
 
     if id:
-        updated = _module_group_repository.update_group(int(id), name=name, sort=sort_value)
+        updated = _module_group_repository.update_group(
+            int(id), name=name, sort=sort_value, updated_by=user.id
+        )
         if not updated:
             return {"error": "Module group not found"}
         return {"message": "Module group updated successfully"}
 
-    _module_group_repository.create_group(name=name, sort=sort_value)
+    _module_group_repository.create_group(name=name, sort=sort_value, created_by=user.id)
     return {"message": "Module group created successfully"}
 
 
@@ -127,6 +129,6 @@ async def submit_bulk(request: Request, user: UserModel = Depends(_require_acces
             sort_value = int(sort_raw) if sort_raw else 0
         except ValueError:
             raise BulkRowError(row["_row"], "Sort must be a number")
-        return ModuleGroupModel(name=name, sort=sort_value)
+        return ModuleGroupModel(name=name, sort=sort_value, created_by=user.id)
 
     return bulk_create(rows, build)

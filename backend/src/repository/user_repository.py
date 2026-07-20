@@ -63,6 +63,7 @@ class UserRepository:
         is_active: bool = True,
         is_superuser: bool = False,
         department_id: Optional[int] = None,
+        created_by: Optional[int] = None,
     ) -> UserModel:
         """Create a new user."""
         with SessionLocal() as session:
@@ -73,13 +74,16 @@ class UserRepository:
                 is_active=is_active,
                 is_superuser=is_superuser,
                 department_id=department_id,
+                created_by=created_by,
             )
             session.add(user)
             session.commit()
             session.refresh(user)
             return user
 
-    def update_user_password(self, username: str, new_password: str) -> bool:
+    def update_user_password(
+        self, username: str, new_password: str, updated_by: Optional[int] = None
+    ) -> bool:
         """Update user password."""
         with SessionLocal() as session:
             user = (
@@ -89,10 +93,13 @@ class UserRepository:
                 return False
 
             user.password = new_password
+            user.updated_by = updated_by
             session.commit()
             return True
 
-    def update_user_totp_secret(self, username: str, totp_secret: str) -> bool:
+    def update_user_totp_secret(
+        self, username: str, totp_secret: str, updated_by: Optional[int] = None
+    ) -> bool:
         """Set (or clear, if empty) the user's TOTP secret."""
         with SessionLocal() as session:
             user = (
@@ -102,6 +109,7 @@ class UserRepository:
                 return False
 
             user.totp_secret = totp_secret
+            user.updated_by = updated_by
             session.commit()
             return True
 
@@ -198,6 +206,7 @@ class UserRepository:
         is_superuser: bool,
         password: Optional[str] = None,
         department_id: Optional[int] = None,
+        updated_by: Optional[int] = None,
     ) -> bool:
         """Update a user's profile fields (admin CRUD path). Password only changes if given."""
         with SessionLocal() as session:
@@ -212,6 +221,7 @@ class UserRepository:
             user.department_id = department_id
             if password:
                 user.password = password
+            user.updated_by = updated_by
             session.commit()
             return True
 

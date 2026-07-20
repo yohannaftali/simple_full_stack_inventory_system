@@ -85,12 +85,14 @@ def submit(
     user: UserModel = Depends(_require_access),
 ) -> dict:
     if id:
-        updated = _location_repository.update_location(int(id), code=code, name=name)
+        updated = _location_repository.update_location(
+            int(id), code=code, name=name, updated_by=user.id
+        )
         if not updated:
             return {"error": "Location not found"}
         return {"message": "Location updated successfully"}
 
-    _location_repository.create_location(code=code, name=name)
+    _location_repository.create_location(code=code, name=name, created_by=user.id)
     return {"message": "Location created successfully"}
 
 
@@ -115,6 +117,6 @@ async def submit_bulk(request: Request, user: UserModel = Depends(_require_acces
         name = str(row.get("name", "")).strip()
         if not code or not name:
             raise BulkRowError(row["_row"], "Code and Name are required")
-        return LocationModel(code=code, name=name)
+        return LocationModel(code=code, name=name, created_by=user.id)
 
     return bulk_create(rows, build)

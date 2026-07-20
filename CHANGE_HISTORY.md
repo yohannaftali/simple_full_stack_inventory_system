@@ -1,6 +1,17 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-20] — chore(backend): standardize created_at/created_by/updated_at/updated_by across every table
+- Issue #34 addressed on GitHub
+- Every model in `backend/src/models/` now carries `created_by`/`updated_by` (nullable FKs to `users.id`), generalizing the shape `stock_movement_headers`/`stock_movement_items` shipped with in issue #31 to every other table — including `inventory_values` and `user_module_permissions`, which had no `created_at`/`updated_at` at all before this
+- Every table's `updated_at` changed from `NOT NULL, server_default=func.now(), onupdate=func.now()` to `NULL, onupdate=func.now()` (no server_default) — NULL until the row's first real UPDATE, matching the confirmed design decision from `/planner`
+- New migration `backend/alembic/versions/0030_standardize_audit_columns.py` (one migration touching every table via `op.batch_alter_table`, SQLite-compatible); `downgrade()` backfills any NULL `updated_at` from `created_at` before reverting to NOT NULL, since every row written after this migration normally has a NULL `updated_at`
+- Swept every repository's `create_*`/`update_*`/`upsert_*` method to accept `created_by`/`updated_by`, and every router endpoint (already resolving an authenticated `user` via `require_module_access`) to pass `user.id` through
+- `services/inventory_service.py`: `create_receiving_item`, `create_receiving_items_bulk`, `update_receiving_item`, `create_stock_out_item`, `create_stock_movement_item` all gained `created_by`/`updated_by` params, threaded into the `ReceivingItemModel`/`StockOutItemModel`/`StockMovementItemModel` row itself, the `StockModel` lot(s) touched (new lot gets `created_by`, a deducted/adjusted existing lot gets `updated_by`), and the material's `InventoryValueModel` (created vs. updated by the same actor)
+- `UserModulePermissionRepository.grant_access`/`set_modules_for_user` gained a `granted_by` param, wired from `user_admin.py`'s `save_permissions` — a permission grant now records who granted it
+- Verified: full migration history (0001→0030) replays cleanly against a fresh MariaDB container (upgrade → downgrade → upgrade round-trip, including the seeded admin/module data); a direct repository/service smoke test confirmed `created_by` populates on insert, `updated_at`/`updated_by` stay NULL until a real update, and `created_at`/`created_by` are untouched by that update
+- Files: every file under `backend/src/models/`, `backend/src/repository/`, `backend/src/routers/`, `backend/src/services/inventory_service.py`, new `backend/alembic/versions/0030_standardize_audit_columns.py`
+
 ## [2026-07-08] — feat(infra): scaffold full-stack app with MariaDB, FastAPI, and Flet via Podman Compose
 - Issue #1 created on GitHub
 - Scope: infra

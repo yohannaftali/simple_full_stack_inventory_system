@@ -1,5 +1,7 @@
 """User-module permission repository for data access operations."""
 
+from typing import Optional
+
 from models.base import SessionLocal
 from models.module import ModuleModel
 from models.module_group import ModuleGroupModel
@@ -43,13 +45,17 @@ class UserModulePermissionRepository:
                 .all()
             )
 
-    def grant_access(self, user_id: int, module_id: int) -> bool:
+    def grant_access(
+        self, user_id: int, module_id: int, granted_by: Optional[int] = None
+    ) -> bool:
         """Grant a user access to a module. No-op if already granted."""
         if self.has_access(user_id, module_id):
             return True
         with SessionLocal() as session:
             session.add(
-                UserModulePermissionModel(user_id=user_id, module_id=module_id)
+                UserModulePermissionModel(
+                    user_id=user_id, module_id=module_id, created_by=granted_by
+                )
             )
             session.commit()
             return True
@@ -82,7 +88,9 @@ class UserModulePermissionRepository:
             )
             return [row[0] for row in rows]
 
-    def set_modules_for_user(self, user_id: int, module_ids: list[int]) -> None:
+    def set_modules_for_user(
+        self, user_id: int, module_ids: list[int], granted_by: Optional[int] = None
+    ) -> None:
         """Replace a user's module grants with exactly `module_ids`."""
         target = set(module_ids)
         with SessionLocal() as session:
@@ -99,7 +107,9 @@ class UserModulePermissionRepository:
 
             for module_id in target - existing_ids:
                 session.add(
-                    UserModulePermissionModel(user_id=user_id, module_id=module_id)
+                    UserModulePermissionModel(
+                        user_id=user_id, module_id=module_id, created_by=granted_by
+                    )
                 )
 
             session.commit()

@@ -213,14 +213,18 @@ def submit(
 
     if id:
         updated = _receiving_repository.update_header(
-            int(id), date=date, description=description, supplier_id=supplier_id_value
+            int(id),
+            date=date,
+            description=description,
+            supplier_id=supplier_id_value,
+            updated_by=user.id,
         )
         if not updated:
             return {"error": "Receiving header not found"}
         return {"message": "Receiving header updated successfully"}
 
     _receiving_repository.create_header(
-        date=date, description=description, supplier_id=supplier_id_value
+        date=date, description=description, supplier_id=supplier_id_value, created_by=user.id
     )
     return {"message": "Receiving header created successfully"}
 
@@ -247,6 +251,7 @@ async def submit_bulk(request: Request, user: UserModel = Depends(_require_acces
             date=date_value,
             description=str(row.get("description", "")).strip(),
             supplier_id=supplier_id,
+            created_by=user.id,
         )
 
     return bulk_create(rows, build)
@@ -317,6 +322,7 @@ def submit_item(
             price_buy=price_buy,
             qty_received=qty_received,
             remarks=remarks,
+            updated_by=user.id,
         )
         if item is None:
             return {"error": "Receiving item not found"}
@@ -336,6 +342,7 @@ def submit_item(
         price_buy=price_buy,
         qty_received=qty_received,
         remarks=remarks,
+        created_by=user.id,
     )
     return {"message": "Receiving item added successfully"}
 
@@ -350,7 +357,9 @@ async def submit_bulk_item(
     rows = parse_bulk_rows(
         form, ["material_id", "location_id", "qty_received", "price_buy", "remarks"]
     )
-    return inventory_service.create_receiving_items_bulk(int(receiving_header_id), rows)
+    return inventory_service.create_receiving_items_bulk(
+        int(receiving_header_id), rows, created_by=user.id
+    )
 
 
 @router.get("/call_material_id_select")

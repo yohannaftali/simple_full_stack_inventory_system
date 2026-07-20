@@ -181,6 +181,7 @@ def submit(
             is_superuser=superuser,
             password=hash_password(password) if password else None,
             department_id=department_id_value,
+            updated_by=user.id,
         )
         if not updated:
             return {"error": "User not found"}
@@ -198,6 +199,7 @@ def submit(
         is_active=active,
         is_superuser=superuser,
         department_id=department_id_value,
+        created_by=user.id,
     )
     return {"message": "User created successfully"}
 
@@ -256,6 +258,7 @@ async def submit_bulk(request: Request, user: UserModel = Depends(_require_acces
             is_superuser=_parse_bool(row.get("is_superuser", "false") or "false"),
             department_id=department_id,
             totp_secret="",
+            created_by=user.id,
         )
 
     return bulk_create(rows, build)
@@ -284,5 +287,5 @@ def save_permissions(
 ) -> dict:
     """Replace a user's module grants with exactly the given comma-separated ids."""
     ids = [int(part) for part in module_ids.split(",") if part.strip()]
-    _permission_repository.set_modules_for_user(int(user_id), ids)
+    _permission_repository.set_modules_for_user(int(user_id), ids, granted_by=user.id)
     return {"message": "Permissions saved successfully"}

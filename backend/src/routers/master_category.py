@@ -93,13 +93,15 @@ def submit(
 ) -> dict:
     if id:
         updated = _category_repository.update_category(
-            int(id), code=code, name=name, description=description
+            int(id), code=code, name=name, description=description, updated_by=user.id
         )
         if not updated:
             return {"error": "Category not found"}
         return {"message": "Category updated successfully"}
 
-    _category_repository.create_category(code=code, name=name, description=description)
+    _category_repository.create_category(
+        code=code, name=name, description=description, created_by=user.id
+    )
     return {"message": "Category created successfully"}
 
 
@@ -125,6 +127,6 @@ async def submit_bulk(request: Request, user: UserModel = Depends(_require_acces
         if not code or not name:
             raise BulkRowError(row["_row"], "Code and Name are required")
         description = str(row.get("description", "")).strip()
-        return CategoryModel(code=code, name=name, description=description)
+        return CategoryModel(code=code, name=name, description=description, created_by=user.id)
 
     return bulk_create(rows, build)

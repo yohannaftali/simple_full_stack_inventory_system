@@ -82,6 +82,7 @@ class ModuleRepository:
         icon: str = "chevron_right",
         description: str = "",
         module_group_id: Optional[int] = None,
+        created_by: Optional[int] = None,
     ) -> ModuleModel:
         """Create a new module."""
         with SessionLocal() as session:
@@ -92,6 +93,7 @@ class ModuleRepository:
                 icon=icon,
                 description=description,
                 module_group_id=module_group_id,
+                created_by=created_by,
             )
             session.add(module)
             session.commit()
@@ -107,6 +109,7 @@ class ModuleRepository:
         icon: str = "chevron_right",
         description: str = "",
         module_group_id: Optional[int] = None,
+        updated_by: Optional[int] = None,
     ) -> bool:
         """Update an existing module."""
         with SessionLocal() as session:
@@ -120,6 +123,7 @@ class ModuleRepository:
             module.icon = icon
             module.description = description
             module.module_group_id = module_group_id
+            module.updated_by = updated_by
             session.commit()
             return True
 

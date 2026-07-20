@@ -40,5 +40,7 @@ def submit(
     footer: str = Form(""),
     user: UserModel = Depends(_require_access),
 ) -> dict:
-    _app_config_repository.upsert_config(app_title=app_title or "SFSIS", footer=footer)
+    _app_config_repository.upsert_config(
+        app_title=app_title or "SFSIS", footer=footer, actor_id=user.id
+    )
     return {"message": "Application config updated successfully"}

@@ -90,12 +90,14 @@ def submit(
     user: UserModel = Depends(_require_access),
 ) -> dict:
     if id:
-        updated = _unit_repository.update_unit(int(id), code=code, name=name)
+        updated = _unit_repository.update_unit(
+            int(id), code=code, name=name, updated_by=user.id
+        )
         if not updated:
             return {"error": "Unit of material not found"}
         return {"message": "Unit of material updated successfully"}
 
-    _unit_repository.create_unit(code=code, name=name)
+    _unit_repository.create_unit(code=code, name=name, created_by=user.id)
     return {"message": "Unit of material created successfully"}
 
 
@@ -109,6 +111,6 @@ async def submit_bulk(request: Request, user: UserModel = Depends(_require_acces
         name = str(row.get("name", "")).strip()
         if not code or not name:
             raise BulkRowError(row["_row"], "Code and Name are required")
-        return UnitOfMaterialModel(code=code, name=name)
+        return UnitOfMaterialModel(code=code, name=name, created_by=user.id)
 
     return bulk_create(rows, build)

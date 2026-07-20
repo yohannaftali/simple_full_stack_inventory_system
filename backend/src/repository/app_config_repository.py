@@ -15,16 +15,21 @@ class AppConfigRepository:
         with SessionLocal() as session:
             return session.query(AppConfigModel).first()
 
-    def upsert_config(self, app_title: str, footer: str) -> AppConfigModel:
+    def upsert_config(
+        self, app_title: str, footer: str, actor_id: Optional[int] = None
+    ) -> AppConfigModel:
         """Update the single row if one exists, otherwise create it."""
         with SessionLocal() as session:
             config = session.query(AppConfigModel).first()
             if config is None:
-                config = AppConfigModel(app_title=app_title, footer=footer)
+                config = AppConfigModel(
+                    app_title=app_title, footer=footer, created_by=actor_id
+                )
                 session.add(config)
             else:
                 config.app_title = app_title
                 config.footer = footer
+                config.updated_by = actor_id
             session.commit()
             session.refresh(config)
             return config

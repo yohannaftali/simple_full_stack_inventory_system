@@ -85,12 +85,14 @@ def submit(
     user: UserModel = Depends(_require_access),
 ) -> dict:
     if id:
-        updated = _supplier_repository.update_supplier(int(id), code=code, name=name)
+        updated = _supplier_repository.update_supplier(
+            int(id), code=code, name=name, updated_by=user.id
+        )
         if not updated:
             return {"error": "Supplier not found"}
         return {"message": "Supplier updated successfully"}
 
-    _supplier_repository.create_supplier(code=code, name=name)
+    _supplier_repository.create_supplier(code=code, name=name, created_by=user.id)
     return {"message": "Supplier created successfully"}
 
 
@@ -115,6 +117,6 @@ async def submit_bulk(request: Request, user: UserModel = Depends(_require_acces
         name = str(row.get("name", "")).strip()
         if not code or not name:
             raise BulkRowError(row["_row"], "Code and Name are required")
-        return SupplierModel(code=code, name=name)
+        return SupplierModel(code=code, name=name, created_by=user.id)
 
     return bulk_create(rows, build)

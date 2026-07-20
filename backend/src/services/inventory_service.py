@@ -50,16 +50,25 @@ class InsufficientStockError(Exception):
         super().__init__(f"Insufficient stock: only {available} available")
 
 
-def _get_or_create_inventory_value(session, material_id: int) -> InventoryValueModel:
+def _get_or_create_inventory_value(
+    session, material_id: int, actor_id: int | None = None
+) -> InventoryValueModel:
     inv = (
         session.query(InventoryValueModel)
         .filter(InventoryValueModel.material_id == material_id)
         .first()
     )
     if inv is None:
-        inv = InventoryValueModel(material_id=material_id, qty=Decimal("0"), average_price=Decimal("0"))
+        inv = InventoryValueModel(
+            material_id=material_id,
+            qty=Decimal("0"),
+            average_price=Decimal("0"),
+            created_by=actor_id,
+        )
         session.add(inv)
         session.flush()
+    else:
+        inv.updated_by = actor_id
     return inv
 
 
@@ -88,6 +97,7 @@ def create_receiving_item(
     price_buy: Decimal,
     qty_received: Decimal,
     remarks: str,
+    created_by: int | None = None,
 ) -> ReceivingItemModel:
     """Create a receiving item, its stock lot, and update the material's MAP."""
     with SessionLocal() as session:
@@ -99,6 +109,7 @@ def create_receiving_item(
             qty_plan=qty_received,
             qty_received=qty_received,
             remarks=remarks,
+            created_by=created_by,
         )
         session.add(item)
         session.flush()
@@ -109,10 +120,11 @@ def create_receiving_item(
                 material_id=material_id,
                 location_id=location_id,
                 qty=qty_received,
+                created_by=created_by,
             )
         )
 
-        inv = _get_or_create_inventory_value(session, material_id)
+        inv = _get_or_create_inventory_value(session, material_id, actor_id=created_by)
         _apply_receiving_delta(inv, Decimal("0"), Decimal("0"), qty_received, price_buy)
 
         session.commit()
@@ -120,7 +132,9 @@ def create_receiving_item(
         return item
 
 
-def create_receiving_items_bulk(receiving_header_id: int, rows: list[dict]) -> dict:
+def create_receiving_items_bulk(
+    receiving_header_id: int, rows: list[dict], created_by: int | None = None
+) -> dict:
     """ALL OR NOTHING bulk version of `create_receiving_item` (issue #24) -
     same convention as `services/bulk_service.py::bulk_create`, but that
     helper's single `session.add(build_instance(row, session))` shape
@@ -188,6 +202,7 @@ def create_receiving_items_bulk(receiving_header_id: int, rows: list[dict]) -> d
                     qty_plan=qty_received,
                     qty_received=qty_received,
                     remarks=str(row.get("remarks", "")).strip(),
+                    created_by=created_by,
                 )
                 session.add(item)
                 session.flush()
@@ -198,10 +213,11 @@ def create_receiving_items_bulk(receiving_header_id: int, rows: list[dict]) -> d
                         material_id=material_id,
                         location_id=location_id,
                         qty=qty_received,
+                        created_by=created_by,
                     )
                 )
 
-                inv = _get_or_create_inventory_value(session, material_id)
+                inv = _get_or_create_inventory_value(session, material_id, actor_id=created_by)
                 _apply_receiving_delta(inv, Decimal("0"), Decimal("0"), qty_received, price_buy)
                 session.flush()
 
@@ -218,6 +234,7 @@ def update_receiving_item(
     price_buy: Decimal,
     qty_received: Decimal,
     remarks: str,
+    updated_by: int | None = None,
 ) -> ReceivingItemModel | None:
     """Update a receiving item's qty/price/remarks (material/location are fixed).
 
@@ -243,6 +260,7 @@ def update_receiving_item(
         item.price_buy = price_buy
         item.qty_received = qty_received
         item.remarks = remarks
+        item.updated_by = updated_by
 
         stock = (
             session.query(StockModel)
@@ -251,8 +269,9 @@ def update_receiving_item(
         )
         if stock is not None:
             stock.qty = qty_received
+            stock.updated_by = updated_by
 
-        inv = _get_or_create_inventory_value(session, item.material_id)
+        inv = _get_or_create_inventory_value(session, item.material_id, actor_id=updated_by)
         _apply_receiving_delta(inv, old_qty, old_price, qty_received, price_buy)
 
         session.commit()
@@ -266,6 +285,7 @@ def create_stock_out_item(
     location_id: int,
     qty_out: Decimal,
     remarks: str,
+    created_by: int | None = None,
 ) -> StockOutItemModel:
     """Issue stock: deduct FIFO from the material's lots at `location_id`,
     capture the material's current MAP as the issue price, decrement the
@@ -290,9 +310,10 @@ def create_stock_out_item(
                 break
             deduct = min(lot.qty, remaining)
             lot.qty -= deduct
+            lot.updated_by = created_by
             remaining -= deduct
 
-        inv = _get_or_create_inventory_value(session, material_id)
+        inv = _get_or_create_inventory_value(session, material_id, actor_id=created_by)
         price = inv.average_price
         inv.qty = inv.qty - qty_out
 
@@ -305,6 +326,7 @@ def create_stock_out_item(
             price=price,
             total_value=qty_out * price,
             remarks=remarks,
+            created_by=created_by,
         )
         session.add(stock_out_item)
 
@@ -363,6 +385,7 @@ def create_stock_movement_item(
                 break
             deduct = min(lot.qty, remaining)
             lot.qty -= deduct
+            lot.updated_by = created_by
             remaining -= deduct
 
         movement_item = StockMovementItemModel(
@@ -386,6 +409,7 @@ def create_stock_movement_item(
                 material_id=material_id,
                 location_id=destination_location_id,
                 qty=movement_qty,
+                created_by=created_by,
             )
         )
 

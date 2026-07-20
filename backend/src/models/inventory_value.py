@@ -4,8 +4,9 @@ never written to directly by routers."""
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, Numeric
+from sqlalchemy import DateTime, ForeignKey, Integer, Numeric
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -23,6 +24,15 @@ class InventoryValueModel(Base):
     )
     qty: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=0)
     average_price: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=0)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    created_by: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+    updated_by: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=True, index=True
+    )
+    updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, onupdate=func.now(), nullable=True
     )

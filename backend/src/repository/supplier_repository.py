@@ -54,15 +54,19 @@ class SupplierRepository:
                 query = query.order_by(SupplierModel.code)
             return paginate(query, limit=limit, page=page, offset=offset, sort_fields=sort_fields)
 
-    def create_supplier(self, code: str, name: str) -> SupplierModel:
+    def create_supplier(
+        self, code: str, name: str, created_by: Optional[int] = None
+    ) -> SupplierModel:
         with SessionLocal() as session:
-            supplier = SupplierModel(code=code, name=name)
+            supplier = SupplierModel(code=code, name=name, created_by=created_by)
             session.add(supplier)
             session.commit()
             session.refresh(supplier)
             return supplier
 
-    def update_supplier(self, supplier_id: int, code: str, name: str) -> bool:
+    def update_supplier(
+        self, supplier_id: int, code: str, name: str, updated_by: Optional[int] = None
+    ) -> bool:
         with SessionLocal() as session:
             supplier = (
                 session.query(SupplierModel).filter(SupplierModel.id == supplier_id).first()
@@ -72,6 +76,7 @@ class SupplierRepository:
 
             supplier.code = code
             supplier.name = name
+            supplier.updated_by = updated_by
             session.commit()
             return True
 

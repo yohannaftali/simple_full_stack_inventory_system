@@ -80,6 +80,7 @@ class MaterialRepository:
         unit_id: int,
         category_id: Optional[int] = None,
         is_active: bool = True,
+        created_by: Optional[int] = None,
     ) -> MaterialModel:
         with SessionLocal() as session:
             material = MaterialModel(
@@ -88,6 +89,7 @@ class MaterialRepository:
                 unit_id=unit_id,
                 category_id=category_id,
                 is_active=is_active,
+                created_by=created_by,
             )
             session.add(material)
             session.commit()
@@ -102,6 +104,7 @@ class MaterialRepository:
         unit_id: int,
         category_id: Optional[int] = None,
         is_active: bool = True,
+        updated_by: Optional[int] = None,
     ) -> bool:
         with SessionLocal() as session:
             material = (
@@ -115,5 +118,6 @@ class MaterialRepository:
             material.unit_id = unit_id
             material.category_id = category_id
             material.is_active = is_active
+            material.updated_by = updated_by
             session.commit()
             return True

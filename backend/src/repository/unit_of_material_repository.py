@@ -69,15 +69,19 @@ class UnitOfMaterialRepository:
                 query = query.order_by(UnitOfMaterialModel.code)
             return paginate(query, limit=limit, page=page, offset=offset, sort_fields=sort_fields)
 
-    def create_unit(self, code: str, name: str) -> UnitOfMaterialModel:
+    def create_unit(
+        self, code: str, name: str, created_by: Optional[int] = None
+    ) -> UnitOfMaterialModel:
         with SessionLocal() as session:
-            unit = UnitOfMaterialModel(code=code, name=name)
+            unit = UnitOfMaterialModel(code=code, name=name, created_by=created_by)
             session.add(unit)
             session.commit()
             session.refresh(unit)
             return unit
 
-    def update_unit(self, unit_id: int, code: str, name: str) -> bool:
+    def update_unit(
+        self, unit_id: int, code: str, name: str, updated_by: Optional[int] = None
+    ) -> bool:
         with SessionLocal() as session:
             unit = (
                 session.query(UnitOfMaterialModel)
@@ -89,5 +93,6 @@ class UnitOfMaterialRepository:
 
             unit.code = code
             unit.name = name
+            unit.updated_by = updated_by
             session.commit()
             return True

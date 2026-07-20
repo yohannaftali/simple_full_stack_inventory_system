@@ -87,11 +87,16 @@ class ReceivingRepository:
             return paginate(query, limit=limit, page=page, offset=offset, sort_fields=sort_fields)
 
     def create_header(
-        self, date, description: str, supplier_id: Optional[int] = None
+        self,
+        date,
+        description: str,
+        supplier_id: Optional[int] = None,
+        created_by: Optional[int] = None,
     ) -> ReceivingHeaderModel:
         with SessionLocal() as session:
             header = ReceivingHeaderModel(
-                date=date, description=description, supplier_id=supplier_id
+                date=date, description=description, supplier_id=supplier_id,
+                created_by=created_by,
             )
             session.add(header)
             session.commit()
@@ -99,7 +104,12 @@ class ReceivingRepository:
             return header
 
     def update_header(
-        self, header_id: int, date, description: str, supplier_id: Optional[int] = None
+        self,
+        header_id: int,
+        date,
+        description: str,
+        supplier_id: Optional[int] = None,
+        updated_by: Optional[int] = None,
     ) -> bool:
         with SessionLocal() as session:
             header = (
@@ -113,6 +123,7 @@ class ReceivingRepository:
             header.date = date
             header.description = description
             header.supplier_id = supplier_id
+            header.updated_by = updated_by
             session.commit()
             return True
 

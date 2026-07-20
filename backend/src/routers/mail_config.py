@@ -91,5 +91,6 @@ def submit(
         sender_name=sender_name,
         sender_email=sender_email,
         use_tls=_parse_bool(use_tls),
+        actor_id=user.id,
     )
     return {"message": "Mail config updated successfully"}

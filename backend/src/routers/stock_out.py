@@ -222,14 +222,19 @@ def submit(
 
     if id:
         updated = _stock_out_repository.update_header(
-            int(id), date=date, description=description, department_id=department_id_value
+            int(id),
+            date=date,
+            description=description,
+            department_id=department_id_value,
+            updated_by=user.id,
         )
         if not updated:
             return {"error": "Stock out header not found"}
         return {"message": "Stock out header updated successfully"}
 
     _stock_out_repository.create_header(
-        date=date, description=description, department_id=department_id_value
+        date=date, description=description, department_id=department_id_value,
+        created_by=user.id,
     )
     return {"message": "Stock out header created successfully"}
 
@@ -258,6 +263,7 @@ async def submit_bulk(request: Request, user: UserModel = Depends(_require_acces
             date=date_value,
             description=str(row.get("description", "")).strip(),
             department_id=department_id,
+            created_by=user.id,
         )
 
     return bulk_create(rows, build)
@@ -347,6 +353,7 @@ async def submit_items(request: Request, user: UserModel = Depends(_require_acce
                 location_id=location_id,
                 qty_out=qty_out,
                 remarks=remarks_by_location[location_id],
+                created_by=user.id,
             )
     except InsufficientStockError as exc:
         # Only reachable if stock changed concurrently after the up-front
@@ -441,6 +448,7 @@ async def submit_bulk_items(
                 location_id=location_id,
                 qty_out=qty_out,
                 remarks=remarks_by_pair[(material_id, location_id)],
+                created_by=user.id,
             )
     except InsufficientStockError as exc:
         return {"error": f"Insufficient stock: only {exc.available} available"}

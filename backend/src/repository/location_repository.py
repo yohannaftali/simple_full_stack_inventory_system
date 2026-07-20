@@ -56,15 +56,19 @@ class LocationRepository:
                 query = query.order_by(LocationModel.code)
             return paginate(query, limit=limit, page=page, offset=offset, sort_fields=sort_fields)
 
-    def create_location(self, code: str, name: str) -> LocationModel:
+    def create_location(
+        self, code: str, name: str, created_by: Optional[int] = None
+    ) -> LocationModel:
         with SessionLocal() as session:
-            location = LocationModel(code=code, name=name)
+            location = LocationModel(code=code, name=name, created_by=created_by)
             session.add(location)
             session.commit()
             session.refresh(location)
             return location
 
-    def update_location(self, location_id: int, code: str, name: str) -> bool:
+    def update_location(
+        self, location_id: int, code: str, name: str, updated_by: Optional[int] = None
+    ) -> bool:
         with SessionLocal() as session:
             location = (
                 session.query(LocationModel).filter(LocationModel.id == location_id).first()
@@ -74,6 +78,7 @@ class LocationRepository:
 
             location.code = code
             location.name = name
+            location.updated_by = updated_by
             session.commit()
             return True
 

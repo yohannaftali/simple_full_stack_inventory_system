@@ -145,6 +145,7 @@ def submit(
             icon=icon or "chevron_right",
             description=description,
             module_group_id=module_group_id_value,
+            updated_by=user.id,
         )
         if not updated:
             return {"error": "Module not found"}
@@ -153,6 +154,7 @@ def submit(
     _module_repository.create_module(
         name=name, label=label, sort=sort_value, icon=icon or "chevron_right",
         description=description, module_group_id=module_group_id_value,
+        created_by=user.id,
     )
     return {"message": "Module created successfully"}
 
@@ -205,6 +207,7 @@ async def submit_bulk(request: Request, user: UserModel = Depends(_require_acces
             icon=str(row.get("icon", "")).strip() or "chevron_right",
             description=str(row.get("description", "")).strip(),
             module_group_id=module_group_id,
+            created_by=user.id,
         )
 
     return bulk_create(rows, build)

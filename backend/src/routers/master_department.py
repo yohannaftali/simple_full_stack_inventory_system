@@ -85,12 +85,14 @@ def submit(
     user: UserModel = Depends(_require_access),
 ) -> dict:
     if id:
-        updated = _department_repository.update_department(int(id), code=code, name=name)
+        updated = _department_repository.update_department(
+            int(id), code=code, name=name, updated_by=user.id
+        )
         if not updated:
             return {"error": "Department not found"}
         return {"message": "Department updated successfully"}
 
-    _department_repository.create_department(code=code, name=name)
+    _department_repository.create_department(code=code, name=name, created_by=user.id)
     return {"message": "Department created successfully"}
 
 
@@ -115,6 +117,6 @@ async def submit_bulk(request: Request, user: UserModel = Depends(_require_acces
         name = str(row.get("name", "")).strip()
         if not code or not name:
             raise BulkRowError(row["_row"], "Code and Name are required")
-        return DepartmentModel(code=code, name=name)
+        return DepartmentModel(code=code, name=name, created_by=user.id)
 
     return bulk_create(rows, build)

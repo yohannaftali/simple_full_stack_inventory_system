@@ -25,6 +25,7 @@ class MailConfigRepository:
         sender_name: str,
         sender_email: str,
         use_tls: bool,
+        actor_id: Optional[int] = None,
     ) -> MailConfigModel:
         """Update the single row if one exists, otherwise create it."""
         with SessionLocal() as session:
@@ -38,6 +39,7 @@ class MailConfigRepository:
                     sender_name=sender_name,
                     sender_email=sender_email,
                     use_tls=use_tls,
+                    created_by=actor_id,
                 )
                 session.add(config)
             else:
@@ -48,6 +50,7 @@ class MailConfigRepository:
                 config.sender_name = sender_name
                 config.sender_email = sender_email
                 config.use_tls = use_tls
+                config.updated_by = actor_id
             session.commit()
             session.refresh(config)
             return config

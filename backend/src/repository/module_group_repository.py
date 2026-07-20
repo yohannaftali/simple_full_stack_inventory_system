@@ -70,15 +70,19 @@ class ModuleGroupRepository:
                 query = query.order_by(ModuleGroupModel.sort)
             return paginate(query, limit=limit, page=page, offset=offset, sort_fields=sort_fields)
 
-    def create_group(self, name: str, sort: int = 0) -> ModuleGroupModel:
+    def create_group(
+        self, name: str, sort: int = 0, created_by: Optional[int] = None
+    ) -> ModuleGroupModel:
         with SessionLocal() as session:
-            group = ModuleGroupModel(name=name, sort=sort)
+            group = ModuleGroupModel(name=name, sort=sort, created_by=created_by)
             session.add(group)
             session.commit()
             session.refresh(group)
             return group
 
-    def update_group(self, group_id: int, name: str, sort: int = 0) -> bool:
+    def update_group(
+        self, group_id: int, name: str, sort: int = 0, updated_by: Optional[int] = None
+    ) -> bool:
         with SessionLocal() as session:
             group = (
                 session.query(ModuleGroupModel).filter(ModuleGroupModel.id == group_id).first()
@@ -88,6 +92,7 @@ class ModuleGroupRepository:
 
             group.name = name
             group.sort = sort
+            group.updated_by = updated_by
             session.commit()
             return True
 

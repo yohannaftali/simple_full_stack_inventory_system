@@ -85,11 +85,16 @@ class StockOutRepository:
             return paginate(query, limit=limit, page=page, offset=offset, sort_fields=sort_fields)
 
     def create_header(
-        self, date, description: str, department_id: Optional[int] = None
+        self,
+        date,
+        description: str,
+        department_id: Optional[int] = None,
+        created_by: Optional[int] = None,
     ) -> StockOutHeaderModel:
         with SessionLocal() as session:
             header = StockOutHeaderModel(
-                date=date, description=description, department_id=department_id
+                date=date, description=description, department_id=department_id,
+                created_by=created_by,
             )
             session.add(header)
             session.commit()
@@ -97,7 +102,12 @@ class StockOutRepository:
             return header
 
     def update_header(
-        self, header_id: int, date, description: str, department_id: Optional[int] = None
+        self,
+        header_id: int,
+        date,
+        description: str,
+        department_id: Optional[int] = None,
+        updated_by: Optional[int] = None,
     ) -> bool:
         with SessionLocal() as session:
             header = (
@@ -111,6 +121,7 @@ class StockOutRepository:
             header.date = date
             header.description = description
             header.department_id = department_id
+            header.updated_by = updated_by
             session.commit()
             return True
 

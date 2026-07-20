@@ -88,7 +88,7 @@ def call_change_totp(
     if not verify_totp(secret, totp):
         return {"error": "Invalid code, please try again"}
 
-    _user_repository.update_user_totp_secret(user.username, secret)
+    _user_repository.update_user_totp_secret(user.username, secret, updated_by=user.id)
     return {"success": "TOTP enabled successfully"}
 
 
@@ -109,5 +109,5 @@ def call_change_password(
     if not verify_password(c, user.password):
         return {"error": "Current password is incorrect"}
 
-    _user_repository.update_user_password(user.username, hash_password(n))
+    _user_repository.update_user_password(user.username, hash_password(n), updated_by=user.id)
     return {"success": "Password changed successfully"}
