@@ -149,6 +149,15 @@ async def main(page: ft.Page):
             page.views.append(home_page.build())
             storage.module_history.clear()
         elif page.route == "/server_config":
+            # Web has no Server Configuration screen at all (issue #36) -
+            # the address is always fixed via FRONTEND_DEFAULT_SERVER_URL,
+            # never user-editable. _boot_navigate never pushes here on web
+            # (ServerURL.is_configured() is always True there), but a
+            # manually-typed/bookmarked URL could still land here directly,
+            # so redirect away the same way an unmatched route does below.
+            if bool(getattr(page, "web", False)):
+                page.run_task(page.push_route, "/login")
+                return
             config_page = ServerConfigPage(page)
             page.views.append(config_page.build())
         elif page.route == "/troubleshooting":
@@ -271,6 +280,11 @@ async def main(page: ft.Page):
         # new tab/session of a correctly-configured containerized install
         # to /server_config forever, before the is_active() check below
         # could ever restore the logged-in session.
+        #
+        # On web, ServerURL.is_configured() always returns True (issue #36 -
+        # there is no Server Configuration screen on web, the address is
+        # always the fixed default), so this whole branch is a no-op there
+        # and boot goes straight to the is_active() check below.
         if not storage.server_url.is_configured():
             # Could be a genuinely unconfigured install, or the #648
             # SharedPreferences hot-reload race (see storage_compat.py)

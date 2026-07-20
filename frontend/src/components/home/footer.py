@@ -33,8 +33,7 @@ class Footer:
 
     def default_footer(self):
         footer_text = self.storage.client_data.get_footer()
-        server_url = self.storage.server_url.get()
-        return [
+        controls = [
             ft.Row(
                 controls=[
                     ft.Icon(ft.Icons.APP_REGISTRATION,
@@ -50,19 +49,29 @@ class Footer:
                 spacing=5,
                 tight=True,
             ),
-            ft.Row(
-                controls=[
-                    ft.Icon(ft.Icons.DATASET,
-                            color=ft.Colors.ON_PRIMARY, size=10),
-                    ft.Text(
-                        server_url,
-                        size=8,
-                        color=ft.Colors.ON_PRIMARY,
-                    ),
-                ],
-                alignment=ft.MainAxisAlignment.START,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                spacing=5,
-                tight=True,
-            ),
         ]
+
+        # Web has no Server Configuration screen (issue #36) - the address
+        # is always fixed via FRONTEND_DEFAULT_SERVER_URL, so showing it
+        # here has no value. Desktop/mobile keep it, since it's genuinely
+        # user-configurable there.
+        if not bool(getattr(self.page, "web", False)):
+            controls.append(
+                ft.Row(
+                    controls=[
+                        ft.Icon(ft.Icons.DATASET,
+                                color=ft.Colors.ON_PRIMARY, size=10),
+                        ft.Text(
+                            self.storage.server_url.get(),
+                            size=8,
+                            color=ft.Colors.ON_PRIMARY,
+                        ),
+                    ],
+                    alignment=ft.MainAxisAlignment.START,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=5,
+                    tight=True,
+                )
+            )
+
+        return controls

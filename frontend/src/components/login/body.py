@@ -86,21 +86,6 @@ class Body:
 
     def build(self):
         """Build and return the body column"""
-        server_url = self.storage.server_url.get()
-        if server_url is None:
-            server_url = "Please select server"
-
-        server_info = ft.Container(
-            content=ft.Text(
-                server_url,
-                size=16,
-                color=ft.Colors.TERTIARY,
-                style=ft.TextStyle(decoration=ft.TextDecoration.UNDERLINE),
-            ),
-            on_click=self.on_config_click,
-            tooltip="Server Configuration",
-        )
-
         controls = [
             ft.Icon(
                 icon=ft.Icons.ACCOUNT_CIRCLE,
@@ -113,7 +98,30 @@ class Body:
                 weight=ft.FontWeight.BOLD,
                 color=ft.Colors.PRIMARY,
             ),
-            server_info,
+        ]
+
+        # Web has no Server Configuration screen (issue #36) - the address
+        # is always fixed via FRONTEND_DEFAULT_SERVER_URL, so there's
+        # nothing useful to show/click here. Desktop/mobile keep it, since
+        # the address is genuinely user-configurable there.
+        if not bool(getattr(self.page, "web", False)):
+            server_url = self.storage.server_url.get()
+            if server_url is None:
+                server_url = "Please select server"
+            controls.append(
+                ft.Container(
+                    content=ft.Text(
+                        server_url,
+                        size=16,
+                        color=ft.Colors.TERTIARY,
+                        style=ft.TextStyle(decoration=ft.TextDecoration.UNDERLINE),
+                    ),
+                    on_click=self.on_config_click,
+                    tooltip="Server Configuration",
+                )
+            )
+
+        controls += [
             ft.Divider(height=5, color=ft.Colors.TRANSPARENT),
             self.error_text,
             self.username_field,

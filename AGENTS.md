@@ -50,11 +50,12 @@
 | #29 | feat(stock_browse): drill into stock-by-material with per-location breakdown + totals footer | closed | 2026-07-17 |
 | #28 | feat(stock_browse): drill into stock-by-material with per-location breakdown + totals footer (duplicate of #29) | closed | 2026-07-17 |
 | #30 | feat(frontend,backend): shared table footer (row-count + pagination/lazy-load toggle), port L_database metadata parity | closed | 2026-07-17 |
-| #31 | feat(inventory): stock movement module - transfer stock between locations | ready-for-review | 2026-07-17 |
-| #33 | feat(inventory): add qty_plan to receiving_items and stock_out_items | ready-for-review | 2026-07-17 |
+| #31 | feat(inventory): stock movement module - transfer stock between locations | closed | 2026-07-20 |
+| #33 | feat(inventory): add qty_plan to receiving_items and stock_out_items | closed | 2026-07-20 |
 | #34 | chore(backend): standardize created_at/created_by/updated_at/updated_by across every table | closed | 2026-07-20 |
-| #35 | fix(frontend): table header/body text and footer page-size input unreadable (black) in dark mode | ready-for-review | 2026-07-20 |
+| #35 | fix(frontend): table header/body text and footer page-size input unreadable (black) in dark mode | closed | 2026-07-20 |
 | #32 | fix(inventory): verify stock_in/stock_out header lists default to descending date sort | closed (no-op - already correct) | 2026-07-17 |
+| #36 | feat(frontend): restrict Server Configuration page to desktop/mobile; hide server URL entirely on web | closed | 2026-07-20 |
 
 ## Big Picture
 

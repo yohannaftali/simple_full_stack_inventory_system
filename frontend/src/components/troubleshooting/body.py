@@ -47,6 +47,21 @@ class Body:
 
     def build(self):
         """Build and return the body column"""
+        # Web has no Server Configuration screen and never persists a
+        # server URL at all (issue #36 - it's always the fixed
+        # FRONTEND_DEFAULT_SERVER_URL), so a hard reset there has nothing
+        # to say about it.
+        is_web = bool(getattr(self.page, "web", False))
+        hard_reset_description = (
+            "Hard reset removes the saved login session and theme on this "
+            "device. Use this if the app is stuck in a bad state."
+            if is_web
+            else
+            "Hard reset removes the saved "
+            "server URL, login session, and theme on this "
+            "device. Use this if the app is stuck in a bad "
+            "state."
+        )
         return ft.SafeArea(
             content=ft.Container(
                 content=ft.Column(
@@ -69,10 +84,7 @@ class Body:
                         self.log_view,
                         ft.Divider(height=20, color=ft.Colors.TRANSPARENT),
                         ft.Text(
-                            "Hard reset removes the saved "
-                            "server URL, login session, and theme on this "
-                            "device. Use this if the app is stuck in a bad "
-                            "state.",
+                            hard_reset_description,
                             size=12,
                             color=ft.Colors.ON_SURFACE_VARIANT,
                         ),
@@ -107,14 +119,21 @@ class Body:
 
     def on_hard_reset_click(self, e):
         """Show a confirmation dialog before wiping shared preferences"""
+        is_web = bool(getattr(self.page, "web", False))
+        dialog_text = (
+            "This removes the saved login session and theme on this "
+            "device, and returns you to the Login screen, like a fresh "
+            "install. This cannot be undone."
+            if is_web
+            else
+            "This removes the saved server URL, login session, and "
+            "theme on this device, and returns you to the Server "
+            "Configuration screen, like a fresh install. This cannot "
+            "be undone."
+        )
         dialog = ft.AlertDialog(
             title=ft.Text("Hard Reset?"),
-            content=ft.Text(
-                "This removes the saved server URL, login session, and "
-                "theme on this device, and returns you to the Server "
-                "Configuration screen, like a fresh install. This cannot "
-                "be undone."
-            ),
+            content=ft.Text(dialog_text),
             actions=[
                 ft.TextButton("Cancel", on_click=lambda e: self._close_dialog()),
                 ft.Button(
@@ -144,7 +163,12 @@ class Body:
         # reset runs, then land on Server Configuration - after a hard
         # reset, server_url falls back to DEFAULT_SERVER_URL just like a
         # brand new install, so this is the same "not configured yet"
-        # destination main.py sends first-time users to.
+        # destination main.py sends first-time users to. Web has no
+        # Server Configuration screen at all (issue #36 - ServerURL never
+        # persists there), so it goes to /login instead - the same
+        # destination _boot_navigate itself would choose on web with no
+        # active session.
+        is_web = bool(getattr(self.page, "web", False))
         splash = SplashScreen(self.page)
         self.page.views.clear()
         self.page.views.append(splash.build())
@@ -172,16 +196,17 @@ class Body:
         modals.preload(on_progress=_report_progress)
         splash.set_progress(1, "Done")
 
+        target_route = "/login" if is_web else "/server_config"
         try:
             await sp_call_with_retry(
                 self.page.push_route,
-                "/server_config",
+                target_route,
                 retries=2,
                 delay=0.3,
                 per_call_timeout=3.0,
             )
         except Exception as e:
-            print(f"Hard reset: push_route('/server_config') failed: {e}")
+            print(f"Hard reset: push_route({target_route!r}) failed: {e}")
             splash.set_progress(
                 1, "Navigation failed - please restart the app"
             )

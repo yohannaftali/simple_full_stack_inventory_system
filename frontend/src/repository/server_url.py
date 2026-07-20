@@ -41,6 +41,13 @@ class ServerURL:
         """
         self.page = page
         self.store = store
+        # Web has no Server Configuration screen at all (issue #36) - the
+        # address is always FRONTEND_DEFAULT_SERVER_URL/DEFAULT_SERVER_URL,
+        # never user-editable, so there is nothing to persist. Every method
+        # below short-circuits on this flag rather than relying on callers
+        # to never invoke them on web (main.py/login/footers already don't,
+        # but this keeps the class itself correct regardless).
+        self.is_web = bool(getattr(page, "web", False))
         if not hasattr(page, "data") or page.data is None:
             page.data = {}
         page.data.setdefault("server_url", "")
@@ -52,6 +59,8 @@ class ServerURL:
         Args:
             value: The server URL to store
         """
+        if self.is_web:
+            return
         self.page.data["server_url"] = value
         self.page.data["server_url_configured"] = True
         self.store.persist("server_url", value)
@@ -61,7 +70,12 @@ class ServerURL:
         set(), or found persisted by load()) - as opposed to get() merely
         falling back to DEFAULT_SERVER_URL. The two are indistinguishable
         by value alone, since the containerized deployment's real address
-        IS the default."""
+        IS the default. Always True on web - there's no Server
+        Configuration screen there, so "configured" is a native-only
+        concept (see main.py's _boot_navigate, which skips this check on
+        web anyway)."""
+        if self.is_web:
+            return True
         return bool(self.page.data.get("server_url_configured"))
 
     def get(self) -> str:
@@ -72,6 +86,9 @@ class ServerURL:
         Returns:
             str: The stored base server url string or the default if not set
         """
+        if self.is_web:
+            return DEFAULT_SERVER_URL
+
         if "server_url" in self.page.data and self.page.data["server_url"] != "":
             return self.page.data["server_url"]
 
@@ -81,6 +98,8 @@ class ServerURL:
 
     def clear(self):
         """Clear the stored base server url value"""
+        if self.is_web:
+            return
         if not hasattr(self.page, "data") or self.page.data is None:
             self.page.data = {}
         self.page.data["server_url"] = ""
@@ -90,6 +109,12 @@ class ServerURL:
 
     async def load(self):
         """Load the persisted server url from the session store (async)"""
+        if self.is_web:
+            self.page.data["server_url"] = DEFAULT_SERVER_URL
+            self.page.data["server_url_configured"] = True
+            print(f"Server url: {DEFAULT_SERVER_URL} (web, fixed)")
+            return
+
         server_url = None
         try:
             server_url = await self.store.load("server_url")

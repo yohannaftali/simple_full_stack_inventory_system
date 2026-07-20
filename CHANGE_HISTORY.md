@@ -1,6 +1,28 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-20] — #31, #33, #35 status changed: ready-for-review → closed
+- Title #31: feat(inventory): stock movement module - transfer stock between locations
+- Title #33: feat(inventory): add qty_plan to receiving_items and stock_out_items
+- Title #35: fix(frontend): table header/body text and footer page-size input unreadable (black) in dark mode
+- Platform: GitHub
+- These were already closed remotely (found during a `/planner` Step 1B sync); `AGENTS.md`'s Tracked Issues table was stale and is corrected here alongside #36 closing out in the same commit
+
+## [2026-07-20] — feat(frontend): restrict Server Configuration page to desktop/mobile; hide server URL entirely on web (implemented)
+- Issue #36 addressed on GitHub
+- `repository/server_url.py`'s `ServerURL` gained `self.is_web` (from `page.web`); `get()`/`is_configured()` always resolve to `DEFAULT_SERVER_URL`/`True` on web, and `set()`/`load()`/`clear()` are no-ops there - no `SharedPreferences`/`_ServerFileStore` write for `server_url` ever happens on web
+- `main.py`: `route_change`'s `/server_config` branch redirects to `/login` on web instead of building `ServerConfigPage` (guards a manually-typed/bookmarked URL, since `_boot_navigate` itself never pushes there anymore - `is_configured()` being always-`True` on web makes that branch a natural no-op with no extra branching needed)
+- `components/login/body.py`'s clickable server-URL link, and `components/home/footer.py`/`components/module/footer.py`'s server-URL row, are only built when `not page.web` - desktop/mobile unchanged
+- `components/troubleshooting/body.py`: hard-reset descriptive text and confirmation dialog drop the "server URL" mention on web (nothing to clear there); post-reset navigation goes to `/login` on web instead of `/server_config` (which no longer exists there)
+- Verified live in the containerized web app (Playwright): fresh boot lands directly on `/login` with no Server Configuration step; navigating straight to `/server_config` redirects to `/login`; home and module footers show no server URL; troubleshooting page's hard-reset copy omits it. Desktop/mobile code paths verified unchanged by inspection only (every change is `if not is_web: <original code>`) - not verified against a real native build in this environment
+- Files: `frontend/src/repository/server_url.py`, `frontend/src/main.py`, `frontend/src/components/login/body.py`, `frontend/src/components/home/footer.py`, `frontend/src/components/module/footer.py`, `frontend/src/components/troubleshooting/body.py`
+
+## [2026-07-20] — feat(frontend): restrict Server Configuration page to desktop/mobile; hide server URL entirely on web
+- Issue #36 created on GitHub
+- Scope: frontend
+- Labels: enhancement, frontend
+- Confirmed via `/planner`: hiding the server URL (login link + home/module footer) is web-only — desktop/mobile keep showing it since it's still user-configurable there; the troubleshooting page's server URL line is hidden on web too, for consistency
+
 ## [2026-07-20] — fix(frontend): table header/body text and footer page-size input unreadable (black) in dark mode
 - Issue #35 addressed on GitHub
 - Root cause: several `ft.Text`/`ft.TextField`/`ft.Dropdown` controls under `components/table/` never set an explicit `color` — unlike `components/form/input.py`'s established convention (`color=ON_SURFACE`, `label_style` color, `border_color`), a bare Flet text control inside a `DataTable` cell or a standalone `TextField` doesn't inherit a theme-aware color, so it renders in a fixed default shade that reads as black regardless of theme
