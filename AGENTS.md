@@ -59,7 +59,7 @@
 | #37 | fix(frontend): table footer layout — reposition toggle icon, combine rows, keep footer pinned to table body not page | ready-for-review | 2026-07-20 |
 | #38 | fix(frontend): table header sort icon disappears when column label is truncated/hidden | closed | 2026-07-20 |
 | #39 | fix(frontend): lazy-load scroll never fetches the next page (TableBody._on_scroll never calls on_scroll_end) | closed | 2026-07-20 |
-| #40 | feat(stock_browse): drill into stock-by-location with per-material breakdown | open | 2026-07-20 |
+| #40 | feat(stock_browse): drill into stock-by-location with per-material breakdown | ready-for-review | 2026-07-20 |
 
 ## Big Picture
 
@@ -1873,6 +1873,49 @@ Verified against a real SQLite session (qty/average_price/value computed
 correctly per location, sort by `qty` DESC correct) and via
 `starlette.testclient.TestClient` hitting the actual FastAPI routes
 end-to-end (not just the repository directly).
+
+**Stock-by-location drill-down** (issue #40, 2026-07-20): the mirror image
+of the stock-by-material drill-down above, scoped the opposite way —
+clicking the Location Code/Location column on `stock_browse/index` now
+navigates to `/modules/stock_browse/stock_by_location/<location_id>`,
+listing every material currently held at that one location (Material Code |
+Material Name | Qty | Unit | Avg Price | Value). Needed a genuinely new
+`Table`/`TableRows` capability first: `stock_browse/index`'s row already had
+one row-wide click target (`material_id` marked `"key": True` → 
+`stock_by_material`), and the existing mechanism
+(`TableRows.load()`'s single `key_field`/`edit_screen` pair, wired onto
+every non-editable `DataCell` in a row uniformly) has no way to make a
+*different* cell in the *same* row navigate somewhere else. Added a
+field-level override: any field can set `"link_key_field"` (the name of a
+hidden field on that same row holding the id to navigate with) and
+optionally `"link_screen"` (defaults to the table's own `edit_screen` if
+omitted) — `TableRows.load()` now computes a per-cell tap handler (falling
+back to the row's default `on_tap_handler` when a field has no override),
+so `location_code`/`location_name` link to a new hidden `location_id` field
++ `stock_by_location`, while every other cell in the same row (including
+`material_code`/`material_name`) keeps navigating to `material_id` +
+`stock_by_material` exactly as before — verified live that both drill-downs
+work independently from the same index table with no regression to #29's
+existing behavior.
+`pages/modules/stock_browse/stock_by_location.py` is the same shape as
+`stock_by_material.py` (a `record_id`-accepting, read-only `ModulePage`,
+heading fetched via a small dedicated GET — `get_location` — before the
+table is constructed), with one deliberate footer difference: unlike
+`stock_by_material`'s footer, which shows a single `MAP` figure (constant
+across every row — one material's own average price), this page's footer
+shows only `Total Qty`/`Total Value` — average price genuinely *varies*
+per row here (each material at a location carries its own MAP), so there is
+no single number to show instead of falsely picking one row's value.
+Backend: `stock_repository.py::list_stock_by_location(location_id,
+sort_fields=None)` mirrors `list_stock_by_material()` (same
+`InventoryValueModel` outer-join technique, same qty > 0 filter), and
+`routers/stock_browse.py` gained `get_stock_by_location`/
+`export_stock_by_location`/`get_location`, same shape as their
+by-material equivalents. Verified live in the containerized web app:
+clicking Location on the index navigates and shows the correct
+per-material breakdown with correct totals; clicking Material Code on the
+same row still navigates to the existing by-material page unaffected;
+sorting by Qty on the new page reorders correctly.
 
 `master_config` and `mail_config` are a **different, simpler shape**: a
 **singleton settings screen**, not list+CRUD. Each is just one

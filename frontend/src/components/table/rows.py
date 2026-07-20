@@ -66,37 +66,36 @@ class TableRows:
                     break
         except Exception:
             key_field = None
+        module = None
+        if hasattr(self, "parent") and getattr(self.parent, "module", None):
+            module = getattr(self.parent, "module")
+        elif hasattr(self.page, "data") and isinstance(self.page.data, dict):
+            module = self.page.data.get("module")
+
+        # Table's own `edit_screen` (default "edit") lets a sub-table (e.g.
+        # an item list on a header's edit screen) navigate somewhere other
+        # than the parent module's own edit route, avoiding a route
+        # collision.
+        edit_screen = getattr(self.parent, "edit_screen", "edit")
+
+        def _make_tap(kv, mod, screen):
+            # Use path parameter for id: /modules/<module>/<screen>/<id>
+            if kv is None:
+                return lambda e: None
+            return lambda e: self.page.run_task(
+                self.page.push_route, f"/modules/{mod}/{screen}/{kv}"
+            )
+
         for record in data:
             # determine key value for this row (if key_field defined)
             key_value = record.get(key_field) if key_field is not None else None
 
             # create on_tap handler to navigate to edit page with key
-            on_tap_handler = None
-            if key_field is not None:
-                module = None
-                if hasattr(self, "parent") and getattr(self.parent, "module", None):
-                    module = getattr(self.parent, "module")
-                elif hasattr(self.page, "data") and isinstance(self.page.data, dict):
-                    module = self.page.data.get("module")
-
-                if module:
-                    # Table's own `edit_screen` (default "edit") lets a
-                    # sub-table (e.g. an item list on a header's edit
-                    # screen) navigate somewhere other than the parent
-                    # module's own edit route, avoiding a route collision.
-                    edit_screen = getattr(self.parent, "edit_screen", "edit")
-
-                    def _make_tap(kf, kv, mod, screen):
-                        # Use path parameter for id: /modules/<module>/<screen>/<id>
-                        if kv is None:
-                            return lambda e: None
-                        return lambda e: self.page.run_task(
-                            self.page.push_route, f"/modules/{mod}/{screen}/{kv}"
-                        )
-
-                    on_tap_handler = _make_tap(
-                        key_field, key_value, module, edit_screen
-                    )
+            on_tap_handler = (
+                _make_tap(key_value, module, edit_screen)
+                if key_field is not None and module
+                else None
+            )
 
             cells = []
             row_inputs: dict = {}
@@ -173,9 +172,27 @@ class TableRows:
                         alignment=ft.Alignment.CENTER_RIGHT if is_numeric else None,
                     )
 
+                # A field-level link override (link_key_field, optionally
+                # paired with link_screen) lets this ONE cell navigate
+                # somewhere different from the row's own default
+                # key/edit_screen - e.g. stock_browse's location columns
+                # link to a location drill-down while every other cell in
+                # the same row still links to the row's own material
+                # drill-down (issue #40). Falls back to the row-wide
+                # on_tap_handler when no override is set, same as before.
+                link_key_field = field.get("link_key_field")
+                if link_key_field is not None and module:
+                    cell_tap_handler = _make_tap(
+                        record.get(link_key_field),
+                        module,
+                        field.get("link_screen", edit_screen),
+                    )
+                else:
+                    cell_tap_handler = on_tap_handler
+
                 # attach on_tap to each DataCell so clicking any cell navigates
-                if on_tap_handler is not None:
-                    cell = ft.DataCell(content=content, on_tap=on_tap_handler)
+                if cell_tap_handler is not None:
+                    cell = ft.DataCell(content=content, on_tap=cell_tap_handler)
                 else:
                     cell = ft.DataCell(content=content)
 

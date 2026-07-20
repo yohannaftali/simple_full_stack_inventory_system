@@ -18,6 +18,10 @@ class ModulePage:
                 "type": "hidden", "key": True, "serialize": False
             },
             {
+                "name": "location_id",
+                "type": "hidden", "serialize": False
+            },
+            {
                 "name": "material_code", "label": "Material Code",
                 "type": "label", "sort": True
             },
@@ -27,11 +31,13 @@ class ModulePage:
             },
             {
                 "name": "location_code", "label": "Location Code",
-                "type": "label", "sort": True
+                "type": "label", "sort": True,
+                "link_key_field": "location_id", "link_screen": "stock_by_location"
             },
             {
                 "name": "location_name", "label": "Location",
-                "type": "label", "sort": True
+                "type": "label", "sort": True,
+                "link_key_field": "location_id", "link_screen": "stock_by_location"
             },
             {
                 "name": "qty", "label": "Qty",

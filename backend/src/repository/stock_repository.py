@@ -174,3 +174,67 @@ class StockRepository:
                 }
                 for row in rows
             ]
+
+    def list_stock_by_location(
+        self,
+        location_id: int,
+        sort_fields: list[tuple[str, str]] | None = None,
+    ) -> list[dict]:
+        """Current on-hand qty per material for one location, qty > 0 only.
+
+        Mirror of list_stock_by_material() scoped the opposite way (issue
+        #40) - not paginated, feeds the stock-by-location drill-down only.
+        Unlike list_stock_by_material(), where average_price/value are
+        constant across every row (one material's own MAP), here they vary
+        per row - each material at this location carries its own MAP.
+        """
+        with SessionLocal() as session:
+            qty_expr = func.sum(StockModel.qty)
+            average_price_expr = func.coalesce(InventoryValueModel.average_price, 0)
+            value_expr = qty_expr * average_price_expr
+            query = (
+                session.query(
+                    MaterialModel.id.label("material_id"),
+                    MaterialModel.material_code,
+                    MaterialModel.material_name,
+                    UnitOfMaterialModel.code.label("unit_code"),
+                    UnitOfMaterialModel.name.label("unit_name"),
+                    qty_expr.label("qty"),
+                    average_price_expr.label("average_price"),
+                    value_expr.label("value"),
+                )
+                .join(MaterialModel, MaterialModel.id == StockModel.material_id)
+                .join(UnitOfMaterialModel, UnitOfMaterialModel.id == MaterialModel.unit_id)
+                .outerjoin(
+                    InventoryValueModel, InventoryValueModel.material_id == MaterialModel.id
+                )
+                .filter(StockModel.location_id == location_id)
+                .group_by(MaterialModel.id, InventoryValueModel.average_price)
+                .having(func.sum(StockModel.qty) > 0)
+            )
+            column_map = {
+                "material_code": MaterialModel.material_code,
+                "material_name": MaterialModel.material_name,
+                "unit_name": UnitOfMaterialModel.name,
+                "qty": qty_expr,
+                "average_price": average_price_expr,
+                "value": value_expr,
+            }
+            if sort_fields:
+                query = apply_sort(query, sort_fields, column_map)
+            else:
+                query = query.order_by(MaterialModel.material_code)
+            rows = query.all()
+            return [
+                {
+                    "material_id": row.material_id,
+                    "material_code": row.material_code,
+                    "material_name": row.material_name,
+                    "unit_code": row.unit_code,
+                    "unit_name": row.unit_name,
+                    "qty": row.qty,
+                    "average_price": row.average_price,
+                    "value": row.value,
+                }
+                for row in rows
+            ]

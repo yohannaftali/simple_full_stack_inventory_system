@@ -1,6 +1,15 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-20] — feat(stock_browse): drill into stock-by-location with per-material breakdown (implemented)
+- Issue #40 addressed on GitHub
+- **New generic Table capability needed first**: clicking Location Code/Location on `stock_browse/index` had to navigate somewhere different from clicking Material Code/Material in the *same row* - the existing single-key-per-table mechanism (`TableRows.load()`'s `key_field`/`edit_screen`, one per table) only supports one row-wide navigation target, wired to every non-editable `DataCell` uniformly. Added a field-level override: a field can set `"link_key_field"` (the hidden field holding the id to navigate with) and optionally `"link_screen"` (defaults to the table's own `edit_screen`) - `TableRows.load()` now computes a per-cell tap handler (falling back to the row-wide one when no override is set), so `stock_browse/index.py`'s `location_code`/`location_name` fields link to a new hidden `location_id` + `stock_by_location`, while every other cell in the same row still links to the row's own `material_id` + `stock_by_material` (issue #29) unchanged
+- `backend/src/repository/stock_repository.py::list_stock_by_location(location_id, sort_fields=None)` - mirror of `list_stock_by_material()` scoped the opposite way; unlike that method, `average_price`/`value` vary per row here (each material at a location carries its own MAP, not a single constant one)
+- `backend/src/routers/stock_browse.py`: `get_stock_by_location`/`export_stock_by_location` (mirroring `get_stock_by_material`/`export_stock_by_material`) and `get_location` (mirroring `get_material`, backed by `LocationRepository.get_location_by_id`) for the new drill-down screen's heading
+- `frontend/src/pages/modules/stock_browse/stock_by_location.py` (new) - same shape as `stock_by_material.py`, columns Material Code | Material Name | Qty | Unit | Avg Price | Value; its totals footer shows Total Qty/Total Value only (no single "MAP" figure, unlike `stock_by_material`'s footer - average price isn't constant across rows here, so there's no one number to show)
+- Verified live in the containerized web app: clicking the Location column on `stock_browse/index` navigates to `/modules/stock_browse/stock_by_location/<id>` showing the correct per-material breakdown with correct totals; clicking Material Code on the same index still navigates to `/modules/stock_browse/stock_by_material/<id>` unaffected; sorting by Qty on the new page correctly reorders ascending
+- Files: `frontend/src/components/table/rows.py`, `frontend/src/pages/modules/stock_browse/index.py`, `frontend/src/pages/modules/stock_browse/stock_by_location.py` (new), `backend/src/repository/stock_repository.py`, `backend/src/routers/stock_browse.py`
+
 ## [2026-07-20] — feat(stock_browse): drill into stock-by-location with per-material breakdown
 - Issue #40 created on GitHub
 - Scope: frontend (`pages/modules/stock_browse/`), backend (`routers/stock_browse.py`, `repository/stock_repository.py`)
