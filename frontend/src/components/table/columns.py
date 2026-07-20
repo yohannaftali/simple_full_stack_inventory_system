@@ -255,9 +255,15 @@ class TableColumns:
             # (which used to visibly grow into - "behind" - the row below
             # it). Below _MIN_LABEL_VISIBLE_WIDTH there isn't room for even
             # a truncated word to read as anything, so drop the label
-            # (and, for a sortable field, its sort icon too - no point
-            # showing a click target with nothing readable next to it)
-            # entirely rather than show one clipped character.
+            # entirely rather than show one clipped character. A sortable
+            # column's sort icon is NOT gated on this (issue #38) - it has
+            # its own reserved width (_min_width_for()'s `_SORT_ICON_WIDTH`
+            # addition, independent of the label), and hiding it here used
+            # to silently remove the user's only visible way to tell the
+            # column was sortable at all, even though the click handler
+            # itself (_on_header_click, wired below regardless) still
+            # worked - the icon is the only reason a user would ever know
+            # to click.
             show_label = label is not None and (
                 w is None or w >= _MIN_LABEL_VISIBLE_WIDTH
             )
@@ -291,30 +297,34 @@ class TableColumns:
                 left_content = ft.Row(row_children, spacing=4, tight=True)
 
             # Label stays on the left, sort icon pins to the column's right
-            # edge (SPACE_BETWEEN on a non-tight Row - it fills the
-            # fixed-width Container below it, since no `alignment` is set
-            # on that Container, so the Container passes its own width down
-            # as a tight constraint - same mechanism components/form/date.py's
-            # docstring documents). Two earlier attempts at this exact
-            # layout ran into what turned out to be a red herring: the real
-            # bug (see `_on_header_click()`) was Flutter's own
-            # `DataColumn.onSort` silently reserving native sort-arrow
-            # space whenever it's non-null, which made the header cell
-            # wider than its body counterpart regardless of how this Row
-            # was laid out - SPACE_BETWEEN was never the problem.
-            if is_sortable and show_label:
+            # edge. `left_content` is wrapped in an `expand=True` Container
+            # so it - not the Row as a whole - is the one given a *bounded*
+            # width (Row hands an expand=True child the leftover space after
+            # laying out its fixed-size siblings, same as Flutter's own
+            # Expanded/Flexible) - this is what makes the label's
+            # `overflow=ELLIPSIS` actually take effect. Without it, a Row's
+            # non-flex children are laid out with loose (effectively
+            # unbounded) width constraints, so a long label's Text never
+            # actually gets constrained tightly enough to ellipsize and the
+            # whole Row (icon included) can render wider than the outer
+            # fixed-width Container - visually bleeding into the next
+            # column's header (issue #38 follow-up). The icon itself is
+            # fixed-size and always placed last, so it's guaranteed to sit
+            # at this column's own right edge, never pushed past it.
+            if is_sortable:
                 sort_icon = self._build_sort_icon(field["name"])
-                label_content = ft.Row(
-                    [left_content, sort_icon]
-                    if left_content is not None
-                    else [sort_icon],
-                    alignment=(
-                        ft.MainAxisAlignment.SPACE_BETWEEN
-                        if left_content is not None
-                        else ft.MainAxisAlignment.END
-                    ),
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                )
+                if left_content is not None:
+                    label_content = ft.Row(
+                        [ft.Container(content=left_content, expand=True), sort_icon],
+                        spacing=4,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    )
+                else:
+                    label_content = ft.Row(
+                        [sort_icon],
+                        alignment=ft.MainAxisAlignment.END,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    )
             else:
                 label_content = left_content
 
