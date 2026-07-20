@@ -12,6 +12,21 @@ from components.table.toolbar import TableToolbar
 from repository.storage import Storage
 from utils.http_client import HttpClient
 
+# Used by Table._should_eagerly_load_more() to guess whether the rows
+# loaded so far already fill the visible viewport, without depending on a
+# client-side scroll event (Flet's on_scroll never fires at all for a
+# scrollable whose content doesn't overflow its own viewport - confirmed
+# empirically, there's simply no scroll gesture to report - so a short
+# result set on a tall/short-viewport screen could never trigger lazy-load
+# via scroll and would strand the user with unfetched rows and no way to
+# reach them). Deliberately generous (errs toward "not full yet, keep
+# loading") since fetching one page too many is harmless - get_data()
+# stops on its own once every page is loaded - while stranding the user
+# is the actual bug this exists to prevent. _MAX_ROW_HEIGHT matches
+# TableBody.build()'s own `data_row_max_height`.
+_ESTIMATED_CHROME_HEIGHT = 220
+_MAX_ROW_HEIGHT = 44
+
 
 class Table:
     def __init__(
@@ -293,8 +308,32 @@ class Table:
         self.get_data(page_no=self.page_number, append=True)
         self.is_loading_more = False
 
+    def _should_eagerly_load_more(self) -> bool:
+        """Whether the rows loaded so far probably don't fill the visible
+        viewport yet, even though more pages remain on the server - see
+        the module-level comment on `_ESTIMATED_CHROME_HEIGHT`/
+        `_MAX_ROW_HEIGHT` for why this has to be a page-height estimate
+        rather than reacting to a scroll event (there may never be one).
+        Mirrors `_handle_scroll_end`'s own "only in lazy mode" guard -
+        pagination mode pages via explicit buttons only, and a table with
+        no footer at all (`is_inside_form`) isn't a real dataset the user
+        scrolls through."""
+        if self.footer is None or self.footer.mode != MODE_LAZY:
+            return False
+        if self.page_number >= self.total_pages:
+            return False
+        page_height = getattr(self.page, "height", None) or 0
+        if page_height <= 0:
+            return False
+        available = page_height - _ESTIMATED_CHROME_HEIGHT
+        if available <= 0:
+            return False
+        rows_needed_to_fill = available / _MAX_ROW_HEIGHT
+        return len(self.data) < rows_needed_to_fill
+
     def get_data(self, page_no: int = 1, offset: int = 0, append: bool = False):
-        self.data = []
+        if not append:
+            self.data = []
         client = HttpClient(self.page)
         param = f"table-keyword-filter={self.filter}" if self.filter else ""
         param = param + f"&limit={self.limit}&page={page_no}&offset={offset}"
@@ -320,8 +359,10 @@ class Table:
                 self.total_pages = 1
                 self.total_rows = 0
 
-            self.data = response
+            self.data = self.data + response if append else response
             self.load(response, append=append)
+            if self._should_eagerly_load_more():
+                self._handle_scroll_end()
         else:
             print(f"Unexpected response format: {response}")
 
@@ -374,6 +415,12 @@ class Table:
                 # Trigger update for the column container and its parent
                 col.update()
                 self.table_container.update()
+                # Only an appended lazy-load-more should keep the user's
+                # scroll position - a fresh (non-append) load, e.g. a
+                # filter/sort change, is a new result set and should stay
+                # at the top like before.
+                if append and self.body:
+                    self.body.restore_scroll_position()
         else:
             # If not yet built, just ensure header/body objects are updated so
             # when `build()` is eventually called they use the latest widths.

@@ -73,25 +73,60 @@ class TableBody:
         return self.body_container
 
     def _on_scroll(self, e: ft.OnScrollEvent):
-        """Detect when user scrolls near bottom"""
+        """Detect when user scrolls near bottom.
+
+        The `max_scroll_extent <= 0` case (content doesn't overflow the
+        viewport yet) is handled defensively here too, but this is NOT the
+        real fix for "a short/tall-viewport page can't load the rest of
+        its data" - confirmed empirically that Flet's `on_scroll` never
+        fires at all in that situation (no overflow means no scroll
+        gesture, so no event, so this method is never even called). The
+        actual fix is `Table._should_eagerly_load_more()`, a page-height
+        heuristic that runs independently of any scroll event."""
         # Save scroll position
         self.last_scroll_position = e.pixels
 
         if self.is_loading or self.on_scroll_end is None:
             return
 
-        # Check if we have valid scroll extent
-        if e.max_scroll_extent is None or e.max_scroll_extent <= 0:
+        if e.max_scroll_extent is None:
+            return
+
+        if e.max_scroll_extent <= 0:
+            print("No scroll extent yet - eagerly checking for more data...")
+            self.is_loading = True
+            self.on_scroll_end()
+            self.is_loading = False
             return
 
         # Load more when scrolled to 90% or more
-        scroll_percentage = (
-            e.pixels / e.max_scroll_extent if e.max_scroll_extent > 0 else 0
-        )
+        scroll_percentage = e.pixels / e.max_scroll_extent
 
         if scroll_percentage >= 0.9:
             print(f"Scroll triggered: {scroll_percentage:.2%} - Loading more...")
             self.is_loading = True
+            self.on_scroll_end()
+            self.is_loading = False
+
+    def restore_scroll_position(self) -> None:
+        """Re-apply the scroll offset the user was at before this body's
+        controls were rebuilt (issue: a lazy-load-more append used to jump
+        back to the top, since Table.load() swaps in a brand new
+        ft.Column/DataTable rather than mutating the existing one - a
+        freshly created scrollable control always starts at offset 0
+        client-side, even though this TableBody Python instance (and its
+        `last_scroll_position`) persists across rebuilds). Only meaningful
+        after an append (more rows added below what's already visible) -
+        a fresh, non-append load (filter/sort change) should stay at the
+        top, so callers only invoke this for the append case."""
+        if self.scrollable_table is not None and self.last_scroll_position > 0:
+            try:
+                self.page.run_task(
+                    self.scrollable_table.scroll_to,
+                    offset=self.last_scroll_position, duration=0
+                )
+            except Exception as e:
+                print(f"Could not restore scroll position: {e}")
 
     def update(self):
         print("TableBody.update")
@@ -101,16 +136,7 @@ class TableBody:
             self.data_table.rows = self.rows.rows
             self.data_table.update()
             print("data_table updated")
-
-            # Restore scroll position after update
-            if self.scrollable_table is not None and self.last_scroll_position > 0:
-                try:
-                    self.page.run_task(
-                        self.scrollable_table.scroll_to,
-                        offset=self.last_scroll_position, duration=0
-                    )
-                except Exception as e:
-                    print(f"Could not restore scroll position: {e}")
+            self.restore_scroll_position()
 
     def show_loading(self):
         """Show loading indicator"""
