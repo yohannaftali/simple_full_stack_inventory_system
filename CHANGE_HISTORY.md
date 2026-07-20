@@ -1,6 +1,12 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-20] — feat(stock_browse): drill into stock-by-location with per-material breakdown
+- Issue #40 created on GitHub
+- Scope: frontend (`pages/modules/stock_browse/`), backend (`routers/stock_browse.py`, `repository/stock_repository.py`)
+- Labels: enhancement, frontend
+- Requested directly by the user: clicking the Location Code/Name column on `stock_browse/index` should navigate to `/modules/stock_browse/stock_by_location/<location_id>`, listing every material at that location (Material Code | Material Name | Qty | Unit | Avg Price | Value) — the mirror image of issue #29's existing stock-by-material drill-down, scoped by location instead of material. Not yet implemented.
+
 ## [2026-07-20] — fix(frontend): lazy-load append visibly jumps to top then snaps back (not smooth)
 - Follow-up to #39, reported directly by the user: lazy-load is "almost perfect" but loading more rows shows a visible glitch - the view briefly jumps up (toward the top) before snapping back down to where the user was scrolled to
 - Root cause: `Table.load()`'s append path always called `self.body.build()`, swapping in a brand-new `ft.Column`/`DataTable` and replacing `col.controls[2]` - a freshly built scrollable control always starts the client at scroll offset 0. The previous #39 follow-up fix (`TableBody.restore_scroll_position()`) corrected this *after the fact* with a `scroll_to()` call, which is exactly what produced the visible "jump to top, then snap back" - the offset-0 frame was real and briefly visible before the corrective jump landed
