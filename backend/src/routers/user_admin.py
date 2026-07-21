@@ -17,11 +17,15 @@ Contract (see components/table/table.py, components/form/form.py, components/for
   `department_id` select field.
 - POST C_ap_master_user/delete (form: id) -> also deletes the user's
   module-permission grants first.
-- GET  C_ap_master_user/get_all_modules -> every module (for the permission
-  checklist), `{"id","name","label"}` each.
-- GET  C_ap_master_user/get_permissions?id=<user_id> -> {"module_ids": [...]}.
-- POST C_ap_master_user/save_permissions (form: user_id, module_ids [comma-
-  separated ids]) -> replaces the user's grants with exactly that set.
+- GET  C_ap_master_user/get_granted_modules?id=<user_id>&table-keyword-filter=&
+  limit=&page=&offset= -> paginated list of modules the user already has
+  access to (the read-only module-access table on `edit.py`, issue #41).
+- GET  C_ap_master_user/get_ungranted_modules?id=<user_id>&table-keyword-filter=&
+  limit=&page=&offset= -> paginated list of modules the user does NOT yet
+  have access to (the checkbox-select table on `permission_new.py`, issue #41).
+- POST C_ap_master_user/submit_permission_new (form: user_id, repeated
+  module_ids) -> grants access to exactly those module ids, additive only -
+  does not touch any of the user's existing grants (issue #41).
 
 All routes require `ap_master_user` access (or superuser) via `require_module_access`.
 """
@@ -31,8 +35,10 @@ from fastapi import APIRouter, Depends, Form, Query, Request
 from core.security import hash_password
 from core.table_export import export_response
 from core.table_query import attach_pagination, parse_sort_fields
+from models.module import ModuleModel
 from models.user import UserModel
 from repository.department_repository import DepartmentRepository
+from repository.module_group_repository import ModuleGroupRepository
 from repository.module_repository import ModuleRepository
 from repository.user_module_permission_repository import UserModulePermissionRepository
 from repository.user_repository import UserRepository
@@ -44,6 +50,7 @@ _user_repository = UserRepository()
 _module_repository = ModuleRepository()
 _permission_repository = UserModulePermissionRepository()
 _department_repository = DepartmentRepository()
+_module_group_repository = ModuleGroupRepository()
 
 _require_access = require_module_access("ap_master_user")
 
@@ -264,28 +271,91 @@ async def submit_bulk(request: Request, user: UserModel = Depends(_require_acces
     return bulk_create(rows, build)
 
 
-@router.get("/get_all_modules")
-def get_all_modules(user: UserModel = Depends(_require_access)) -> list:
-    """Every registered module, for the permission checklist."""
-    return [
-        {"id": module.id, "name": module.name, "label": module.label}
-        for module in _module_repository.get_all_modules()
-    ]
+def _serialize_module_for_permission(module: ModuleModel) -> dict:
+    group = (
+        _module_group_repository.get_group_by_id(module.module_group_id)
+        if module.module_group_id
+        else None
+    )
+    return {
+        "id": module.id,
+        "name": module.name,
+        "label": module.label,
+        "description": module.description,
+        "module_group_name": group.name if group else "",
+    }
 
 
-@router.get("/get_permissions")
-def get_permissions(id: int, user: UserModel = Depends(_require_access)) -> dict:  # noqa: A002
-    """The module ids a user has been granted access to."""
-    return {"module_ids": _permission_repository.get_module_ids_for_user(id)}
-
-
-@router.post("/save_permissions")
-def save_permissions(
-    user_id: str = Form(...),
-    module_ids: str = Form(""),
+@router.get("/get_granted_modules")
+def get_granted_modules(
+    request: Request,
+    id: int,  # noqa: A002
+    keyword: str = Query("", alias="table-keyword-filter"),
+    limit: int = Query(20),
+    page: int = Query(1),
+    offset: int = Query(0),
     user: UserModel = Depends(_require_access),
+) -> list:
+    """Paginated list of modules the user already has access to."""
+    sort_fields = parse_sort_fields(request.query_params)
+    rows, pagination = _module_repository.list_granted_modules_for_user(
+        user_id=id,
+        keyword=keyword,
+        query_params=request.query_params,
+        limit=limit,
+        page=page,
+        offset=offset,
+        sort_fields=sort_fields,
+    )
+    return attach_pagination(
+        [_serialize_module_for_permission(module) for module in rows], pagination
+    )
+
+
+@router.get("/get_ungranted_modules")
+def get_ungranted_modules(
+    request: Request,
+    id: int,  # noqa: A002
+    keyword: str = Query("", alias="table-keyword-filter"),
+    limit: int = Query(20),
+    page: int = Query(1),
+    offset: int = Query(0),
+    user: UserModel = Depends(_require_access),
+) -> list:
+    """Paginated list of modules the user does NOT yet have access to."""
+    sort_fields = parse_sort_fields(request.query_params)
+    rows, pagination = _module_repository.list_ungranted_modules_for_user(
+        user_id=id,
+        keyword=keyword,
+        query_params=request.query_params,
+        limit=limit,
+        page=page,
+        offset=offset,
+        sort_fields=sort_fields,
+    )
+    return attach_pagination(
+        [_serialize_module_for_permission(module) for module in rows], pagination
+    )
+
+
+@router.post("/submit_permission_new")
+async def submit_permission_new(
+    request: Request, user: UserModel = Depends(_require_access)
 ) -> dict:
-    """Replace a user's module grants with exactly the given comma-separated ids."""
-    ids = [int(part) for part in module_ids.split(",") if part.strip()]
-    _permission_repository.set_modules_for_user(int(user_id), ids, granted_by=user.id)
-    return {"message": "Permissions saved successfully"}
+    """Grant a user access to every module id submitted - additive only,
+    existing grants are left untouched (unlike the old save_permissions,
+    which replaced the whole grant set)."""
+    form = await request.form()
+    user_id_raw = form.get("user_id", "")
+    if not user_id_raw:
+        return {"error": "user_id is required"}
+    module_ids = [part for part in form.getlist("module_ids") if part]
+    if not module_ids:
+        return {"error": "Select at least one module"}
+
+    target_user_id = int(user_id_raw)
+    for module_id in module_ids:
+        _permission_repository.grant_access(
+            target_user_id, int(module_id), granted_by=user.id
+        )
+    return {"message": "Permission added successfully"}

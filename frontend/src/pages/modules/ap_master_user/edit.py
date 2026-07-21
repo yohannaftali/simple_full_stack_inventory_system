@@ -2,7 +2,7 @@ import flet as ft
 
 from components.module.view import ModuleView
 from components.form.form import Form
-from pages.modules.ap_master_user.permission_checklist import PermissionChecklist
+from pages.modules.ap_master_user.permission_table import PermissionTable
 from utils.http_client import HttpClient
 
 
@@ -67,12 +67,16 @@ class ModulePage:
             name="edit",
             fields=self.fields
         )
-        self.permission_checklist = (
-            PermissionChecklist(page, record_id) if record_id else None
-        )
 
         self.view = ModuleView(page, module, screen)
         self.view.header.set_title("Edit User")
+
+        # Must come after self.view is assigned - PermissionTable/Table fetch
+        # data immediately and reach back through parent.view.show_error() on
+        # failure.
+        self.permission_table = (
+            PermissionTable(page, self, module, record_id) if record_id else None
+        )
 
         self.view.toolbar.add_submit_button(callback=self.callback_submit)
         self.view.toolbar.add_button(
@@ -90,8 +94,14 @@ class ModulePage:
 
     def body(self):
         controls = [self.form.build()]
-        if self.permission_checklist is not None:
-            controls.append(self.permission_checklist.build())
+        if self.permission_table is not None:
+            # Table's internal layout expands to fill its parent, which
+            # needs a bounded height when nested alongside other content
+            # in a scrolling Column - otherwise it collapses to zero
+            # height instead of rendering its own internal scroll region.
+            controls.append(
+                ft.Container(content=self.permission_table.build(), height=400)
+            )
         return ft.Column(controls=controls, expand=True, scroll=ft.ScrollMode.AUTO)
 
     def callback_submit(self, e):

@@ -287,10 +287,14 @@ is only visible to users who already have access to it — the seeded
 - **Edit a user**: click a row in the list. On the edit screen you can
   update the same fields (leave Password blank to keep the existing one).
 - **Grant module access**: still on the edit screen, scroll to the **Module
-  Access** checklist below the form — one checkbox per module. Check every
-  module this user should be able to open, then click **Save Permissions**.
-  There's no group/role concept here: every module a non-superuser needs
-  must be checked explicitly, including basic ones like Stock In/Stock Out.
+  Access** table below the form — it lists every module this user already
+  has access to. Click **Add Permission** (the toolbar button above that
+  table) to open a new screen listing every module the user does *not* yet
+  have — check as many as you need (the list is filterable) and click
+  **Submit**. You're returned to the edit screen with the new modules added
+  to the access table. There's no group/role concept here: every module a
+  non-superuser needs must be granted explicitly, including basic ones like
+  Stock In/Stock Out.
 - **Delete a user**: the trash icon on the edit screen. This also removes
   all of that user's module grants.
 

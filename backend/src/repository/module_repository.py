@@ -12,6 +12,7 @@ from core.table_query import (
 from models.base import SessionLocal
 from models.module import ModuleModel
 from models.module_group import ModuleGroupModel
+from models.user_module_permission import UserModulePermissionModel
 
 _FILTER_COLUMN_MAP = {
     "name": ModuleModel.name,
@@ -60,6 +61,79 @@ class ModuleRepository:
         with SessionLocal() as session:
             query = session.query(ModuleModel).outerjoin(
                 ModuleGroupModel, ModuleGroupModel.id == ModuleModel.module_group_id
+            )
+            query = apply_keyword_filter(
+                query, [ModuleModel.name, ModuleModel.label], keyword
+            )
+            if query_params is not None:
+                query = apply_column_filters(
+                    query, query_params, _FILTER_COLUMN_MAP, _FILTER_NUMERIC_FIELDS
+                )
+            if sort_fields:
+                query = apply_sort(query, sort_fields, _FILTER_COLUMN_MAP)
+            else:
+                query = query.order_by(ModuleModel.sort)
+            return paginate(query, limit=limit, page=page, offset=offset, sort_fields=sort_fields)
+
+    def list_granted_modules_for_user(
+        self,
+        user_id: int,
+        keyword: str = "",
+        query_params=None,
+        limit: int = 20,
+        page: int = 1,
+        offset: int = 0,
+        sort_fields: list[tuple[str, str]] | None = None,
+    ) -> tuple[list[ModuleModel], Pagination]:
+        """List modules a user has already been granted access to, paginated
+        - backs the read-only module-access table on `ap_master_user/edit.py`."""
+        with SessionLocal() as session:
+            query = (
+                session.query(ModuleModel)
+                .join(
+                    UserModulePermissionModel,
+                    UserModulePermissionModel.module_id == ModuleModel.id,
+                )
+                .outerjoin(
+                    ModuleGroupModel, ModuleGroupModel.id == ModuleModel.module_group_id
+                )
+                .filter(UserModulePermissionModel.user_id == user_id)
+            )
+            query = apply_keyword_filter(
+                query, [ModuleModel.name, ModuleModel.label], keyword
+            )
+            if query_params is not None:
+                query = apply_column_filters(
+                    query, query_params, _FILTER_COLUMN_MAP, _FILTER_NUMERIC_FIELDS
+                )
+            if sort_fields:
+                query = apply_sort(query, sort_fields, _FILTER_COLUMN_MAP)
+            else:
+                query = query.order_by(ModuleModel.sort)
+            return paginate(query, limit=limit, page=page, offset=offset, sort_fields=sort_fields)
+
+    def list_ungranted_modules_for_user(
+        self,
+        user_id: int,
+        keyword: str = "",
+        query_params=None,
+        limit: int = 20,
+        page: int = 1,
+        offset: int = 0,
+        sort_fields: list[tuple[str, str]] | None = None,
+    ) -> tuple[list[ModuleModel], Pagination]:
+        """List modules a user has NOT yet been granted access to, paginated
+        - backs the checkbox-select table on `ap_master_user/permission_new.py`."""
+        with SessionLocal() as session:
+            granted_subquery = session.query(UserModulePermissionModel.module_id).filter(
+                UserModulePermissionModel.user_id == user_id
+            )
+            query = (
+                session.query(ModuleModel)
+                .outerjoin(
+                    ModuleGroupModel, ModuleGroupModel.id == ModuleModel.module_group_id
+                )
+                .filter(~ModuleModel.id.in_(granted_subquery))
             )
             query = apply_keyword_filter(
                 query, [ModuleModel.name, ModuleModel.label], keyword

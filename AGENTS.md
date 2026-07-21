@@ -60,6 +60,7 @@
 | #38 | fix(frontend): table header sort icon disappears when column label is truncated/hidden | closed | 2026-07-20 |
 | #39 | fix(frontend): lazy-load scroll never fetches the next page (TableBody._on_scroll never calls on_scroll_end) | closed | 2026-07-20 |
 | #40 | feat(stock_browse): drill into stock-by-location with per-material breakdown | closed | 2026-07-20 |
+| #41 | feat(ap_master_user): table-based module-permission grant flow via new permission_new screen | ready-for-review | 2026-07-21 |
 
 ## Big Picture
 
@@ -2269,11 +2270,10 @@ managed via `pyproject.toml` (uv/Poetry).
   `pages/modals/{password,shift,token,totp}/index.py` (each exposing a
   `ModalPage` class). A module folder can also hold private, non-screen
   helper files alongside `index`/`new`/`edit` — e.g.
-  `pages/modules/ap_master_user/permission_checklist.py` (a `Checkbox` list
-  for granting/revoking `user_module_permissions`, embedded in that module's
-  `edit.py` body) — `ModuleLoader` only preloads files matching an actual
-  route (`<module>/<screen>`), so a helper file with no matching route is
-  simply never preloaded/dispatched as a screen, just imported normally by
+  `pages/modules/ap_master_user/permission_table.py` (see below) —
+  `ModuleLoader` only preloads files matching an actual route
+  (`<module>/<screen>`), so a helper file with no matching route is simply
+  never preloaded/dispatched as a screen, just imported normally by
   whichever screen uses it.
   - `ap_module` (list/new/edit) and `ap_master_user` (list/new/edit) are the
     admin CRUD screens for `modules` and `users` + their permission grants,
@@ -2281,11 +2281,65 @@ managed via `pyproject.toml` (uv/Poetry).
     use the generic `components/table/table.py` (list) and
     `components/form/form.py` (create/edit) — no bespoke fetch/submit code,
     just a `fields` list per screen (see `ap_config` for the original
-    pattern this follows). `ap_master_user/edit.py` additionally embeds
-    `PermissionChecklist` below the user form. Deleting a row isn't part of
-    the generic `Table`/`Form` framework yet, so both `edit.py` screens add
-    their own delete button via `ModuleToolbar.add_button(...)` calling
+    pattern this follows). Deleting a row isn't part of the generic
+    `Table`/`Form` framework yet, so both `edit.py` screens add their own
+    delete button via `ModuleToolbar.add_button(...)` calling
     `POST C_{module}/delete` directly.
+  - **Module-access grant flow** (issue #41, 2026-07-21, replacing the
+    original inline `PermissionChecklist` checkbox list): `ap_master_user/
+    edit.py` embeds `pages/modules/ap_master_user/permission_table.py`'s
+    `PermissionTable` — a thin wrapper around the shared
+    `components/table/table.py` `Table` (same shape as
+    `stock_in/item_table.py`'s "Add Item" sub-table pattern), showing the
+    user's currently-granted modules (`GET C_ap_master_user/
+    get_granted_modules?id=<user_id>&...`), paginated/filterable via the
+    normal generic per-column filter convention, read-only — no inline
+    revoke here. Its own "Add Permission" toolbar button (`Table`'s own
+    `add_new_button`, not the page-level `ModuleToolbar`) navigates to
+    `/modules/ap_master_user/permission_new/<user_id>`.
+    `pages/modules/ap_master_user/permission_new.py` is a `record_id`-
+    accepting `ModulePage` (`record_id` here is the *user* id) showing a
+    `Table` of every module the user does **not** yet have access to
+    (`GET C_ap_master_user/get_ungranted_modules?id=<user_id>&...`, same
+    filterable convention), each row carrying a `"type": "checkbox"`
+    editable column (`"filter": False` — a free-text filter on a boolean
+    makes no sense, and it has no backing DB column anyway). Checking any
+    number of rows and pressing the table's "Submit" toolbar button reads
+    them back via `Table.get_rows_with_input_values()` (same mechanism
+    `stock_movement/item_new.py` uses for its own editable-cell columns)
+    and posts the checked module ids to `POST C_ap_master_user/
+    submit_permission_new` (form: `user_id` + repeated `module_ids`) —
+    **additive only**: it calls `UserModulePermissionRepository.grant_access`
+    once per id, it does not replace the user's existing grant set the way
+    the old `save_permissions` (now removed) did. On success, redirects
+    back to `/modules/ap_master_user/edit/<user_id>`, where the
+    granted-modules table reflects the new grants on its next fetch.
+    Backend: `ModuleRepository.list_granted_modules_for_user`/
+    `list_ungranted_modules_for_user` (both in
+    `backend/src/repository/module_repository.py`, reusing that file's
+    existing `_FILTER_COLUMN_MAP`/`_FILTER_NUMERIC_FIELDS` for
+    `apply_column_filters`/`apply_sort` — same `table_query.py` convention
+    as every other paginated list) — the ungranted variant excludes every
+    module id already present in a `UserModulePermissionModel` subquery
+    for that user (`~ModuleModel.id.in_(...)`). The old
+    `get_all_modules`/`get_permissions`/`save_permissions` endpoints and
+    `permission_checklist.py` were removed outright (nothing else
+    referenced them); `UserModulePermissionRepository.get_module_ids_for_user`/
+    `set_modules_for_user` themselves were left in place as still-generic,
+    reusable repository methods even though nothing currently calls them.
+    Verified against the real containerized backend (not just SQLite):
+    granting two new modules to a test user via `submit_permission_new`
+    correctly left that user's two pre-existing grants untouched, moved
+    those two modules from the ungranted list to the granted list,
+    keyword search (`stock`) and a column filter (`name-filter=purchase`)
+    both correctly scoped the ungranted table, and submitting with no
+    `module_ids` returned `{"error": "Select at least one module"}`
+    without granting anything. Frontend preload log confirmed both new
+    files (`permission_table`, `permission_new`) import cleanly with no
+    traceback. **Not yet clicked through in a live browser** — before
+    relying on this further, open a user's edit screen, click "Add
+    Permission", check a few modules, submit, and confirm the granted
+    table updates.
 
 - **Components** (`src/components/`): reusable, presentational Flet control
   builders grouped by domain — `form/`, `home/`, `login/`, `server_config/`
