@@ -1,6 +1,9 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-21] — docs: mark #42 closed
+- Issue #42's remaining implementation (including #43's fixed-width follow-up and a README revoke-UI walkthrough) was committed and pushed (`8ac566f`, `Closes #42` trailer), which GitHub auto-closed on push. #43 left open (not requested to close)
+
 ## [2026-07-21] — chore(table): give the remove column a fixed width instead of dynamic sizing (implemented)
 - Issue #43 addressed on GitHub
 - `TableColumns.load()` now reserves the remove column's known-constant width (80px, room for two 28px buttons) off the top of the usable-width budget, sizes only the remaining columns against what's left (via a small refactor of `_get_widths()`/`_get_initial_widths()` to take an explicit `field_names` list instead of always reading `self.index`), then splices the fixed width back in at the remove column's original position
