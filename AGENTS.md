@@ -61,6 +61,7 @@
 | #39 | fix(frontend): lazy-load scroll never fetches the next page (TableBody._on_scroll never calls on_scroll_end) | closed | 2026-07-20 |
 | #40 | feat(stock_browse): drill into stock-by-location with per-material breakdown | closed | 2026-07-20 |
 | #41 | feat(ap_master_user): table-based module-permission grant flow via new permission_new screen | closed | 2026-07-21 |
+| #42 | feat(table): reusable single/bulk row-remove button (ported from senar) and wire into ap_master_user permission revoke | open | 2026-07-21 |
 
 ## Big Picture
 

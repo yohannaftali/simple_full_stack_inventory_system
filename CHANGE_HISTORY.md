@@ -1,6 +1,13 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-21] — feat(table): reusable single/bulk row-remove button (ported from senar) and wire into ap_master_user permission revoke
+- Issue #42 filed on GitHub
+- User requested a reusable remove-row/bulk-remove Table capability, ported from senar's `y.panel.js` (`buttonRemove` cell, ~line 2730) and `y.form.js` (`listenerClickClassRowRemove`/`listenerClickClassHeaderRemove` and friends, ~lines 3900-4160): single mode shows a per-row delete button; the header button toggles multiple-select mode (select-all on click, or select-none on shift+click), re-clicking the header bulk-deletes whatever's selected, shift+click while in multiple mode cancels back to single mode with no delete
+- Scoped as a reusable `components/table/` piece (opt-in, caller-supplied callbacks) plus its first real consumer: revoking module grants from `ap_master_user/edit.py`'s granted-modules table (added in #41), backed by a new endpoint exposing the already-existing `UserModulePermissionRepository.revoke_access`
+- Flagged as an implementation note (not an AC): Flet click events don't carry keyboard-modifier state like a DOM click does, so shift-key detection will need page-level keyboard tracking instead of reading `event.shiftKey` directly
+- Not yet implemented - issue filed only
+
 ## [2026-07-21] — docs: mark #41 closed
 - Issue #41's implementation (including a README.md update to its "5. Setting up users and permissions" section, describing the new Module Access table + "Add Permission" screen flow instead of the removed inline checkbox list) was committed and pushed (`e29e46d`, `Closes #41` trailer), which GitHub auto-closed on push
 
