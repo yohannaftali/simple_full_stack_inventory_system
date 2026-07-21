@@ -2,6 +2,7 @@ import flet as ft
 
 from components.form.date import DateForm
 from components.table.columns import TableColumns
+from components.table.remove import ICON_CHECKBOX_CHECKED, ICON_CHECKBOX_UNCHECKED
 from utils.formatting import format_date, format_datetime, format_number, format_time
 from utils.http_client import HttpClient
 
@@ -23,6 +24,36 @@ _EDITABLE_TYPES = {"input", "textarea", "select", "option", "datepicker", "check
 # of Flutter's native, zero-round-trip enable_filter.
 _MENU_VISIBLE_ROWS = 5
 _MENU_ROW_HEIGHT = 48
+
+
+class _CheckboxCellValue:
+    """`value_holder` for a `"checkbox"`-type editable cell (issue #44) -
+    the displayed control is a checked/unchecked icon toggle (the same
+    icon pair `components/table/remove.py` uses for its own row-selection
+    state), not a plain `ft.Checkbox`. `get_input_values()` reads this
+    object's own `.value`, kept in sync on every click - same contract as
+    every other editable cell type (a bare `bool`)."""
+
+    def __init__(self, value: bool, control: ft.IconButton):
+        self.value = value
+        self._control = control
+        self._apply_icon()
+
+    def toggle(self, e) -> None:
+        self.value = not self.value
+        self._apply_icon()
+        try:
+            self._control.update()
+        except RuntimeError:
+            pass
+
+    def _apply_icon(self) -> None:
+        self._control.icon = (
+            ICON_CHECKBOX_CHECKED if self.value else ICON_CHECKBOX_UNCHECKED
+        )
+        self._control.icon_color = (
+            ft.Colors.PRIMARY if self.value else ft.Colors.ON_SURFACE_VARIANT
+        )
 
 
 class TableRows:
@@ -250,8 +281,10 @@ class TableRows:
                 if isinstance(raw_value, bool)
                 else str(raw_value).strip().lower() in ("1", "true", "yes")
             )
-            control = ft.Checkbox(value=value)
-            return control, control
+            control = ft.IconButton()
+            holder = _CheckboxCellValue(value, control)
+            control.on_click = holder.toggle
+            return control, holder
 
         if field_type in ("select", "option"):
             options = (

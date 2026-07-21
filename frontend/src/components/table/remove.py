@@ -63,8 +63,12 @@ _ICON_SELECT_NONE = ft.Icons.CHECK_BOX_OUTLINE_BLANK
 _ICON_EXECUTE_BULK = ft.Icons.DELETE
 _ICON_CANCEL = ft.Icons.CLOSE
 _ICON_ROW_REMOVE = ft.Icons.DELETE
-_ICON_ROW_SELECTED = ft.Icons.CHECK_BOX
-_ICON_ROW_UNSELECTED = ft.Icons.CHECK_BOX_OUTLINE_BLANK
+# Public (no leading underscore) - reused as-is by rows.py's generic
+# "checkbox" editable-cell type (issue #44) for a visually consistent
+# checked/unchecked look across the whole Table component, not just this
+# remove column's own per-row selection state.
+ICON_CHECKBOX_CHECKED = ft.Icons.CHECK_BOX
+ICON_CHECKBOX_UNCHECKED = ft.Icons.CHECK_BOX_OUTLINE_BLANK
 
 # Compact paired header buttons (via components/button.py::Button, same
 # 32dp/16-radius sizing as every other compact icon button in this app -
@@ -127,10 +131,10 @@ class TableRemove:
         if self.mode == self.MODE_SINGLE:
             icon, tooltip, color = _ICON_ROW_REMOVE, "Remove", ft.Colors.ERROR
         elif row_index in self.selected:
-            icon, tooltip, color = _ICON_ROW_SELECTED, "Selected", ft.Colors.PRIMARY
+            icon, tooltip, color = ICON_CHECKBOX_CHECKED, "Selected", ft.Colors.PRIMARY
         else:
             icon, tooltip, color = (
-                _ICON_ROW_UNSELECTED,
+                ICON_CHECKBOX_UNCHECKED,
                 "Select",
                 ft.Colors.ON_SURFACE_VARIANT,
             )

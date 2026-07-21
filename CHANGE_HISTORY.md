@@ -1,6 +1,19 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-21] — feat(table): checked/unchecked icon style for checkbox cells, and fixed width for checkbox + option columns (implemented)
+- Issue #44 addressed on GitHub
+- `components/table/remove.py`'s `_ICON_ROW_SELECTED`/`_ICON_ROW_UNSELECTED` promoted to public `ICON_CHECKBOX_CHECKED`/`ICON_CHECKBOX_UNCHECKED`, imported into `rows.py`
+- `rows.py`: new `_CheckboxCellValue` wraps an `ft.IconButton` (replacing the old plain `ft.Checkbox()`) for every `"checkbox"`-type editable cell - toggling the icon/color on click, still exposing a plain `bool` via `.value` so `get_input_values()`'s read-back contract (and every existing consumer, e.g. `permission_new.py`) is unchanged
+- `columns.py`: generalized #43's single-"remove"-column fixed-width mechanism into `_FIXED_WIDTH_TYPES = {"remove", "checkbox", "option"}` + `_fixed_width_indices()`, handling any number of fixed-width columns in any position (not just one trailing column) - `"option"` gets width-only treatment, header stays a plain text label via the existing non-"remove" path
+- Verified: a dedicated script (real containerized flet 0.85.3) confirms checkbox cells build with correct initial icon/value, toggle correctly, and `get_input_values()` still returns a plain bool; a table with both a checkbox and an option column simultaneously holds both at their fixed widths (50px/120px) at both a wide and narrow screen width, with zero resize handles when every boundary touches a fixed-width column. Full #42/#43 regression suites re-run and still passing. Frontend container restarts cleanly, `permission_new`/`permission_table` preload without error
+- Files: frontend/src/components/table/{remove.py,rows.py,columns.py}
+
+## [2026-07-21] — feat(table): checked/unchecked icon style for checkbox cells, and fixed width for checkbox + option columns
+- Issue #44 filed on GitHub
+- User requested, spotted on `permission_new.py`'s (#41) "Select" checkbox column: (1) restyle generic `"checkbox"`-type table cells to use the same checked/unchecked icon pair `remove.py` uses for its row selection state (#42), instead of a plain `ft.Checkbox()`; (2) generalize the fixed-width mechanism built for the remove column (#43) to also cover `"checkbox"` and `"option"` type columns - `"option"` gets fixed width only, no header icon treatment, still a plain text label header
+- Not yet implemented - issue filed only
+
 ## [2026-07-21] — docs: mark #42 closed
 - Issue #42's remaining implementation (including #43's fixed-width follow-up and a README revoke-UI walkthrough) was committed and pushed (`8ac566f`, `Closes #42` trailer), which GitHub auto-closed on push. #43 left open (not requested to close)
 

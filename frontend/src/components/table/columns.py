@@ -21,6 +21,13 @@ _EDITABLE_MIN_WIDTHS = {
 }
 _DEFAULT_MIN_WIDTH = 40
 
+# Column types whose required width is a known constant, not derived from
+# row content - see TableColumns.load()'s docstring below. "remove"
+# started this (issue #42/#43); "checkbox"/"option" generalized it
+# (issue #44) since neither a checkbox toggle nor a fixed dropdown-option
+# list's width depends on what's in a given row either.
+_FIXED_WIDTH_TYPES = {"remove", "checkbox", "option"}
+
 # Below this column width, a header label is dropped entirely instead of
 # rendered as one unreadable truncated character - see
 # Columns._build_data_columns().
@@ -418,15 +425,12 @@ class TableColumns:
             return self._resize_overlay
 
         num_columns = len(self.index)
-        remove_field_name = self._remove_field_name()
+        fixed_positions = self._fixed_width_indices()
         overlay: list[ft.Control] = []
         for i in range(max(num_columns - 1, 0)):
-            # No handle on either side of the fixed-width remove column
-            # (issue #43) - its width never changes by dragging.
-            if remove_field_name is not None and (
-                self.index[i] == remove_field_name
-                or self.index[i + 1] == remove_field_name
-            ):
+            # No handle on either side of a fixed-width column (issue
+            # #42/#43/#44) - its width never changes by dragging.
+            if i in fixed_positions or (i + 1) in fixed_positions:
                 continue
             handle = self._build_resize_handle(i)
             self._handle_controls[i] = handle
@@ -642,14 +646,17 @@ class TableColumns:
         print(f"Usable width: {usable_width}")
         return usable_width
 
-    def _remove_field_name(self) -> str | None:
-        """Name of this table's opt-in remove column (issue #42), if any -
-        its width is a known constant (room for two compact header
-        buttons), never derived from row content."""
-        for field in self.fields:
-            if field.get("type") == "remove":
-                return field.get("name")
-        return None
+    def _fixed_width_indices(self) -> dict[int, int]:
+        """`{column index: fixed pixel width}` for every column in
+        `self.index` whose type is in `_FIXED_WIDTH_TYPES` - "remove"
+        (issue #42/#43), "checkbox"/"option" (issue #44). Their width is a
+        known constant, never derived from row content."""
+        result: dict[int, int] = {}
+        for i, name in enumerate(self.index):
+            field = self.fields_by_name.get(name, {})
+            if field.get("type") in _FIXED_WIDTH_TYPES:
+                result[i] = self._min_width_for(name)
+        return result
 
     def load(self, data: list) -> None:
         """Calculate column widths based on content and available screen width"""
@@ -667,25 +674,17 @@ class TableColumns:
 
         usable_width = self.get_usable_width(num_columns)
 
-        # The remove column (issue #43) is fixed-width, not content-driven -
-        # reserve its width off the top and size only the remaining columns
-        # against what's left, then splice the fixed width back in at its
-        # original position. Never included in _get_widths()'s proportional
-        # scale-down, so it can neither shrink below nor grow past its
-        # known-required width.
-        remove_field_name = self._remove_field_name()
-        remove_index = (
-            self.index.index(remove_field_name)
-            if remove_field_name is not None and remove_field_name in self.index
-            else None
-        )
-        if remove_index is not None:
-            fixed_remove_width = self._min_width_for(remove_field_name)
-            usable_width -= fixed_remove_width
-            sizable_fields = [name for name in self.index if name != remove_field_name]
-        else:
-            fixed_remove_width = None
-            sizable_fields = self.index
+        # Fixed-width columns (see _FIXED_WIDTH_TYPES) are reserved off the
+        # top of the budget and excluded from content-based sizing/
+        # proportional scale-down entirely - only the remaining columns are
+        # sized against what's left, then the fixed widths are spliced back
+        # in at their original positions. Neither shrinks below nor grows
+        # past its known-required width.
+        fixed_positions = self._fixed_width_indices()
+        usable_width -= sum(fixed_positions.values())
+        sizable_fields = [
+            name for i, name in enumerate(self.index) if i not in fixed_positions
+        ]
 
         min_widths = [self._min_width_for(name) for name in sizable_fields]
 
@@ -698,9 +697,12 @@ class TableColumns:
                 sizable_fields, usable_width, min_widths, data
             )
 
-        widths = [int(w) for w in sizable_widths]
-        if remove_index is not None:
-            widths.insert(remove_index, int(fixed_remove_width))
+        sizable_widths = [int(w) for w in sizable_widths]
+        sizable_iter = iter(sizable_widths)
+        widths = [
+            fixed_positions[i] if i in fixed_positions else next(sizable_iter)
+            for i in range(num_columns)
+        ]
 
         self.widths = widths
         print("TableColumns.load: columns width")

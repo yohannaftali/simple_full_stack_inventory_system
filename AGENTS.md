@@ -63,6 +63,7 @@
 | #41 | feat(ap_master_user): table-based module-permission grant flow via new permission_new screen | closed | 2026-07-21 |
 | #42 | feat(table): reusable single/bulk row-remove button (ported from senar) and wire into ap_master_user permission revoke | closed | 2026-07-21 |
 | #43 | chore(table): give the remove column a fixed width instead of participating in dynamic column sizing | ready-for-review | 2026-07-21 |
+| #44 | feat(table): checked/unchecked icon style for checkbox cells, and fixed width for checkbox + option columns | ready-for-review | 2026-07-21 |
 
 ## Big Picture
 
@@ -2465,30 +2466,54 @@ managed via `pyproject.toml` (uv/Poetry).
       dispatch (a remove button isn't a value-holding input, so it's
       deliberately excluded from `get_input_values()`/
       `get_rows_with_input_values()`).
-    - **Fixed width, not dynamic sizing** (issue #43, same day follow-up):
-      the remove column's required width is a known constant (room for two
-      28px compact buttons - `_EDITABLE_MIN_WIDTHS["remove"] = 80`), so
-      unlike every other column it never participates in
-      `_get_initial_widths()`'s content-length sizing or `_get_widths()`'s
-      proportional scale-down when total content exceeds the available
-      screen width. `TableColumns.load()` reserves the remove column's
-      fixed width off the top of `get_usable_width()`'s budget, computes
-      `_get_widths()`/`_get_initial_widths()` (both refactored to take an
-      explicit `field_names` list instead of reading `self.index`
-      directly, so they can be called against just the *other* columns)
-      against what's left, then splices the fixed width back in at the
-      remove column's original position via `self.widths.insert(...)`.
-      Never shrinks below 80px on a narrow screen, never grows past it on
-      a wide one. The manual column-resize overlay
-      (`get_resize_overlay()`) also skips building a handle on either
-      boundary adjacent to the remove column - its width is meant to stay
-      fixed, so there's nothing to drag. Verified via a dedicated script
-      (real containerized flet 0.85.3, not stubbed): remove column stays
-      exactly 80px at both a 1400px and a 350px screen width (the latter
-      forcing every other column into proportional scale-down), a table
-      with no remove column is unaffected, and the resize overlay
-      correctly omits the one boundary adjacent to the remove column while
-      keeping the other (unrelated) boundary's handle intact.
+    - **Fixed width, not dynamic sizing** (issue #43, generalized in #44
+      from just `"remove"` to also cover `"checkbox"`/`"option"`): these
+      three column types have a known-constant required width (remove:
+      room for two 28px compact buttons, 80px; checkbox: 50px; option:
+      120px - all from `_EDITABLE_MIN_WIDTHS`, still overridable per-field
+      via `"min_width"`), so unlike every other column type none of them
+      participate in `_get_initial_widths()`'s content-length sizing or
+      `_get_widths()`'s proportional scale-down when total content exceeds
+      the available screen width. `TableColumns._fixed_width_indices()`
+      (`_FIXED_WIDTH_TYPES = {"remove", "checkbox", "option"}`) returns
+      `{column index: fixed width}` for every such column in the table -
+      `TableColumns.load()` reserves their combined width off the top of
+      `get_usable_width()`'s budget, sizes only the remaining columns
+      against what's left (`_get_widths()`/`_get_initial_widths()`, both
+      taking an explicit `field_names` list rather than reading
+      `self.index` directly, so they can be called against just the
+      dynamic columns), then splices the fixed widths back in at their
+      original positions - handles any number of fixed-width columns in
+      any position, not just a single trailing one. Neither shrinks below
+      nor grows past its fixed width regardless of screen size or other
+      columns' content. `get_resize_overlay()` skips building a handle on
+      either side of any fixed-width column's boundary - nothing to drag.
+      `"option"` gets width-only treatment - its header still renders as a
+      plain text label via the normal (non-`"remove"`) path in
+      `_build_data_columns()`, no icon-based header content. Verified via
+      dedicated scripts (real containerized flet 0.85.3, not stubbed):
+      remove column alone stays exactly 80px at both 1400px and 350px
+      screen widths; a table with both a `"checkbox"` and an `"option"`
+      column simultaneously holds both at their fixed widths (50px/120px)
+      at both screen widths too, with zero resize handles when every
+      column boundary touches a fixed-width column; a table with no
+      fixed-width column at all is unaffected.
+    - **Checked/unchecked icon style for generic `"checkbox"`-type cells**
+      (issue #44): `components/table/rows.py::_build_editable_cell()`'s
+      `"checkbox"` branch now renders the same checked/unchecked icon pair
+      `remove.py` uses for its own row-selection state
+      (`ICON_CHECKBOX_CHECKED`/`ICON_CHECKBOX_UNCHECKED`, promoted to
+      public names in `remove.py` and imported into `rows.py` - one shared
+      definition, not a duplicated pair of icon constants), instead of a
+      plain `ft.Checkbox()`. A new `TableRows._CheckboxCellValue` is the
+      `value_holder` `get_input_values()` reads back from - it wraps the
+      actual `ft.IconButton` control, toggling both `.value` (a plain
+      `bool`, same read-back contract as before - no changes needed in any
+      existing consumer like `permission_new.py`'s `row.get("selected")`)
+      and the icon/color on every click. Verified via a dedicated script:
+      initial icon/value matches the row's starting value, a simulated
+      click toggles both, and `get_input_values()` still returns a plain
+      `bool` unchanged.
     - **Application**: `ap_master_user/edit.py`'s granted-modules table
       (`permission_table.py`, from #41) is the first consumer —
       `_revoke_module`/`_revoke_modules` both post to the new
