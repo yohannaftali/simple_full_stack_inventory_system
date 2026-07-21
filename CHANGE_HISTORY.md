@@ -1,6 +1,9 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-21] — docs: mark #44 closed
+- Issue #44's implementation was committed and pushed (`724a7a1`, `Closes #44` trailer), which GitHub auto-closed on push
+
 ## [2026-07-21] — feat(table): checked/unchecked icon style for checkbox cells, and fixed width for checkbox + option columns (implemented)
 - Issue #44 addressed on GitHub
 - `components/table/remove.py`'s `_ICON_ROW_SELECTED`/`_ICON_ROW_UNSELECTED` promoted to public `ICON_CHECKBOX_CHECKED`/`ICON_CHECKBOX_UNCHECKED`, imported into `rows.py`

@@ -63,7 +63,7 @@
 | #41 | feat(ap_master_user): table-based module-permission grant flow via new permission_new screen | closed | 2026-07-21 |
 | #42 | feat(table): reusable single/bulk row-remove button (ported from senar) and wire into ap_master_user permission revoke | closed | 2026-07-21 |
 | #43 | chore(table): give the remove column a fixed width instead of participating in dynamic column sizing | ready-for-review | 2026-07-21 |
-| #44 | feat(table): checked/unchecked icon style for checkbox cells, and fixed width for checkbox + option columns | ready-for-review | 2026-07-21 |
+| #44 | feat(table): checked/unchecked icon style for checkbox cells, and fixed width for checkbox + option columns | closed | 2026-07-21 |
 
 ## Big Picture
 
