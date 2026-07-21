@@ -104,6 +104,21 @@ class TableRows:
                 field = self.columns.fields_by_name.get(name, {})
                 field_type = field.get("type")
 
+                if field_type == "remove":
+                    remove_component = getattr(self.parent, "remove", None)
+                    w = (
+                        int(columns_widths[i])
+                        if columns_widths is not None and i < len(columns_widths)
+                        else None
+                    )
+                    cell_content = (
+                        remove_component.build_row_cell(row, w)
+                        if remove_component is not None
+                        else ft.Container(width=w)
+                    )
+                    cells.append(ft.DataCell(content=cell_content))
+                    continue
+
                 if field_type in _EDITABLE_TYPES:
                     w = (
                         int(columns_widths[i])

@@ -6,6 +6,7 @@ from components.table.filter import TableFilter
 from components.table.footer import MODE_LAZY, TableFooter
 from components.table.header import TableHeader
 from components.table.menu import TableMenu
+from components.table.remove import TableRemove
 from components.table.rows import TableRows
 from components.table.search_bar import TableSearchBar
 from components.table.toolbar import TableToolbar
@@ -41,6 +42,8 @@ class Table:
         edit_screen: str = "edit",
         custom_param: dict | None = None,
         fill_available_space: bool = True,
+        on_remove_row=None,
+        on_remove_rows=None,
     ):
         """
         Initialize Table
@@ -73,6 +76,18 @@ class Table:
                 top of that, which is what let the footer drift to the
                 bottom of the whole page instead of sitting right under the
                 table's actual content).
+            on_remove_row (callable, optional): opts into the single/bulk
+                row-remove column (issue #42, see components/table/remove.py)
+                - `(row: dict) -> str | None`, called with one row to remove;
+                return an error message to abort, or None on success. Table
+                has no idea what a remove actually does server-side; on
+                success it just drops that row from its own rendered data.
+            on_remove_rows (callable, optional): the bulk-remove counterpart
+                - `(rows: list[dict]) -> str | None`, called with every
+                currently-selected row when the header's remove button is
+                used to delete them all in one action. Either callback alone
+                is enough to opt into the remove column; both are normally
+                supplied together.
         """
         self.page = page
         self.storage: Storage = page.data["storage"]
@@ -88,7 +103,21 @@ class Table:
         self.is_inside_form = is_inside_form
         self.fill_available_space = fill_available_space
 
-        self.columns: TableColumns = TableColumns(page, fields)
+        # Opt-in remove column (issue #42) - a synthetic trailing field is
+        # appended to `self.fields` so no caller ever hand-authors it; see
+        # components/table/remove.py's module docstring.
+        self.remove: TableRemove | None = None
+        if on_remove_row is not None or on_remove_rows is not None:
+            self.remove = TableRemove(
+                page, self, on_remove_row=on_remove_row, on_remove_rows=on_remove_rows
+            )
+            self.fields = [
+                *self.fields,
+                {"name": "_remove", "label": "", "type": "remove", "filter": False},
+            ]
+
+        self.columns: TableColumns = TableColumns(page, self.fields)
+        self.columns.remove = self.remove
         self.rows: TableRows = TableRows(page, self.columns, parent=self)
         # Lets TableColumns request a full header/body/rows rebuild after every
         # resize step (drag tick or double-tap reset) - see
@@ -130,7 +159,7 @@ class Table:
         self.filter_row = TableFilter(
             page=page,
             parent=self,
-            fields=fields,
+            fields=self.fields,
             columns=self.columns,
             on_apply=self._handle_filter_apply,
         )
@@ -360,6 +389,17 @@ class Table:
                 self.total_rows = 0
 
             self.data = self.data + response if append else response
+            if not append and self.remove is not None:
+                # A genuine new server fetch (search/sort/filter/page nav)
+                # invalidates whatever was selected against the previous
+                # result set - reset here, not inside TableRows.load(),
+                # since that method also runs for TableRemove's OWN local
+                # re-renders (mode toggle, row-select toggle, post-removal
+                # refresh via Table.load()) - resetting there would wipe
+                # the very mode/selection state those re-renders exist to
+                # display, which is exactly why the header button appeared
+                # to do nothing (issue #42 follow-up fix).
+                self.remove.reset_for_reload()
             self.load(response, append=append)
             if self._should_eagerly_load_more():
                 self._handle_scroll_end()

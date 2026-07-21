@@ -1,6 +1,67 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-21] — chore(table): give the remove column a fixed width instead of dynamic sizing (implemented)
+- Issue #43 addressed on GitHub
+- `TableColumns.load()` now reserves the remove column's known-constant width (80px, room for two 28px buttons) off the top of the usable-width budget, sizes only the remaining columns against what's left (via a small refactor of `_get_widths()`/`_get_initial_widths()` to take an explicit `field_names` list instead of always reading `self.index`), then splices the fixed width back in at the remove column's original position
+- `get_resize_overlay()` skips building a drag handle on either boundary adjacent to the remove column - nothing to resize there
+- Verified: a dedicated script (real containerized flet 0.85.3) confirms the remove column stays exactly 80px at both a wide (1400px) and narrow (350px, forcing other columns into proportional scale-down) screen width, a table with no remove column is unaffected, and the resize overlay correctly omits only the one adjacent boundary. Existing #42 regression suite re-run and still passing (10/10 scenarios). Frontend container restarts cleanly
+- README.md's "5. Setting up users and permissions" section updated to document the revoke-access UI (per-row delete, Select All/Select None + Remove Selected/Cancel bulk flow) added in #42, which hadn't been written up yet
+- Files: frontend/src/components/table/columns.py, README.md
+
+## [2026-07-21] — chore(table): give the remove column a fixed width instead of dynamic sizing
+- Issue #43 filed on GitHub
+- User requested (tiny follow-up to #42): the remove column's width is already a known constant (room for two 28px buttons), so it shouldn't be run through `TableColumns`' content-based/proportional dynamic sizing the way ordinary data columns are - fix it at a constant width instead
+- Not yet implemented - issue filed only
+
+## [2026-07-21] — issue #42 fully live-verified; all 5 scenarios confirmed working
+- User tested the button-based redesign live: "Select None" and "Cancel" both work correctly, closing out scenarios 2 and 4 - every scenario (0-4) in issue #42's user-specified state machine is now live-confirmed in the actual browser
+- Clarified for the user: Shift-key detection was NOT restored - the observation that "shift+click also works now" is because Select None/Cancel are separate, unambiguous buttons, so clicking either one (with or without Shift held) always produces the correct result; no keyboard-event code exists anymore
+- Updated GitHub issue #42's acceptance criteria to reflect full completion
+- Files: none (verification + doc update only)
+
+## [2026-07-21] — fix(table): replace broken Shift+click header gesture with explicit select-all/select-none/execute/cancel buttons
+- User confirmed via `podman logs` diagnostics: `on_keyboard_event` never fired even once across a full test pass (only the click-handler's own diagnostic printed, always `shift=False`) - the browser is not delivering keyboard events to the server in this deployment at all, regardless of registration timing (two prior fix attempts, both confirmed dead ends)
+- Checked whether any click/tap/gesture event in this Flet 0.85.3 build carries a modifier-key flag as a fallback (`TapEvent`, `GestureDetector` pointer events) - neither does; `KeyboardEvent.shift` is the only modifier signal Flet exposes anywhere, and it's unreachable here
+- Rewrote `components/table/remove.py`'s header entirely: single mode now shows two buttons ("select all" -> multiple mode with everything checked; "select none" -> multiple mode with everything unchecked) instead of one button + Shift modifier; multiple mode shows two buttons ("remove selected" -> bulk confirm/delete; "cancel" -> straight back to single mode, no confirm/delete) instead of plain-click-vs-shift-click on one button. Functionally identical to the originally-requested state machine (issue #42's scenarios 0-4), just driven by explicit always-visible buttons instead of a keyboard modifier that doesn't work in this environment
+- Removed all now-dead shift-tracking code: `_ensure_shift_tracking`/`_is_shift_down` from `remove.py`, the keyboard-event handler and diagnostic prints from `main.py`
+- Widened `columns.py`'s `_EDITABLE_MIN_WIDTHS["remove"]` from 48 to 80 to fit two 28px compact header buttons side by side
+- Verified: a rewritten 10-scenario test (matching issue #42's exact user-specified spec, including the earlier reset-stomping regression check) run against the real containerized frontend's flet 0.85.3 venv - all pass. Both containers restart cleanly with no import errors. Not yet visually confirmed live (button sizing/fit at real screen widths) - no browser automation tool available this session
+- Files: frontend/src/components/table/remove.py, frontend/src/components/table/columns.py, frontend/src/main.py
+
+## [2026-07-21] — issue #42 updated with precise scenario matrix; Shift+click still broken after registration fix, added server-side diagnostics
+- User re-tested live after the main.py registration-timing fix: Scenario 0/1/3 all confirmed working, but Scenario 2 (header Shift+click from single mode) and Scenario 4 (header Shift+click from bulk mode) still behave exactly like a plain click - Shift still isn't being detected as held at click time
+- Updated GitHub issue #42's body with the user's precise state-1/state-2 + scenario-0-through-4 spec, replacing the original looser prose description, and marked scenario-level status (0/1/3 done, 2/4 broken) directly in the issue's acceptance criteria
+- Since two reasoned fix attempts (chaining the handler, then moving registration to page-boot in main.py) both failed to resolve it, and no browser automation tool is available to the agent this session, added temporary `[shift-debug]` print statements in `main.py`'s `on_keyboard_event` handler and `remove.py`'s `_on_header_click` - checkable via `podman logs sfsis-frontend` after the user's next test, without needing browser access, to confirm empirically whether the browser is delivering keyboard events to the server at all for a bare Shift press
+- Not yet fixed - diagnostic round-trip pending the user's next live test
+- Files: frontend/src/main.py, frontend/src/components/table/remove.py
+
+## [2026-07-21] — fix(table): Shift+click header gesture never actually detected Shift (registration too late)
+- User tested the reset-stomping fix live: single-row remove, header select-all + bulk remove, and header select-all-then-uncheck-some all confirmed working correctly. Shift+click from single mode did not - it behaved exactly like a plain click (selected every row instead of none)
+- Root cause: `components/table/remove.py::_ensure_shift_tracking` registered `page.on_keyboard_event` lazily, the first time a `TableRemove` was constructed - i.e. well after the page's initial client connection, mid-navigation into whatever screen first used it. Every other page-level handler in this app (`on_route_change`/`on_view_pop`/`on_resized`) is registered once at boot in `main.py`, before any view is built; registering this one later apparently never actually reached the client's keyboard-event subscription
+- Fix: moved the primary registration into `main.py::main()` alongside those other handlers. `remove.py::_ensure_shift_tracking` is kept as a defensive fallback (no-op once main.py's own flag is set) rather than removed, so `TableRemove` still degrades gracefully outside the normal boot path
+- Not yet re-verified live - this is a reasoned fix based on matching the app's own established registration pattern, not something the agent could confirm without browser access this session
+- Files: frontend/src/main.py, frontend/src/components/table/remove.py
+
+## [2026-07-21] — fix(table): remove-column header/multi-select was inert due to reset_for_reload() stomping its own re-render
+- User tested issue #42 live: single-row remove worked correctly, but clicking the header button to enter multi-select mode visibly did nothing
+- Root cause: `TableRows.load()` called `TableRemove.reset_for_reload()` on every non-append load - including the ones `TableRemove._rerender()` itself triggers (`Table.load(self.table.data, append=False)`) right after setting `mode = MULTIPLE`/populating `selected`. That same re-render's `rows.load()` call immediately reset `mode` back to `SINGLE`, so the header click's effect was wiped out before it ever rendered
+- Original test suite didn't catch this because its `FakeTable.load()` was a call-recording stub, never actually invoking `TableRows.load()`/`reset_for_reload()` - wrote a new regression test using the real `TableColumns`/`TableRows` chain that reproduces the exact bug, confirms the fix, and confirms a genuine new server fetch still correctly resets
+- Fix: moved the `reset_for_reload()` call out of `TableRows.load()` and into `Table.get_data()`'s fresh-fetch branch (`not append`) - only a real search/sort/filter/page-nav fetch resets remove state now; `TableRemove`'s own local re-renders, `on_page_resize()`, and `_handle_resize_commit()` (all of which reload the *existing* `self.data`, not a new fetch) correctly leave it alone
+- Also updated icons per user feedback to a consistent checkbox metaphor (`CHECK_BOX`/`CHECK_BOX_OUTLINE_BLANK`/`DELETE`) instead of the original `CHECK_BOX_OUTLINE_BLANK`/`CHECK_CIRCLE`/`RADIO_BUTTON_UNCHECKED` mix
+- Verified: all prior unit/integration tests still pass, plus the new regression test, all run against the real containerized frontend's flet 0.85.3 venv; both containers restarted cleanly with no import errors. Header/bulk-select flow itself still not re-verified in an actual live browser pass (no browser automation tool available this session)
+- Files: frontend/src/components/table/{remove.py,rows.py,table.py}
+
+## [2026-07-21] — feat(table): reusable single/bulk row-remove button (ported from senar) and wire into ap_master_user permission revoke (implemented)
+- Issue #42 addressed on GitHub
+- New `frontend/src/components/table/remove.py` (`TableRemove`) - opt-in via `Table(..., on_remove_row=..., on_remove_rows=...)`, which appends a synthetic trailing `_remove` field so no caller hand-authors the column. Ported senar's `y.panel.js`/`y.form.js` single/multi-select remove UX: single mode = per-row delete + confirm; header click = enter multi-select with all rows pre-selected, click again = bulk-remove-with-confirm (or silent cancel if nothing selected); Shift+click = enter multi-select with nothing pre-selected, or cancel straight back to single mode from multi-select
+- `components/table/columns.py`/`rows.py` wired to dispatch a `"type": "remove"` field to `TableRemove.build_header_cell()`/`build_row_cell()`, gated on `interactive` for the header (avoids the same icon-bleed-into-hidden-row bug class already fixed for sort icons)
+- Shift-key detection via a page-level `on_keyboard_event` tracker (`_ensure_shift_tracking`) - documented as a known approximation (no key-up counterpart at that API level, so it can go stale if Shift is released without another keypress before the next click)
+- Backend: `POST C_ap_master_user/revoke_permission` (form: user_id + repeated module_ids), looping the already-existing `UserModulePermissionRepository.revoke_access` - no new repository logic
+- `ap_master_user`'s `permission_table.py` (from #41) is the first consumer, wiring `_revoke_module`/`_revoke_modules` to the new endpoint
+- Verified: a 9-scenario standalone state-machine test and a column/row wiring integration test, both run against the real containerized frontend's own flet 0.85.3 venv (not stubbed), all passed; backend revoke endpoint verified against the real containerized backend (grant-then-revoke left other grants untouched, empty-selection rejected cleanly). Not yet clicked through in a live browser - no browser automation tool was available this session
+- Files: frontend/src/components/table/{remove.py (new),columns.py,rows.py,table.py}, frontend/src/pages/modules/ap_master_user/permission_table.py, backend/src/routers/user_admin.py
+
 ## [2026-07-21] — feat(table): reusable single/bulk row-remove button (ported from senar) and wire into ap_master_user permission revoke
 - Issue #42 filed on GitHub
 - User requested a reusable remove-row/bulk-remove Table capability, ported from senar's `y.panel.js` (`buttonRemove` cell, ~line 2730) and `y.form.js` (`listenerClickClassRowRemove`/`listenerClickClassHeaderRemove` and friends, ~lines 3900-4160): single mode shows a per-row delete button; the header button toggles multiple-select mode (select-all on click, or select-none on shift+click), re-clicking the header bulk-deletes whatever's selected, shift+click while in multiple mode cancels back to single mode with no delete

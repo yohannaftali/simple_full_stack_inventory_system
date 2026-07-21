@@ -295,6 +295,14 @@ is only visible to users who already have access to it — the seeded
   to the access table. There's no group/role concept here: every module a
   non-superuser needs must be granted explicitly, including basic ones like
   Stock In/Stock Out.
+- **Revoke module access**: on that same Module Access table, each row has
+  a delete icon — click it, confirm, and that one module's access is
+  revoked immediately. To revoke several at once, click the **Select All**
+  button above the table (every row gets a checkbox, all pre-checked) or
+  **Select None** (same checkboxes, but starting unchecked so you can pick
+  which ones to remove) — check/uncheck rows as needed, then click **Remove
+  Selected** and confirm. **Cancel** backs out of that mode without
+  removing anything.
 - **Delete a user**: the trash icon on the edit screen. This also removes
   all of that user's module grants.
 

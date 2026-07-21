@@ -61,7 +61,8 @@
 | #39 | fix(frontend): lazy-load scroll never fetches the next page (TableBody._on_scroll never calls on_scroll_end) | closed | 2026-07-20 |
 | #40 | feat(stock_browse): drill into stock-by-location with per-material breakdown | closed | 2026-07-20 |
 | #41 | feat(ap_master_user): table-based module-permission grant flow via new permission_new screen | closed | 2026-07-21 |
-| #42 | feat(table): reusable single/bulk row-remove button (ported from senar) and wire into ap_master_user permission revoke | open | 2026-07-21 |
+| #42 | feat(table): reusable single/bulk row-remove button (ported from senar) and wire into ap_master_user permission revoke | ready-for-review | 2026-07-21 |
+| #43 | chore(table): give the remove column a fixed width instead of participating in dynamic column sizing | ready-for-review | 2026-07-21 |
 
 ## Big Picture
 
@@ -2294,8 +2295,9 @@ managed via `pyproject.toml` (uv/Poetry).
     `stock_in/item_table.py`'s "Add Item" sub-table pattern), showing the
     user's currently-granted modules (`GET C_ap_master_user/
     get_granted_modules?id=<user_id>&...`), paginated/filterable via the
-    normal generic per-column filter convention, read-only — no inline
-    revoke here. Its own "Add Permission" toolbar button (`Table`'s own
+    normal generic per-column filter convention. Also opts into the shared
+    single/bulk row-remove column (issue #42, see below) to revoke access
+    directly from this table. Its own "Add Permission" toolbar button (`Table`'s own
     `add_new_button`, not the page-level `ModuleToolbar`) navigates to
     `/modules/ap_master_user/permission_new/<user_id>`.
     `pages/modules/ap_master_user/permission_new.py` is a `record_id`-
@@ -2341,6 +2343,197 @@ managed via `pyproject.toml` (uv/Poetry).
     relying on this further, open a user's edit screen, click "Add
     Permission", check a few modules, submit, and confirm the granted
     table updates.
+  - **Single/bulk row-remove column** (issue #42, 2026-07-21, ported from
+    senar's `y.panel.js`'s `buttonRemove` cell and `y.form.js`'s
+    `listenerClickClassRowRemove`/`listenerClickClassHeaderRemove` and
+    friends): a new, reusable, opt-in capability on the shared
+    `components/table/table.py` `Table` —
+    `Table(..., on_remove_row=..., on_remove_rows=...)` — implemented in
+    `components/table/remove.py`'s `TableRemove`. Either callback alone is
+    enough to opt in; `Table.__init__` then appends a synthetic trailing
+    `{"name": "_remove", "type": "remove", "filter": False}` field to its
+    own `fields` list so no caller ever hand-authors that column, and
+    constructs one `TableRemove(page, self, on_remove_row=..., on_remove_rows=...)`,
+    wired onto both `TableColumns` (`self.columns.remove = self.remove`,
+    read by `_build_data_columns()` to render the header button) and
+    implicitly onto `TableRows` (which reads `self.parent.remove` — `parent`
+    being the `Table` itself — to render each row's button). Each callback
+    takes the row dict(s) to remove and returns an error message string to
+    abort, or `None` on success; `Table` has no idea what a remove actually
+    does server-side, and reuses its own existing `Table.load(self.data,
+    append=False)` (the same "recompute + rebuild from current data" path
+    a sort click or resize tick already uses) to re-render after mutating
+    `self.data` in place — no bespoke re-render logic was needed.
+    - **Two modes, each with two always-visible header buttons instead of
+      one modifier-key toggle** (see below for why the original
+      senar-mirroring Shift+click design was abandoned): **single**
+      (default) shows a delete icon on every row; clicking one opens a
+      confirm dialog (`ft.AlertDialog` on `page.overlay`, this app's only
+      other precedent being `components/troubleshooting/body.py`'s
+      hard-reset confirm) and removes just that row on confirm. The header
+      shows two compact buttons (`components/button.py::Button`, 28px, same
+      family as every other compact icon button in this app):
+      "select all" (`_on_select_all_click`) enters **multiple** mode with
+      every row pre-checked; "select none" (`_on_select_none_click`) enters
+      it with every row unchecked instead, letting an admin cherry-pick.
+      While in multiple mode, clicking a row toggles its own checked state
+      (`_ICON_ROW_SELECTED`/`_ICON_ROW_UNSELECTED`), and the header shows a
+      different pair: "remove selected" (`_on_bulk_execute_click` - a
+      second confirm dialog reporting the count, then bulk-deletes whatever
+      is checked and returns to single mode; silently returns to single
+      mode with no dialog if nothing's checked) and "cancel"
+      (`_on_cancel_click` - returns straight to single mode, no
+      confirmation, no delete, regardless of which single-mode button was
+      used to enter multiple mode).
+      `TableRemove.reset_for_reload()` is called from `Table.get_data()`
+      specifically — **not** from `TableRows.load()` — right when a
+      genuinely new server response lands (`not append`, i.e. a real
+      search/sort/filter/page-nav fetch). This distinction was a real,
+      user-caught bug in the first pass: `TableRows.load()` runs on
+      *every* `Table.load()` call, including the ones `TableRemove` itself
+      triggers to re-render the SAME local data after a mode toggle or a
+      row-selection toggle (`_rerender()` → `Table.load(self.table.data,
+      append=False)`) — resetting there meant clicking the header button
+      set `mode = MULTIPLE`, and the very re-render meant to *display*
+      that immediately reset it straight back to `SINGLE` before it ever
+      rendered, making the header button look completely inert (reported
+      live: "the header functionality not yet function"). Root-caused by
+      writing a regression test that, unlike the original test suite,
+      exercises the real `TableRows.load()` chain (the original suite's
+      `FakeTable.load()` was a call-recording stub that never actually
+      invoked `reset_for_reload()`, so it couldn't have caught this).
+      Fixed by moving the call to `Table.get_data()`'s fresh-fetch branch;
+      `on_page_resize()` and `_handle_resize_commit()` (which also call
+      `self.load(...)`/`self.rows.load(...)` directly on the *existing*
+      `self.data`, not a new fetch) correctly never reset remove state
+      either, by the same reasoning.
+    - **Why Shift+click was abandoned entirely (not just a registration
+      bug)**: the original design mirrored senar's single header button
+      that toggled behavior on a held Shift key, tracked via
+      `Page.on_keyboard_event`. Two live-tested fix attempts both failed:
+      (1) registering the handler lazily inside `TableRemove.__init__`
+      (mid-navigation, well after the page's initial client connection) -
+      confirmed broken, Shift+click behaved exactly like a plain click;
+      (2) moving registration to `main.py::main()` at page boot, alongside
+      every other page-level handler (`on_route_change`/`on_view_pop`/
+      `on_resized`) - **also confirmed broken**, identically. Added
+      temporary `[shift-debug]` print diagnostics to both the keyboard
+      handler and the click handler and had the user retest; `podman logs`
+      showed the click handler's diagnostic firing every time (`shift=
+      False`) but **zero** `on_keyboard_event` diagnostic lines at all
+      across every test pass - the browser was not delivering a single
+      keyboard event to the server, regardless of registration timing.
+      Also checked whether any click/tap/gesture event in this Flet 0.85.3
+      build carries a modifier-key flag as a fallback (`TapEvent`,
+      `GestureDetector`'s pointer events, both inspected directly in the
+      installed package) - neither does; `KeyboardEvent.shift` is the
+      *only* modifier signal Flet exposes at all, and it isn't reaching
+      the server in this deployment (most likely because a click-only
+      interaction flow never gives the Flutter canvas actual DOM keyboard
+      focus, which browsers require before forwarding key events to it).
+      With no way to make the keyboard channel work, and no way to verify
+      any further fix without live browser access, replaced the
+      single-button-plus-modifier design with the two-buttons-per-mode
+      design described above - functionally identical outcomes (every
+      scenario in issue #42's user-specified state matrix), zero
+      dependency on a channel that doesn't work here. All debug prints and
+      the shift-tracking code (`_ensure_shift_tracking`/`_is_shift_down`,
+      `main.py`'s keyboard handler) were removed as dead code.
+    - **Live user verification, in order**: (1) single-row remove with
+      confirm - confirmed working. (2) Select All (State 1 -> State 2, all
+      checked) -> Remove Selected -> bulk delete - confirmed working.
+      (3) Select All -> uncheck a few rows -> Remove Selected -> only the
+      still-checked rows removed - confirmed working. (4) Shift+click from
+      single mode (the original, abandoned design) - confirmed broken
+      twice, leading to the button-based redesign above. (5) Select None
+      (State 1 -> State 2, all unchecked) and Cancel (State 2 -> State 1,
+      no delete) - **confirmed working** after the redesign, closing out
+      every scenario in issue #42's spec. All five scenarios (0-4) are now
+      live-verified in the actual browser; the earlier gap ("button
+      redesign not yet visually confirmed") is resolved.
+    - **Column/row wiring in `components/table/columns.py`/`rows.py`**:
+      `TableColumns._build_data_columns()` special-cases `field.get("type")
+      == "remove"` to swap in `self.remove.build_header_cell(w)` instead of
+      the normal label/sort-icon content — but **only when `interactive`
+      is `True`**; `TableBody`'s own hidden structural header row
+      (`heading_row_height=0`, built via `columns.build(interactive=False)`)
+      renders a plain empty `ft.Container(width=w)` instead, same fix
+      pattern already established for sort icons (Flutter doesn't fully
+      clip a zero-height heading row's content, so a real button there
+      could visually bleed into the first data row). `TableRows.load()`
+      special-cases the same field type before the `_EDITABLE_TYPES`
+      dispatch (a remove button isn't a value-holding input, so it's
+      deliberately excluded from `get_input_values()`/
+      `get_rows_with_input_values()`).
+    - **Fixed width, not dynamic sizing** (issue #43, same day follow-up):
+      the remove column's required width is a known constant (room for two
+      28px compact buttons - `_EDITABLE_MIN_WIDTHS["remove"] = 80`), so
+      unlike every other column it never participates in
+      `_get_initial_widths()`'s content-length sizing or `_get_widths()`'s
+      proportional scale-down when total content exceeds the available
+      screen width. `TableColumns.load()` reserves the remove column's
+      fixed width off the top of `get_usable_width()`'s budget, computes
+      `_get_widths()`/`_get_initial_widths()` (both refactored to take an
+      explicit `field_names` list instead of reading `self.index`
+      directly, so they can be called against just the *other* columns)
+      against what's left, then splices the fixed width back in at the
+      remove column's original position via `self.widths.insert(...)`.
+      Never shrinks below 80px on a narrow screen, never grows past it on
+      a wide one. The manual column-resize overlay
+      (`get_resize_overlay()`) also skips building a handle on either
+      boundary adjacent to the remove column - its width is meant to stay
+      fixed, so there's nothing to drag. Verified via a dedicated script
+      (real containerized flet 0.85.3, not stubbed): remove column stays
+      exactly 80px at both a 1400px and a 350px screen width (the latter
+      forcing every other column into proportional scale-down), a table
+      with no remove column is unaffected, and the resize overlay
+      correctly omits the one boundary adjacent to the remove column while
+      keeping the other (unrelated) boundary's handle intact.
+    - **Application**: `ap_master_user/edit.py`'s granted-modules table
+      (`permission_table.py`, from #41) is the first consumer —
+      `_revoke_module`/`_revoke_modules` both post to the new
+      `POST C_ap_master_user/revoke_permission` (form: `user_id` + repeated
+      `module_ids`), which loops `UserModulePermissionRepository.revoke_access`
+      per id (that repository method already existed; this issue only
+      needed a router endpoint exposing it) — no new repository logic.
+    - **Known gap**: a client-side-only removal (`del self.table.data[i]`)
+      doesn't update `Table.total_rows`/`total_pages` (those track the last
+      server-fetched pagination metadata), so `TableFooter`'s "Record X of
+      Y" message can go briefly stale after a remove, until the next real
+      fetch (sort/filter/page change) corrects it. Accepted as a minor,
+      documented simplification rather than adding a footer-sync mechanism
+      for what's otherwise a purely local, already-committed-server-side
+      mutation.
+    - **Icons** deliberately use a consistent checkbox metaphor rather than
+      senar's own literal icon names (`'check'`/`'check_circle'`/
+      `'radio_button_unchecked'`), per explicit user feedback after the
+      live single-row test: header single-mode default is
+      `ft.Icons.CHECK_BOX` (a checked-checkbox glyph, not an empty
+      outline), row-selected is also `ft.Icons.CHECK_BOX`, row-unselected
+      is `ft.Icons.CHECK_BOX_OUTLINE_BLANK`, and both the header-in-
+      multiple-mode and every row's single-mode icon are `ft.Icons.DELETE`.
+    - Verified beyond the live pass above: `TableRemove`'s full state
+      machine (single-row remove with confirm, bulk remove with confirm
+      and count, zero-selected silent cancel, both shift+click branches,
+      an `on_remove_row`/`on_remove_rows` error aborting without mutating
+      data, `reset_for_reload()`) and a dedicated regression test
+      reproducing the exact reset-stomping bug (header/row click must
+      survive its *own* re-render; a genuine new fetch must still reset)
+      were run inside the real containerized frontend's own venv (real
+      `flet` 0.85.3, not stubbed) — all scenarios pass post-fix. A
+      separate script verified the `TableColumns`/`TableRows` wiring
+      itself (synthetic `_remove` field lands as the trailing column,
+      `interactive=True` header build calls `TableRemove.build_header_cell`
+      exactly once, `interactive=False` never does, `TableRows.load()`
+      calls `build_row_cell` once per row with the correct row
+      index/width). Backend `revoke_permission` verified against the real
+      containerized backend: granting then revoking a module left every
+      other grant untouched, and an empty-selection request returned a
+      clean error with no mutation. **The Shift+click fix (registration
+      moved to `main.py`) has not yet been re-verified live** — no
+      browser automation tool was available to the agent this session;
+      next manual pass should re-check Shift+click from both single and
+      multiple mode.
 
 - **Components** (`src/components/`): reusable, presentational Flet control
   builders grouped by domain — `form/`, `home/`, `login/`, `server_config/`

@@ -26,6 +26,10 @@ Contract (see components/table/table.py, components/form/form.py, components/for
 - POST C_ap_master_user/submit_permission_new (form: user_id, repeated
   module_ids) -> grants access to exactly those module ids, additive only -
   does not touch any of the user's existing grants (issue #41).
+- POST C_ap_master_user/revoke_permission (form: user_id, repeated
+  module_ids) -> revokes access to exactly those module ids (single or
+  bulk), leaving every other grant untouched - backs the granted-modules
+  table's remove button on `edit.py` (issue #42).
 
 All routes require `ap_master_user` access (or superuser) via `require_module_access`.
 """
@@ -359,3 +363,25 @@ async def submit_permission_new(
             target_user_id, int(module_id), granted_by=user.id
         )
     return {"message": "Permission added successfully"}
+
+
+@router.post("/revoke_permission")
+async def revoke_permission(
+    request: Request, user: UserModel = Depends(_require_access)
+) -> dict:
+    """Revoke a user's access to every module id submitted (single or
+    bulk) - backs the granted-modules table's remove button on edit.py
+    (issue #42). Uses the already-existing
+    UserModulePermissionRepository.revoke_access, no new repository logic."""
+    form = await request.form()
+    user_id_raw = form.get("user_id", "")
+    if not user_id_raw:
+        return {"error": "user_id is required"}
+    module_ids = [part for part in form.getlist("module_ids") if part]
+    if not module_ids:
+        return {"error": "Select at least one module"}
+
+    target_user_id = int(user_id_raw)
+    for module_id in module_ids:
+        _permission_repository.revoke_access(target_user_id, int(module_id))
+    return {"message": "Permission removed successfully"}

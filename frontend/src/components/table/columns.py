@@ -13,6 +13,11 @@ _EDITABLE_MIN_WIDTHS = {
     "option": 120,
     "datepicker": 130,
     "textarea": 160,
+    # Wide enough for two 28px compact header buttons side by side
+    # (select-all/select-none, or execute-bulk/cancel - see
+    # components/table/remove.py's module docstring for why this is two
+    # always-visible buttons per mode rather than one Shift-click toggle).
+    "remove": 80,
 }
 _DEFAULT_MIN_WIDTH = 40
 
@@ -68,6 +73,10 @@ class TableColumns:
         self.index = []
         self.widths: list[int] | None = None
         self.record_key = "id"
+        # Set by Table.__init__ when on_remove_row/on_remove_rows is passed
+        # (issue #42) - lets _build_data_columns() swap in the remove
+        # column's real header button instead of a plain label/sort cell.
+        self.remove = None
         # Set once a user drags a resize handle - load() then keeps the
         # current widths on later data reloads (pagination/filter/scroll)
         # instead of recomputing them from content, same as a spreadsheet
@@ -249,6 +258,22 @@ class TableColumns:
                 if self.widths and visible_idx < len(self.widths)
                 else None
             )
+
+            if field.get("type") == "remove":
+                # interactive=False is TableBody's own hidden structural
+                # header row (heading_row_height=0, see TableBody.build())
+                # - Flutter doesn't fully clip a zero-height heading row's
+                # content, so a real IconButton there could visually bleed
+                # into the first data row, same bug class already fixed for
+                # sort icons (see the module docstring's "Fifth round").
+                remove_widget = (
+                    self.remove.build_header_cell(w)
+                    if interactive and self.remove is not None
+                    else ft.Container(width=w)
+                )
+                cols.append(ft.DataColumn(label=remove_widget, numeric=False, on_sort=None))
+                continue
+
             is_sortable = interactive and bool(field.get("sort"))
             # Excel-style: a shrunk column truncates its label to one
             # ellipsized line rather than wrapping onto multiple lines
@@ -393,8 +418,16 @@ class TableColumns:
             return self._resize_overlay
 
         num_columns = len(self.index)
+        remove_field_name = self._remove_field_name()
         overlay: list[ft.Control] = []
         for i in range(max(num_columns - 1, 0)):
+            # No handle on either side of the fixed-width remove column
+            # (issue #43) - its width never changes by dragging.
+            if remove_field_name is not None and (
+                self.index[i] == remove_field_name
+                or self.index[i + 1] == remove_field_name
+            ):
+                continue
             handle = self._build_resize_handle(i)
             self._handle_controls[i] = handle
             overlay.append(handle)
@@ -609,6 +642,15 @@ class TableColumns:
         print(f"Usable width: {usable_width}")
         return usable_width
 
+    def _remove_field_name(self) -> str | None:
+        """Name of this table's opt-in remove column (issue #42), if any -
+        its width is a known constant (room for two compact header
+        buttons), never derived from row content."""
+        for field in self.fields:
+            if field.get("type") == "remove":
+                return field.get("name")
+        return None
+
     def load(self, data: list) -> None:
         """Calculate column widths based on content and available screen width"""
         num_columns = len(self.index)
@@ -624,16 +666,43 @@ class TableColumns:
             return
 
         usable_width = self.get_usable_width(num_columns)
-        min_widths = [self._min_width_for(name) for name in self.index]
 
-        widths = (
-            [usable_width]
-            if num_columns == 1
-            else self._get_widths(num_columns, usable_width, min_widths, data)
+        # The remove column (issue #43) is fixed-width, not content-driven -
+        # reserve its width off the top and size only the remaining columns
+        # against what's left, then splice the fixed width back in at its
+        # original position. Never included in _get_widths()'s proportional
+        # scale-down, so it can neither shrink below nor grow past its
+        # known-required width.
+        remove_field_name = self._remove_field_name()
+        remove_index = (
+            self.index.index(remove_field_name)
+            if remove_field_name is not None and remove_field_name in self.index
+            else None
         )
+        if remove_index is not None:
+            fixed_remove_width = self._min_width_for(remove_field_name)
+            usable_width -= fixed_remove_width
+            sizable_fields = [name for name in self.index if name != remove_field_name]
+        else:
+            fixed_remove_width = None
+            sizable_fields = self.index
 
-        # ensure integer widths
-        self.widths = [int(w) for w in widths]
+        min_widths = [self._min_width_for(name) for name in sizable_fields]
+
+        if len(sizable_fields) == 0:
+            sizable_widths = []
+        elif len(sizable_fields) == 1:
+            sizable_widths = [usable_width]
+        else:
+            sizable_widths = self._get_widths(
+                sizable_fields, usable_width, min_widths, data
+            )
+
+        widths = [int(w) for w in sizable_widths]
+        if remove_index is not None:
+            widths.insert(remove_index, int(fixed_remove_width))
+
+        self.widths = widths
         print("TableColumns.load: columns width")
         print(self.widths)
         self.rebuild()
@@ -660,8 +729,13 @@ class TableColumns:
         # small enough to violate it.
         return max(base, _RESIZE_HANDLE_HIT_WIDTH)
 
-    def _get_widths(self, num_columns, usable_width, min_widths: list[int], data: list):
-        content_widths, total_content_width = self._get_initial_widths(data, min_widths)
+    def _get_widths(
+        self, field_names: list[str], usable_width, min_widths: list[int], data: list
+    ):
+        num_columns = len(field_names)
+        content_widths, total_content_width = self._get_initial_widths(
+            field_names, data, min_widths
+        )
 
         # Adjust widths proportionally if total exceeds usable width
         if total_content_width > usable_width:
@@ -695,15 +769,15 @@ class TableColumns:
         return widths
 
     def _get_initial_widths(
-        self, data: list, min_widths: list[int]
+        self, field_names: list[str], data: list, min_widths: list[int]
     ) -> tuple[list[int], int]:
         # Calculate initial widths based on content
         content_widths: list[int] = []
         total_content_width: int = 0
 
-        for i, field_name in enumerate(self.index):
+        for i, field_name in enumerate(field_names):
             # Start with header label length
-            field = next((f for f in self.fields if f.get("name") == field_name), {})
+            field = self.fields_by_name.get(field_name, {})
             header_label = field.get("label", field_name)
             max_length = len(str(header_label))
 
