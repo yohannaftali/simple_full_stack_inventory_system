@@ -1,6 +1,9 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-21] — docs: mark #41 closed
+- Issue #41's implementation (including a README.md update to its "5. Setting up users and permissions" section, describing the new Module Access table + "Add Permission" screen flow instead of the removed inline checkbox list) was committed and pushed (`e29e46d`, `Closes #41` trailer), which GitHub auto-closed on push
+
 ## [2026-07-21] — feat(ap_master_user): table-based module-permission grant flow via new permission_new screen (implemented)
 - Issue #41 addressed on GitHub
 - Backend: `ModuleRepository.list_granted_modules_for_user`/`list_ungranted_modules_for_user` (module_repository.py), reusing the file's existing `_FILTER_COLUMN_MAP`/`_FILTER_NUMERIC_FIELDS` for the standard `table_query.py` filter/sort/paginate convention; ungranted variant excludes modules already in a `UserModulePermissionModel` subquery for that user
