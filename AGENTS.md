@@ -64,6 +64,7 @@
 | #42 | feat(table): reusable single/bulk row-remove button (ported from senar) and wire into ap_master_user permission revoke | closed | 2026-07-21 |
 | #43 | chore(table): give the remove column a fixed width instead of participating in dynamic column sizing | ready-for-review | 2026-07-21 |
 | #44 | feat(table): checked/unchecked icon style for checkbox cells, and fixed width for checkbox + option columns | closed | 2026-07-21 |
+| #45 | feat(table): reusable radio column type (by-column single-pick, by-row Likert/checklist grid with spanning header) | open | 2026-07-21 |
 
 ## Big Picture
 

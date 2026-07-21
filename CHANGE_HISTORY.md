@@ -1,6 +1,12 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-21] — feat(table): reusable radio column type (by-column single-pick, by-row Likert/checklist grid with spanning header)
+- Issue #45 filed on GitHub, following a research pass through senar's `y.panel.js`/`y.form.js` `radio`/`byColumn`/`byRow` table-field handling (no issue filed for the research itself - direct discussion, resolved via clarifying questions)
+- User confirmed: (1) call it `"radio"`, not `"option"` (avoids collision with the existing static-dropdown `"option"` type); (2) by-column and by-row are a genuinely separate field type from `"checkbox"`, matching senar's own approach; (3) by-row groups should auto-merge into one spanning header, and rows can mix radio-group columns with other editable types (e.g. a free-text "Reason" input) in the same row; (4) first planned consumers are an audit checklist module and a survey module (each to be scoped separately once this capability exists)
+- Flagged as needing a short technical spike before final implementation: whether Flet's `DataTable`/`DataColumn` supports column-spanning headers natively, or whether an overlay-based visual merge (like the existing resize-handle overlay) is needed instead
+- Not yet implemented - issue filed only
+
 ## [2026-07-21] — docs: mark #44 closed
 - Issue #44's implementation was committed and pushed (`724a7a1`, `Closes #44` trailer), which GitHub auto-closed on push
 
