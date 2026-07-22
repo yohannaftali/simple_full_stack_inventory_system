@@ -130,6 +130,10 @@ class Table:
         # params) after a header click cycles a sortable column's state -
         # see TableColumns.on_sort()/serialize_sort().
         self.columns.on_sort_change = self._handle_sort_change
+        # Lets TableColumns forward a generic "checkbox"-type column's
+        # header check-all/uncheck-all click (issue #46) into a bulk update
+        # of every currently-rendered row's checkbox cell.
+        self.columns.on_checkbox_header_click = self._handle_checkbox_header_click
 
         self.limit = limit
         self.page_number = 1  # Current page
@@ -597,6 +601,14 @@ class Table:
                 col.update()
 
         self.get_data(page_no=self.page_number, offset=0)
+
+    def _handle_checkbox_header_click(self, field_name: str, value: bool) -> None:
+        """Check-all/uncheck-all header buttons for a generic "checkbox"-
+        type column (issue #46, `components/table/columns.py`'s
+        `TableColumns._build_checkbox_header()`) - bulk-sets every
+        currently loaded row's checkbox cell in place; no data re-fetch or
+        full `Table.load()` re-render needed."""
+        self.rows.set_all_checkbox(field_name, value)
 
     def _handle_footer_mode_change(self, mode: str) -> None:
         """`TableFooter`'s toggle switched between lazy-load and pagination

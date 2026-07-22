@@ -73,8 +73,11 @@ ICON_CHECKBOX_UNCHECKED = ft.Icons.CHECK_BOX_OUTLINE_BLANK
 # Compact paired header buttons (via components/button.py::Button, same
 # 32dp/16-radius sizing as every other compact icon button in this app -
 # see TableToolbar/ModuleToolbar) need to fit two side by side in one
-# column - _EDITABLE_MIN_WIDTHS["remove"] in columns.py is sized for this.
-_HEADER_BUTTON_SIZE = 28
+# column - _EDITABLE_MIN_WIDTHS["remove"]/["checkbox"] in columns.py is
+# sized for this. Public (no leading underscore) - reused by columns.py's
+# own generic "checkbox"-type column header (issue #46), same reasoning as
+# the ICON_CHECKBOX_* constants above.
+HEADER_BUTTON_SIZE = 28
 
 
 class TableRemove:
@@ -97,14 +100,14 @@ class TableRemove:
                     on_click=self._on_select_all_click,
                     tooltip="Select all rows to remove",
                     icon_color=ft.Colors.ON_SURFACE_VARIANT,
-                    size=_HEADER_BUTTON_SIZE,
+                    size=HEADER_BUTTON_SIZE,
                 ).build(),
                 Button(
                     icon=_ICON_SELECT_NONE,
                     on_click=self._on_select_none_click,
                     tooltip="Choose rows to remove",
                     icon_color=ft.Colors.ON_SURFACE_VARIANT,
-                    size=_HEADER_BUTTON_SIZE,
+                    size=HEADER_BUTTON_SIZE,
                 ).build(),
             ]
         else:
@@ -114,14 +117,14 @@ class TableRemove:
                     on_click=self._on_bulk_execute_click,
                     tooltip="Remove selected rows",
                     icon_color=ft.Colors.ERROR,
-                    size=_HEADER_BUTTON_SIZE,
+                    size=HEADER_BUTTON_SIZE,
                 ).build(),
                 Button(
                     icon=_ICON_CANCEL,
                     on_click=self._on_cancel_click,
                     tooltip="Cancel",
                     icon_color=ft.Colors.ON_SURFACE_VARIANT,
-                    size=_HEADER_BUTTON_SIZE,
+                    size=HEADER_BUTTON_SIZE,
                 ).build(),
             ]
         row = ft.Row(buttons, spacing=0, alignment=ft.MainAxisAlignment.CENTER, tight=True)

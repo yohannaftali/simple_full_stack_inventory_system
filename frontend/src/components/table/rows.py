@@ -40,7 +40,15 @@ class _CheckboxCellValue:
         self._apply_icon()
 
     def toggle(self, e) -> None:
-        self.value = not self.value
+        self.set_value(not self.value)
+
+    def set_value(self, value: bool) -> None:
+        """Bulk-set from the header's check-all/uncheck-all buttons (issue
+        #46) - same icon/color sync as toggle(), just driven externally
+        instead of by this cell's own click."""
+        if self.value == value:
+            return
+        self.value = value
         self._apply_icon()
         try:
             self._control.update()
@@ -356,6 +364,20 @@ class TableRows:
 
         self._select_options_cache[name] = options
         return options
+
+    def set_all_checkbox(self, field_name: str, value: bool) -> None:
+        """Bulk check-all/uncheck-all a `"checkbox"`-type column (issue
+        #46) - called from the header's check-all/uncheck-all buttons
+        (`TableColumns._on_checkbox_header_click` ->
+        `Table._handle_checkbox_header_click`). Patches each already-
+        rendered row's `_CheckboxCellValue` directly, same "update what's
+        already mounted" approach as every other in-place Table
+        interaction (e.g. `TableRemove`'s own row-selection toggling) - no
+        full `Table.load()` re-render needed."""
+        for row_inputs in self.input_controls:
+            entry = row_inputs.get(field_name)
+            if entry and entry["type"] == "checkbox":
+                entry["control"].set_value(value)
 
     def get_input_values(self) -> list[dict]:
         """Current value of every editable-type column, one dict per row in

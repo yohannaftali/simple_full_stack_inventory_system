@@ -290,9 +290,11 @@ is only visible to users who already have access to it — the seeded
   Access** table below the form — it lists every module this user already
   has access to. Click **Add Permission** (the toolbar button above that
   table) to open a new screen listing every module the user does *not* yet
-  have — check as many as you need (the list is filterable) and click
-  **Submit**. You're returned to the edit screen with the new modules added
-  to the access table. There's no group/role concept here: every module a
+  have — check as many as you need (the list is filterable), or use the
+  **Select** column's two header icons to check or uncheck every listed
+  module at once, then click **Submit**. You're returned to the edit screen
+  with the new modules added to the access table. There's no group/role
+  concept here: every module a
   non-superuser needs must be granted explicitly, including basic ones like
   Stock In/Stock Out.
 - **Revoke module access**: on that same Module Access table, each row has

@@ -1,6 +1,22 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-22] — feat(table): check-all/uncheck-all header icons for generic checkbox-type columns (implemented)
+- Issue #46 addressed on GitHub
+- `components/table/remove.py`: promoted `_HEADER_BUTTON_SIZE` to public `HEADER_BUTTON_SIZE` for reuse
+- `components/table/columns.py`: `TableColumns` gained `on_checkbox_header_click` callback slot + `_build_checkbox_header()` (two `Button`s using the existing `ICON_CHECKBOX_CHECKED`/`ICON_CHECKBOX_UNCHECKED` pair from #44), dispatched from `_build_data_columns()` for `type == "checkbox"` with the same `interactive`-gated hidden-header-row precaution already used for `"remove"`/sort icons; `_EDITABLE_MIN_WIDTHS["checkbox"]` bumped 50 -> 80 to fit two 28px buttons
+- `components/table/rows.py`: `_CheckboxCellValue` gained `set_value()` (external bulk-set); `TableRows` gained `set_all_checkbox(field_name, value)`, patching every already-mounted row's checkbox control in place
+- `components/table/table.py`: wires `columns.on_checkbox_header_click` to a new `Table._handle_checkbox_header_click()`, forwarding to `rows.set_all_checkbox()`
+- No changes needed in `permission_new.py` - it only declares `"type": "checkbox"`, the header comes free
+- Verified: all four files syntax-checked; frontend container restarted cleanly with zero tracebacks, `ap_master_user/permission_new`/`permission_table` reload without error. **Not yet confirmed in a live browser** - no browser automation tool was available this session
+- Files: frontend/src/components/table/{remove.py,columns.py,rows.py,table.py}
+
+## [2026-07-22] — feat(table): check-all/uncheck-all header icons for generic checkbox-type columns
+- Issue #46 filed on GitHub
+- User spotted on `permission_new.py`'s (#41) "Select" checkbox column: the header still renders as a plain text label ("Select"); #44 only restyled the row-level checkbox cells into checked/unchecked icon buttons, it never touched the header
+- Requested: header renders two icon buttons instead (checked icon = select all rows, unchecked icon = deselect all rows), reusing `ICON_CHECKBOX_CHECKED`/`ICON_CHECKBOX_UNCHECKED` from `components/table/remove.py` for visual consistency with #42's remove-column select-all/none, but as a new, generic mechanism for any `"checkbox"`-type field column, not specific to the remove column
+- Not yet implemented - issue filed only
+
 ## [2026-07-21] — feat(table): reusable radio column type (by-column single-pick, by-row Likert/checklist grid with spanning header)
 - Issue #45 filed on GitHub, following a research pass through senar's `y.panel.js`/`y.form.js` `radio`/`byColumn`/`byRow` table-field handling (no issue filed for the research itself - direct discussion, resolved via clarifying questions)
 - User confirmed: (1) call it `"radio"`, not `"option"` (avoids collision with the existing static-dropdown `"option"` type); (2) by-column and by-row are a genuinely separate field type from `"checkbox"`, matching senar's own approach; (3) by-row groups should auto-merge into one spanning header, and rows can mix radio-group columns with other editable types (e.g. a free-text "Reason" input) in the same row; (4) first planned consumers are an audit checklist module and a survey module (each to be scoped separately once this capability exists)

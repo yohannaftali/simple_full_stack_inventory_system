@@ -1,5 +1,12 @@
 import flet as ft
 
+from components.button import Button
+from components.table.remove import (
+    HEADER_BUTTON_SIZE,
+    ICON_CHECKBOX_CHECKED,
+    ICON_CHECKBOX_UNCHECKED,
+)
+
 # A rigid-width control (TextField/Dropdown/etc.) has a real rendering
 # floor below which Flutter overflows it past its Container - unlike a
 # plain Text cell, which just ellipsizes gracefully at any width. The old
@@ -7,7 +14,10 @@ import flet as ft
 # scale-down in _get_widths() squeeze an editable column below that floor.
 # Keyed by field "type"; a field-level `"min_width"` always wins over this.
 _EDITABLE_MIN_WIDTHS = {
-    "checkbox": 50,
+    # Wide enough for two 28px compact header buttons side by side
+    # (check-all/uncheck-all - issue #46, same pixel budget as "remove"
+    # below, whose own two header buttons set this precedent).
+    "checkbox": 80,
     "input": 100,
     "select": 120,
     "option": 120,
@@ -137,6 +147,15 @@ class TableColumns:
         # - sorting is server-side, unlike the resize handle's purely
         # visual state.
         self.on_sort_change = None
+        # Notified when a generic "checkbox"-type column's header
+        # check-all/uncheck-all button is clicked (Callable[[str, bool],
+        # None], args = field name + the value to set every row to -
+        # issue #46). Table wires this to `Table._handle_checkbox_header_click`,
+        # which forwards it to `TableRows.set_all_checkbox()` - TableColumns
+        # itself has no access to row data/controls, same separation of
+        # concerns as `self.remove` above (built and owned by Table, not
+        # TableColumns).
+        self.on_checkbox_header_click = None
         self.parse_field(self.fields)
 
     def build(self, interactive: bool = True) -> list:
@@ -281,6 +300,21 @@ class TableColumns:
                 cols.append(ft.DataColumn(label=remove_widget, numeric=False, on_sort=None))
                 continue
 
+            if field.get("type") == "checkbox":
+                # Same zero-height-hidden-header-row precaution as "remove"
+                # above (interactive=False is TableBody's own structural
+                # row) - a real IconButton there could visually bleed into
+                # the first data row.
+                checkbox_widget = (
+                    self._build_checkbox_header(field["name"], w)
+                    if interactive
+                    else ft.Container(width=w)
+                )
+                cols.append(
+                    ft.DataColumn(label=checkbox_widget, numeric=False, on_sort=None)
+                )
+                continue
+
             is_sortable = interactive and bool(field.get("sort"))
             # Excel-style: a shrunk column truncates its label to one
             # ellipsized line rather than wrapping onto multiple lines
@@ -397,6 +431,43 @@ class TableColumns:
             )
 
         return cols
+
+    def _build_checkbox_header(self, field_name: str, width: int | None) -> ft.Control:
+        """Header cell for a generic `"checkbox"`-type column (issue #46) -
+        two always-visible icon buttons instead of a plain text label: a
+        checked icon (check every currently-loaded row) and an unchecked
+        icon (clear every currently-loaded row). Reuses the same icon
+        pair/size as `TableRemove`'s own select-all/none header buttons
+        (`components/table/remove.py`) for a visually consistent look, but
+        is otherwise unrelated machinery - this drives the value
+        `Table.get_rows_with_input_values()` reads back for this column,
+        not `TableRemove`'s own row-selection state."""
+        buttons = [
+            Button(
+                icon=ICON_CHECKBOX_CHECKED,
+                on_click=lambda e, name=field_name: self._on_checkbox_header_click(
+                    name, True
+                ),
+                tooltip="Check all rows",
+                icon_color=ft.Colors.ON_SURFACE_VARIANT,
+                size=HEADER_BUTTON_SIZE,
+            ).build(),
+            Button(
+                icon=ICON_CHECKBOX_UNCHECKED,
+                on_click=lambda e, name=field_name: self._on_checkbox_header_click(
+                    name, False
+                ),
+                tooltip="Uncheck all rows",
+                icon_color=ft.Colors.ON_SURFACE_VARIANT,
+                size=HEADER_BUTTON_SIZE,
+            ).build(),
+        ]
+        row = ft.Row(buttons, spacing=0, alignment=ft.MainAxisAlignment.CENTER, tight=True)
+        return ft.Container(content=row, width=width, alignment=ft.Alignment.CENTER)
+
+    def _on_checkbox_header_click(self, field_name: str, value: bool) -> None:
+        if self.on_checkbox_header_click:
+            self.on_checkbox_header_click(field_name, value)
 
     def _build_sort_icon(self, field_name: str) -> ft.Control:
         """This column's current sort-state indicator - neutral
