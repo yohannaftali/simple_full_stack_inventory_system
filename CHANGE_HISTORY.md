@@ -1,6 +1,9 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-22] — docs: mark #43 closed
+- Issue #43's implementation had already landed in `724a7a1` (2026-07-21, generalized in #44) but was left open at the time since closing wasn't requested; closed now on GitHub per user confirmation, with a comment pointing back to that commit
+
 ## [2026-07-22] — docs: mark #46 closed
 - Issue #46's implementation was committed and pushed (`4f42c20`, `Closes #46` trailer), which GitHub auto-closed on push
 - README.md's "5. Setting up users and permissions" section updated to document the new check-all/uncheck-all header icons on the "Add Permission" screen's Select column
