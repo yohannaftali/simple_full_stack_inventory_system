@@ -1,6 +1,10 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-22] — docs: mark #46 closed
+- Issue #46's implementation was committed and pushed (`4f42c20`, `Closes #46` trailer), which GitHub auto-closed on push
+- README.md's "5. Setting up users and permissions" section updated to document the new check-all/uncheck-all header icons on the "Add Permission" screen's Select column
+
 ## [2026-07-22] — feat(table): check-all/uncheck-all header icons for generic checkbox-type columns (implemented)
 - Issue #46 addressed on GitHub
 - `components/table/remove.py`: promoted `_HEADER_BUTTON_SIZE` to public `HEADER_BUTTON_SIZE` for reuse

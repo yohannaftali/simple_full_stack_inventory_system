@@ -65,7 +65,7 @@
 | #43 | chore(table): give the remove column a fixed width instead of participating in dynamic column sizing | ready-for-review | 2026-07-21 |
 | #44 | feat(table): checked/unchecked icon style for checkbox cells, and fixed width for checkbox + option columns | closed | 2026-07-21 |
 | #45 | feat(table): reusable radio column type (by-column single-pick, by-row Likert/checklist grid with spanning header) | open | 2026-07-21 |
-| #46 | feat(table): check-all/uncheck-all header icons for generic checkbox-type columns | ready-for-review | 2026-07-22 |
+| #46 | feat(table): check-all/uncheck-all header icons for generic checkbox-type columns | closed | 2026-07-22 |
 
 ## Big Picture
 
