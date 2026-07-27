@@ -70,7 +70,7 @@
 | #48 | fix(frontend): table column widths don't respond to browser window resize/maximize (web) | closed | 2026-07-27 |
 | #49 | fix(frontend): add top padding to master_config/mail_config singleton Form screens | closed | 2026-07-27 |
 | #50 | fix(table): column resize handle stops working on the second drag | open | 2026-07-27 |
-| #51 | fix(frontend): web app hangs on splash when loaded directly at /home or a deep route | ready-for-review | 2026-07-27 |
+| #51 | fix(frontend): web app hangs on splash when loaded directly at /home or a deep route | closed | 2026-07-27 |
 
 ## Big Picture
 
