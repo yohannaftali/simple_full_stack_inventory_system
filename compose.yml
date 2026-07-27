@@ -11,6 +11,11 @@ services:
     environment:
       MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
       MARIADB_DATABASE: ${MARIADB_DATABASE}
+      # Complementary safety net only (issue #47) - the app itself no longer
+      # relies on the DB container's clock/timezone for created_at/updated_at
+      # (see backend's core/timezone.py), but pinning this explicitly avoids
+      # ever depending on whatever timezone the host machine happens to be in.
+      TZ: ${TZ:-UTC}
     ports:
       - "3306:3306"
     volumes:
@@ -44,6 +49,10 @@ services:
       ADMIN_USERNAME: ${ADMIN_USERNAME}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       ADMIN_TOTP_SECRET: ${ADMIN_TOTP_SECRET}
+      # Boot-time default only (issue #47) - seeds app_configs.timezone on a
+      # fresh install; the live, admin-editable value afterwards lives in
+      # that row (Application Config screen), not this env var.
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Jakarta}
     ports:
       - "${UVICORN_PORT}:${UVICORN_PORT}"
       - "${UVICORN_PORT_SSL}:${UVICORN_PORT_SSL}"

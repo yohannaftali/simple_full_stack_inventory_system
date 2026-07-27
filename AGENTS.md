@@ -66,7 +66,7 @@
 | #44 | feat(table): checked/unchecked icon style for checkbox cells, and fixed width for checkbox + option columns | closed | 2026-07-21 |
 | #45 | feat(table): reusable radio column type (by-column single-pick, by-row Likert/checklist grid with spanning header) | closed | 2026-07-27 |
 | #46 | feat(table): check-all/uncheck-all header icons for generic checkbox-type columns | closed | 2026-07-22 |
-| #47 | feat(backend): app-wide configurable timezone (IANA via zoneinfo) with UTC storage | open | 2026-07-27 |
+| #47 | feat(backend): app-wide configurable timezone (IANA via zoneinfo) with UTC storage | ready-for-review | 2026-07-27 |
 
 ## Big Picture
 
@@ -142,7 +142,114 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
   `otpauth://` URI and renders the QR itself, so the backend only ever
   hands out the raw secret. `table_query.py` is a Python port of the
   pagination/keyword-filter half of a legacy PHP library (`L_database`) —
-  see "Table list/pagination convention" below.
+  see "Table list/pagination convention" below. `timezone.py` (issue #47)
+  is the app-wide timezone layer — see "Timestamps and timezone handling"
+  immediately below.
+
+**Timestamps and timezone handling** (issue #47, 2026-07-27): every
+`created_at`/`updated_at` column used to be a plain `DateTime` with
+`server_default=func.now()`/`onupdate=func.now()` — its value came from
+whatever clock/timezone the MariaDB *container* happened to be running in,
+not something the app controlled. Now every one of those columns (all 20
+models with the pattern — `app_configs`, `categories`, `departments`,
+`inventory_values`, `locations`, `mail_configs`, `materials`, `modules`,
+`module_groups`, `receiving_headers`, `receiving_items`, `stocks`,
+`stock_movement_headers`, `stock_movement_items`, `stock_out_headers`,
+`stock_out_items`, `suppliers`, `units_of_material`, `users`,
+`user_module_permissions`) uses `core/timezone.py::AwareDateTime` +
+Python-side `default=utcnow`/`onupdate=utcnow` instead — the value is
+computed in Python as UTC before it ever reaches the DB driver, so it no
+longer depends on the DB container's clock at all. Plain business `date`
+columns (receiving date, stock-out date, etc.) are unaffected — they carry
+no time component, so timezone conversion doesn't apply to them; only
+audit timestamps were in scope.
+
+- **`core/timezone.py`** is the whole layer:
+  - `AwareDateTime(TypeDecorator)` — MariaDB has no native
+    `TIMESTAMP WITH TIME ZONE` the way Postgres does, so SQLAlchemy's
+    `DateTime(timezone=True)` is a silent no-op on this dialect. This type
+    does the conversion itself instead: `process_bind_param` converts an
+    incoming aware `datetime` to UTC and strips its tzinfo before handing
+    it to the driver (the underlying `DATETIME` column physically can't
+    store tzinfo); `process_result_value` re-attaches `UTC` on the way back
+    out, so ORM code always sees an aware UTC `datetime`, never a naive one
+    that could be misread as local time. Raises `ValueError` if ever handed
+    a naive datetime to write — every model's `default`/`onupdate` uses
+    `utcnow()` (a thin `datetime.now(timezone.utc)` wrapper) specifically
+    to guarantee this never happens from application code.
+  - `get_app_timezone() -> ZoneInfo` — the *live*, admin-editable app
+    timezone, read from the `app_configs` singleton row's own `timezone`
+    column on every call (not cached), so changing it via the
+    `master_config` screen takes effect on the very next request, no
+    restart needed. Falls back to `config.APP_TIMEZONE` (the env-based
+    boot-time default, see below) if the row/column is unset or holds an
+    unrecognized IANA name.
+  - `to_app_timezone(dt)` / `isoformat_app_timezone(dt)` — convert an aware
+    UTC `datetime` into the configured app timezone (the latter also
+    formats it), for a router to call when serializing a `created_at`/
+    `updated_at` field into a JSON response, so the frontend's existing
+    display formatting (`utils/formatting.py`, purely a string-reformat
+    layer with no timezone awareness of its own) needs no changes — it
+    already receives a wall-clock value in the right zone. Currently the
+    only real consumer is `routers/stock_movement.py`'s item
+    `created_at` (the one place in the whole app that exposes an audit
+    timestamp to the frontend today — checked via a repo-wide grep before
+    this issue was scoped); any future endpoint that starts exposing
+    `created_at`/`updated_at` should route through this the same way.
+  - `common_timezones()` — a curated subset of
+    `zoneinfo.available_timezones()` (drops `Etc/`/`posix/`/`right/`/
+    `SystemV/` entries and bare abbreviations with no `/`, same idea as
+    `pytz.common_timezones` without adding that dependency) backing the
+    `master_config` screen's `call_timezone_select` — ~519 real IANA names.
+- **`core/config.py`**: `APP_TIMEZONE_STR` (env `APP_TIMEZONE`, default
+  `"Asia/Jakarta"`) and `APP_TIMEZONE` (the resolved `zoneinfo.ZoneInfo`,
+  built eagerly at import time so an invalid/unknown IANA name fails fast
+  at process startup, not later as a confusing runtime error) are only the
+  **boot-time default** — they seed `app_configs.timezone` for a fresh
+  install (migration `0031`) and are `get_app_timezone()`'s fallback if
+  that DB value is ever missing/invalid. The live, day-to-day setting is
+  the DB row, editable via `master_config`, not this env var — changing
+  `APP_TIMEZONE` after the database already exists has no effect on an
+  already-seeded row (same "env vars only seed the initial row" caveat
+  `ADMIN_USERNAME`/etc. already document elsewhere in this file).
+- **`core/session_token.py`'s `datetime.now()` is a deliberate, documented
+  exception** — it generates a naive `HHmm` stamp for the legacy
+  pre-auth-token hash scheme (see above), which must track whatever
+  wall-clock the client and server already agree on, not the app's
+  configured *display* timezone. Switching it to UTC or `core.timezone.
+  utcnow()` would break the token match unless the client-side generator
+  changed identically, so it was explicitly left alone.
+- **`tzdata`** was added as an explicit backend dependency (`pyproject.toml`)
+  even though the base `python:3.13-slim` image happens to already have
+  `/usr/share/zoneinfo` (confirmed live, likely pulled in transitively by
+  the `openssl` apt install) — `zoneinfo` prefers the system tz database
+  but falls back to this PyPI package if the host has none, and depending
+  on that happening to be true by accident isn't something to rely on.
+- **`compose.yml`**: `database` service gets `TZ: ${TZ:-UTC}` (a
+  complementary safety net only — the app itself no longer depends on the
+  DB container's clock for anything, but pinning it explicitly costs
+  nothing); `backend` service gets `APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Jakarta}`
+  (the boot-time default described above). Both documented in `example.env`.
+- Verified end-to-end against the real running stack (not just unit-level):
+  `GET/POST C_master_config/get`/`submit` round-trip the `timezone` field
+  correctly (including rejecting an unrecognized IANA name with a clean
+  `{"error": ...}`, never a 500); `GET C_master_config/call_timezone_select`
+  returns the full curated list; switching the configured timezone between
+  `Asia/Jakarta` and `America/New_York` correctly changes an *existing*
+  `stock_movement` item's displayed `created_at` offset (`+07:00` ↔
+  `-04:00`) for the exact same stored value, confirming display-only
+  conversion with no write-back to the DB; creating a fresh `locations` row
+  and reading it back directly from MariaDB confirmed its `created_at` is
+  genuine wall-clock UTC (not DB-container-local), i.e. the Python-side
+  `utcnow()` default is what actually wrote it, not `func.now()`. **Not
+  confirmed in a live browser** — the Application Config screen's new
+  Timezone select field wasn't visually clicked through; browser automation
+  hit a stuck splash/"push_route can hang" state this session (a
+  pre-existing, already-documented class of Flet flakiness unrelated to
+  this change — see `main.py`'s own `_push_route_safe` comments) that
+  persisted across container restarts, a fresh tab, and a second connected
+  browser. Next manual pass should open `master_config`, confirm the
+  Timezone dropdown lists real options and round-trips a selection.
 - **`src/models/`**: `base.py` defines the SQLAlchemy `Base`, `engine`, and
   `SessionLocal` session factory. Each table gets its own module:
   - `user.py` → `UserModel` (`users` table: `id`, `username`, `password`,
@@ -167,10 +274,13 @@ Dockerfile note). Regenerate the lockfile after editing dependencies with
     `master_module_group` admin screen and assignable per-module via
     `ap_module`'s `module_group_id` select.
   - `app_config.py` → `AppConfigModel` (`app_configs` table: `id`,
-    `app_title` [default `"SFSIS"`], `footer` [default `""`], `created_at`,
+    `app_title` [default `"SFSIS"`], `footer` [default `""`], `timezone`
+    [default `config.APP_TIMEZONE_STR`, added by `0031` — issue #47, see
+    "Timestamps and timezone handling" above], `created_at`,
     `updated_at`) — a **singleton** row (exactly one, seeded by
     `0016_create_app_config_table.py`) backing `home.py`'s `title`/`footer`
-    fields and the `master_config` admin screen.
+    fields and the `master_config` admin screen (which now also edits
+    `timezone`, the live app-wide display timezone).
   - `mail_config.py` → `MailConfigModel` (`mail_configs` table: `id`,
     `smtp_host`, `smtp_port` [default `587`], `smtp_username`,
     `smtp_password`, `sender_name`, `sender_email`, `use_tls` [default

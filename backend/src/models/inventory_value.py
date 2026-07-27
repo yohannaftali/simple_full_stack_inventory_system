@@ -6,10 +6,10 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Numeric
+from sqlalchemy import ForeignKey, Integer, Numeric
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.sql import func
 
+from core.timezone import AwareDateTime, utcnow
 from models.base import Base
 
 
@@ -28,11 +28,11 @@ class InventoryValueModel(Base):
         Integer, ForeignKey("users.id"), nullable=True, index=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), nullable=False
+        AwareDateTime, default=utcnow, nullable=False
     )
     updated_by: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("users.id"), nullable=True, index=True
     )
     updated_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime, onupdate=func.now(), nullable=True
+        AwareDateTime, onupdate=utcnow, nullable=True
     )

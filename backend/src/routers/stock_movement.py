@@ -53,6 +53,7 @@ from fastapi import APIRouter, Depends, Form, Query, Request
 
 from core.table_export import export_response
 from core.table_query import attach_pagination, parse_sort_fields
+from core.timezone import isoformat_app_timezone
 from models.stock_movement_header import StockMovementHeaderModel
 from models.user import UserModel
 from repository.location_repository import LocationRepository
@@ -119,7 +120,7 @@ def _serialize_item(item) -> dict:
         "unit_code": unit.code if unit else "",
         "unit_name": unit.name if unit else "",
         "remarks": item.remarks,
-        "created_at": item.created_at.isoformat(),
+        "created_at": isoformat_app_timezone(item.created_at),
     }
 
 

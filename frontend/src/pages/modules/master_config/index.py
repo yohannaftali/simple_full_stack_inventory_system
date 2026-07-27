@@ -25,6 +25,11 @@ class ModulePage:
                 "name": "footer", "label": "Footer", "icon": ft.Icons.NOTES,
                 "row": 2,
                 "type": "input"
+            },
+            {
+                "name": "timezone", "label": "Timezone", "icon": ft.Icons.SCHEDULE,
+                "row": 3, "col": {"sm": 12, "md": 6},
+                "type": "select"
             }
         ]
 

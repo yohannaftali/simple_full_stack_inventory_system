@@ -1,6 +1,7 @@
 """Environment-driven configuration for database and auth."""
 
 import os
+from zoneinfo import ZoneInfo
 
 MARIADB_HOST = os.getenv("DATABASE_HOST", "localhost")
 MARIADB_PORT = int(os.getenv("MARIADB_PORT", "3306"))
@@ -20,3 +21,11 @@ JWT_SECRET = os.getenv("JWT_SECRET", "")
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin1234#")
 ADMIN_TOTP_SECRET = os.getenv("ADMIN_TOTP_SECRET", "")
+
+# Boot-time default app timezone (issue #47) - seeds the app_configs.timezone
+# column on a fresh install; the live, admin-editable value afterwards lives
+# in that DB row (see core/timezone.py::get_app_timezone), not here. Resolved
+# eagerly at import time so an invalid/unknown IANA name fails fast at
+# startup rather than surfacing later as a confusing runtime error.
+APP_TIMEZONE_STR = os.getenv("APP_TIMEZONE", "Asia/Jakarta")
+APP_TIMEZONE = ZoneInfo(APP_TIMEZONE_STR)

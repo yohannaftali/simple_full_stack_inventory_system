@@ -12,6 +12,12 @@ from core.config import JWT_SECRET
 
 
 def _minute_stamp(offset_minutes: int = 0) -> str:
+    # Deliberately naive/local-clock (issue #47 explicitly excludes this
+    # function): the client computes the same token from its own local
+    # clock, so this must track whatever wall-clock the two sides already
+    # agree on, not the app's configured display timezone - switching this
+    # to UTC or core.timezone.utcnow() would break the token match unless
+    # the client-side generator changed identically.
     return (datetime.now() - timedelta(minutes=offset_minutes)).strftime("%H%M")
 
 

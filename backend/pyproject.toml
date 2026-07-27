@@ -18,4 +18,10 @@ dependencies = [
   "openpyxl>=3.1",
   "odfpy>=1.4",
   "reportlab>=4.2",
+  # zoneinfo's own stdlib fallback for when the host has no system tzdata
+  # (issue #47) - the base python:3.13-slim image happens to have
+  # /usr/share/zoneinfo today (pulled in transitively), but that's not
+  # guaranteed across base images/hosts, so pin the real thing explicitly
+  # rather than depend on it staying true by accident.
+  "tzdata>=2024.1",
 ]
