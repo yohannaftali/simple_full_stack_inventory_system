@@ -1,6 +1,15 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-27] — fix(frontend): web app hangs on splash when loaded directly at /home or a deep route
+- Issue #51 created on GitHub
+- Scope: frontend
+- Labels: bug, frontend
+- Root cause identified from the code (not yet fixed): `_boot_navigate()` navigates only via `page.push_route(target)`, which is a **no-op when the browser is already at that URL** - `on_route_change` never fires, `route_change()` never builds the view, and `main()`'s splash is never replaced. Explains the user's workaround exactly (going to `/` then back to `/home` makes each step a real route *change*), and why it only bites after a code change / container restart (the reload preserves a deep URL, whereas a cold boot starts at `/`)
+- Two candidate fixes recorded: the user's proposed `await _push_route_safe("/")` before the target push (works, but flashes login and does a wasted build), versus the preferred same-route detection that invokes `route_change(None)` directly - fixes all boot targets and deep `/modules/...` URLs in one place with no flash
+- Corroborated by repeated splash hangs during this session's browser automation, always when loading a deep URL directly rather than navigating in-app
+- Noted that `main.py`'s `last_route` ("detect same-route navigation") already anticipated this concept but is never consulted by `_boot_navigate()`
+
 ## [2026-07-27] — fix(table): column resize handle stops working on the second drag
 - Issue #50 created on GitHub
 - Scope: frontend
