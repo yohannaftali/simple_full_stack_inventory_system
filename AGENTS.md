@@ -66,6 +66,7 @@
 | #44 | feat(table): checked/unchecked icon style for checkbox cells, and fixed width for checkbox + option columns | closed | 2026-07-21 |
 | #45 | feat(table): reusable radio column type (by-column single-pick, by-row Likert/checklist grid with spanning header) | closed | 2026-07-27 |
 | #46 | feat(table): check-all/uncheck-all header icons for generic checkbox-type columns | closed | 2026-07-22 |
+| #47 | feat(backend): app-wide configurable timezone (IANA via zoneinfo) with UTC storage | open | 2026-07-27 |
 
 ## Big Picture
 

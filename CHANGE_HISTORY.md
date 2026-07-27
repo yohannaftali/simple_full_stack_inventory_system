@@ -1,6 +1,12 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-27] — feat(backend): app-wide configurable timezone (IANA via zoneinfo) with UTC storage
+- Issue #47 created on GitHub
+- Scope: backend (FastAPI/SQLAlchemy) + master_config singleton screen
+- Labels: enhancement, backend
+- Prior investigation (this session, /planner audit, no code changes made): confirmed zero existing timezone infrastructure - no `zoneinfo`/`pytz` import anywhere in `backend/src/`, no `DateTime(timezone=True)` on any column, no `TZ` env var anywhere; every model's `created_at`/`updated_at` is DB-clock-dependent via plain `DateTime` + `server_default=func.now()`; the one existing `datetime.now()` call (`core/session_token.py:15`) is an intentionally local-clock-dependent legacy pre-auth token hash, not a display timestamp, and must be excluded from any fix; `master_config`'s get/submit round-trip was checked end-to-end (including a real runtime log) and found NOT buggy - it's a correctly-working singleton settings form, not a list, by design
+
 ## [2026-07-27] — docs(readme): add "Choosing a module's icon" section
 - README.md had no end-user documentation for the new icon-picker on the Modules admin screen (added this session) - added a new numbered section 17 (TOC entry + short how-to) covering the Choose an Icon dialog
 - Files: README.md
