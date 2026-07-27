@@ -67,7 +67,7 @@
 | #45 | feat(table): reusable radio column type (by-column single-pick, by-row Likert/checklist grid with spanning header) | closed | 2026-07-27 |
 | #46 | feat(table): check-all/uncheck-all header icons for generic checkbox-type columns | closed | 2026-07-22 |
 | #47 | feat(backend): app-wide configurable timezone (IANA via zoneinfo) with UTC storage | closed | 2026-07-27 |
-| #48 | fix(frontend): table column widths don't respond to browser window resize/maximize (web) | open | 2026-07-27 |
+| #48 | fix(frontend): table column widths don't respond to browser window resize/maximize (web) | ready-for-review | 2026-07-27 |
 | #49 | fix(frontend): add top padding to master_config/mail_config singleton Form screens | closed | 2026-07-27 |
 
 ## Big Picture
@@ -2383,8 +2383,40 @@ itself grew two small hooks so a sub-table *can* reuse it:
       grow the table past the screen.
     - Once a user drags a handle, `TableColumns.manually_resized` is set and
       `load()` stops recomputing widths from content on later data reloads
-      (pagination/filter/scroll-more/page-resize) - it just keeps whatever
-      the user set, like a spreadsheet remembering a manual column width.
+      (pagination/filter/scroll-more) - it just keeps whatever the user
+      set, like a spreadsheet remembering a manual column width.
+      **A window-resize reload is the one exception** (issue #48,
+      2026-07-27): before this fix, `load()` treated a page-resize reload
+      exactly like any other - the frozen absolute-pixel manual widths
+      never changed, so a table with any manually-resized column silently
+      stopped responding to the browser window's size from that point on.
+      `Table.on_page_resize()` now calls `self.load(self.data,
+      rescale=True)`, threaded through as `TableColumns.load(data,
+      rescale=True)` - when `manually_resized` and `rescale` are both true,
+      `_rescale_manual_widths()` scales every non-fixed-width column's
+      width by `new_usable_width / old_sizable_total`, preserving the
+      user's chosen *proportions* between columns while still fitting the
+      new screen width (fixed-width columns - `"remove"`/`"checkbox"`/
+      `"option"`/`"radio"` - are excluded, same as the normal auto-fit
+      path). A normal, non-resize reload (`rescale=False`, the default)
+      keeps the exact old behavior - manual widths untouched. Verified via
+      a dedicated logic test exercising the real `TableColumns.load()`/
+      `_rescale_manual_widths()` code path: a non-resize reload at a
+      different screen width leaves manually-set widths completely
+      unchanged; a resize reload rescales them proportionally (ratio
+      preserved to within rounding) both when shrinking and growing the
+      window, while the fixed-width column never changes. Manual
+      drag-resize itself re-confirmed live in the browser (still works
+      unchanged). **Whether `page.on_resized` actually fires on a genuine
+      browser window resize on web remains unconfirmed** - the automation
+      environment available this session runs Chrome at a fixed display
+      resolution (`resize_window` reports success but `window.innerWidth`
+      never actually changes, confirmed via direct JS check both before
+      and after two different resize attempts; a synthetic
+      `window.dispatchEvent(new Event('resize'))` also produced no
+      server-side response) - so this specific question needs a real,
+      physical browser window resize (or DevTools' device-toolbar
+      viewport override) to verify, not scriptable in this sandbox.
     - Shrinking a column narrow enough used to wrap its header label onto
       multiple lines, growing the header row into the row below it
       instead of truncating - both `TableColumns._build_data_columns()`'s

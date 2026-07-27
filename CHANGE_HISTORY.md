@@ -1,6 +1,15 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-27] — fix(table): rescale manually-resized columns proportionally on window resize (issue #48, implemented)
+- Issue #48 implemented (status: ready-for-review)
+- `components/table/columns.py`: `TableColumns.load()` gained a `rescale: bool = False` param; when a table has `manually_resized` widths AND `rescale=True`, new `_rescale_manual_widths()` scales every non-fixed-width column by `new_usable_width / old_sizable_total`, preserving the user's chosen proportions while fitting the new screen width - fixed-width columns (`"remove"`/`"checkbox"`/`"option"`/`"radio"`) are excluded, same as the normal auto-fit path. A normal (non-resize) reload keeps the exact prior behavior unchanged - manual widths untouched.
+- `components/table/table.py`: `Table.load()` threads `rescale` through to `self.columns.load()`; `Table.on_page_resize()` now calls `self.load(self.data, rescale=True)` instead of a plain reload - previously a table with any manually-resized column silently ignored window resize forever from the point it was first dragged.
+- Verified via a dedicated logic test exercising the real code path (not a UI mock): non-resize reload at a different screen width leaves manual widths untouched; a resize reload rescales them proportionally (ratio preserved) both shrinking and growing; the fixed-width column never changes.
+- Live-verified in the browser: manual column drag-resize itself still works unchanged.
+- **Could not verify whether `page.on_resized` actually fires on a genuine browser window resize on web** - the automation environment available this session runs Chrome at a fixed display resolution (confirmed via direct `window.innerWidth` checks: stayed unchanged across two different `resize_window` calls, and a synthetic `window.dispatchEvent(new Event('resize'))` produced no server-side response either) - this needs a real physical window resize or DevTools device-toolbar override to confirm, not achievable in this sandbox. Documented as an explicit open question in AGENTS.md rather than silently left unclear.
+- Files: frontend/src/components/table/columns.py, frontend/src/components/table/table.py, AGENTS.md
+
 ## [2026-07-27] — fix(frontend): add top padding to master_config/mail_config singleton Form screens (implemented)
 - Issue #49 implemented (status: ready-for-review)
 - `pages/modules/master_config/index.py::body()` and `pages/modules/mail_config/index.py::body()` now wrap `self.form.build()` in `ft.Container(padding=ft.Padding(top=20, left=0, right=0, bottom=0), expand=True)` instead of returning the form directly

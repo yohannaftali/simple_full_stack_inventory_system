@@ -827,16 +827,64 @@ class TableColumns:
                 result[i] = self._min_width_for(name)
         return result
 
-    def load(self, data: list) -> None:
-        """Calculate column widths based on content and available screen width"""
+    def _rescale_manual_widths(self, num_columns: int) -> None:
+        """A window-resize reload (issue #48) on a table with manually
+        drag-resized columns: keep the user's chosen proportions between
+        columns, but scale them to fit the new screen width instead of
+        leaving them as frozen absolute pixels that just overflow/underflow
+        once the window is resized. Fixed-width columns (`_FIXED_WIDTH_TYPES`
+        - "remove"/"checkbox"/"option"/"radio") are excluded, same as the
+        normal auto-fit path - their width is a constant, never proportional
+        to anything."""
+        fixed_positions = self._fixed_width_indices()
+        sizable_indices = [i for i in range(num_columns) if i not in fixed_positions]
+        if not sizable_indices:
+            return
+
+        usable_width = self.get_usable_width(num_columns)
+        usable_width -= sum(fixed_positions.values())
+        if usable_width <= 0:
+            return
+
+        old_sizable_total = sum(self.widths[i] for i in sizable_indices)
+        if old_sizable_total <= 0:
+            return
+
+        ratio = usable_width / old_sizable_total
+        new_widths = list(self.widths)
+        for i in sizable_indices:
+            min_w = self._min_width_for(self.index[i])
+            new_widths[i] = max(int(self.widths[i] * ratio), min_w)
+        self.widths = new_widths
+
+    def load(self, data: list, rescale: bool = False) -> None:
+        """Calculate column widths based on content and available screen width.
+
+        `rescale=True` (issue #48 - only ever passed from
+        `Table.on_page_resize()`) marks this reload as triggered by a
+        browser window resize/maximize, not a normal data reload
+        (pagination/filter/scroll/sort). Before #48, a table whose columns
+        had ever been manually drag-resized permanently ignored window
+        resize from that point on - `manually_resized` kept the frozen
+        absolute-pixel widths forever, on every reload including a resize
+        one, so the table silently stopped responding to the browser
+        window's size. Now a `rescale=True` reload still respects the
+        user's manual proportions but rescales them to fit the new width
+        instead of leaving them frozen - see `_rescale_manual_widths()`.
+        A normal (non-resize) reload keeps the exact old behavior: manual
+        widths are kept completely unchanged."""
         num_columns = len(self.index)
         if num_columns == 0:
             return
 
         if self.manually_resized and self.widths and len(self.widths) == num_columns:
-            # User already fine-tuned column widths by dragging - keep them
-            # instead of recomputing from content on every data reload
-            # (pagination/filter/scroll-more/page-resize all call this).
+            # User already fine-tuned column widths by dragging - keep
+            # their proportions instead of recomputing from content on
+            # every data reload (pagination/filter/scroll-more all call
+            # this) - except a resize reload, which rescales them to fit
+            # the new width (see rescale param docs above).
+            if rescale:
+                self._rescale_manual_widths(num_columns)
             self.rebuild()
             self._reposition_handles()
             return

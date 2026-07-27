@@ -414,14 +414,16 @@ class Table:
         else:
             print(f"Unexpected response format: {response}")
 
-    def load(self, data: list, append: bool = False) -> None:
+    def load(self, data: list, append: bool = False, rescale: bool = False) -> None:
         # Show loading indicator
         if self.body:
             if not self.is_inside_form:
                 self.body.show_loading()
 
-        # Recalculate column widths and rebuild rows
-        self.columns.load(data)
+        # Recalculate column widths and rebuild rows. `rescale` (issue #48)
+        # is only ever True from on_page_resize() below - see
+        # TableColumns.load()'s own docstring for what it changes.
+        self.columns.load(data, rescale=rescale)
         self.rows.load(data, append=append)
         # Keep each filter field aligned with its column - a live width
         # patch on the same mounted Containers (issue #20), safe to call on
@@ -643,11 +645,19 @@ class Table:
         self.get_data(page_no=1, offset=0, append=False)
 
     def on_page_resize(self) -> None:
-        """Handle page resize events - called from main page resize handler"""
+        """Handle page resize events - called from main page resize handler.
+
+        `rescale=True` (issue #48) - before this, a table whose columns had
+        ever been manually drag-resized permanently ignored window resize
+        from that point on, since TableColumns.load()'s manually_resized
+        branch kept the frozen absolute-pixel widths on every reload
+        including a resize one. Now a resize reload rescales those widths
+        to fit the new screen width instead - see
+        TableColumns._rescale_manual_widths()."""
         print(f"Table {self.name} resize triggered")
         if self.data:
             # Reload the table with new widths
-            self.load(self.data)
+            self.load(self.data, rescale=True)
 
             print(f"Table {self.name} resized for width: {self.page.width}")
 
