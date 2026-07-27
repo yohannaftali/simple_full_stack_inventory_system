@@ -3,6 +3,14 @@ import flet as ft
 from components.form.date import DateForm
 from components.table.columns import TableColumns
 from components.table.remove import ICON_CHECKBOX_CHECKED, ICON_CHECKBOX_UNCHECKED
+
+# "radio"-type cells (issue #45) use a real circle-with-dot radio glyph,
+# not the checkbox icon pair - a radio button and a checkbox are visually
+# distinct standard controls, and reusing the checkbox icon made every
+# radio field look like a checkbox despite behaving like a radio (mutual
+# exclusivity). See _CheckboxCellValue's `icon_pair` param below.
+ICON_RADIO_CHECKED = ft.Icons.RADIO_BUTTON_CHECKED
+ICON_RADIO_UNCHECKED = ft.Icons.RADIO_BUTTON_UNCHECKED
 from utils.formatting import format_date, format_datetime, format_number, format_time
 from utils.http_client import HttpClient
 from utils.icon import get_icon
@@ -43,16 +51,27 @@ class _CheckboxCellValue:
     object's own `.value`, kept in sync on every click - same contract as
     every other editable cell type (a bare `bool`).
 
-    Also reused as-is for `"radio"`-type cells (issue #45) - identical
-    rendering, the only difference is *how* the click is wired: a
-    checkbox's own `on_click` calls `toggle()` directly, while a radio
-    cell's `on_click` goes through `TableRows._on_radio_click()` instead
-    (never `toggle()`), which enforces exclusivity across sibling cells
-    before calling this class's `set_value(True)`."""
+    Also reused for `"radio"`-type cells (issue #45), passing
+    `icon_pair=(ICON_RADIO_CHECKED, ICON_RADIO_UNCHECKED)` instead of the
+    checkbox default - a real circle-with-dot radio glyph, since a radio
+    button and a checkbox are visually distinct standard controls even
+    though this class's own toggle/set_value bookkeeping is identical for
+    both. The only *behavioral* difference between the two cell types is
+    *how* the click is wired: a checkbox's own `on_click` calls `toggle()`
+    directly, while a radio cell's `on_click` goes through
+    `TableRows._on_radio_click()` instead (never `toggle()`), which
+    enforces exclusivity across sibling cells before calling this class's
+    `set_value(True)`."""
 
-    def __init__(self, value: bool, control: ft.IconButton):
+    def __init__(
+        self,
+        value: bool,
+        control: ft.IconButton,
+        icon_pair: tuple = (ICON_CHECKBOX_CHECKED, ICON_CHECKBOX_UNCHECKED),
+    ):
         self.value = value
         self._control = control
+        self._icon_checked, self._icon_unchecked = icon_pair
         self._apply_icon()
 
     def toggle(self, e) -> None:
@@ -72,9 +91,7 @@ class _CheckboxCellValue:
             pass
 
     def _apply_icon(self) -> None:
-        self._control.icon = (
-            ICON_CHECKBOX_CHECKED if self.value else ICON_CHECKBOX_UNCHECKED
-        )
+        self._control.icon = self._icon_checked if self.value else self._icon_unchecked
         self._control.icon_color = (
             ft.Colors.PRIMARY if self.value else ft.Colors.ON_SURFACE_VARIANT
         )
@@ -351,7 +368,9 @@ class TableRows:
                 else str(raw_value).strip().lower() in ("1", "true", "yes")
             )
             control = ft.IconButton()
-            holder = _CheckboxCellValue(value, control)
+            holder = _CheckboxCellValue(
+                value, control, icon_pair=(ICON_RADIO_CHECKED, ICON_RADIO_UNCHECKED)
+            )
             # Deliberately NOT holder.toggle (unlike "checkbox" above) - a
             # radio cell's click must enforce exclusivity against its
             # siblings first, see _on_radio_click().

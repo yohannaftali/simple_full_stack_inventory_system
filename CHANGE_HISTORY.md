@@ -1,6 +1,12 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-27] — fix(table): render "radio" cells as a real circle-with-dot radio glyph
+- Follow-up to the icon-picker/#45-sample-consumer entry below, per direct user feedback after seeing it live: `"radio"`-type cells were reusing `"checkbox"`'s own check-box icon pair (`ICON_CHECKBOX_CHECKED`/`_UNCHECKED`), which looked like a checkbox despite behaving like a radio button (mutual exclusivity)
+- `components/table/rows.py`: `_CheckboxCellValue.__init__` gained an `icon_pair` param (defaulting to the existing checkbox icons, so `"checkbox"` cells are unaffected) instead of hardcoding `ICON_CHECKBOX_CHECKED`/`_UNCHECKED` in `_apply_icon()`; new module-level `ICON_RADIO_CHECKED`/`ICON_RADIO_UNCHECKED` (`ft.Icons.RADIO_BUTTON_CHECKED`/`RADIO_BUTTON_UNCHECKED`) passed in for `"radio"` cells only
+- Verified live in the browser (`ap_module/edit/4`'s icon picker): every row now shows a standard empty-circle radio, filled to a circle-with-dot on the selected row, exclusivity still correct when picking a different one
+- Files: frontend/src/components/table/rows.py, AGENTS.md
+
 ## [2026-07-27] — feat(form): reusable icon-picker field + selector modal (sample #45 consumer)
 - Not tied to a filed issue - a direct user request for a demo consumer of issue #45's `"radio"` (by-column) column type, built against `ap_module`'s existing `"icon"` field (a module's home-tile icon, previously a plain `"input"` typed from memory)
 - New `components/form/icon_picker.py::IconPickerForm` - a new `"icon_picker"` `Form` field type mirroring `components/form/date.py::DateForm`'s shape: read-only `ft.TextField`, tap anywhere on it to open the picker, leading icon redrawn from the field's current text value (falling back to the field's own `"icon"` styling key as a default when blank), `get_value()`/`set_value()` special-cased into `components/form/form.py`'s `load()`/`serialize()` via a new `Form.icon_picker` dict (same pattern as `Form.date`)

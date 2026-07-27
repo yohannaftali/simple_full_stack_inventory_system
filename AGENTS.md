@@ -2056,11 +2056,16 @@ itself grew two small hooks so a sub-table *can* reuse it:
     `TableColumns._build_checkbox_header()`, wired through
     `Table._handle_checkbox_header_click()` into
     `TableRows.set_all_checkbox()`.
-  - `"radio"` (issue #45) — same checked/unchecked icon control as
-    `"checkbox"` (both share `rows.py`'s `_CheckboxCellValue`), but
-    clicking one enforces exclusivity instead of toggling independently,
-    via `TableRows._on_radio_click()`. Two modes, mirroring senar's
-    `byColumn`/`byRow` table fields:
+  - `"radio"` (issue #45) — shares `rows.py`'s `_CheckboxCellValue` with
+    `"checkbox"` for its toggle/set_value bookkeeping, but renders a real
+    circle-with-dot radio glyph (`ICON_RADIO_CHECKED`/`ICON_RADIO_UNCHECKED`
+    = `ft.Icons.RADIO_BUTTON_CHECKED`/`RADIO_BUTTON_UNCHECKED`, passed via
+    `_CheckboxCellValue`'s `icon_pair` param — 2026-07-27 follow-up,
+    replacing an initial version that reused `"checkbox"`'s own
+    check-box icon pair, which visually looked like a checkbox despite
+    behaving like a radio) — and clicking one enforces exclusivity instead
+    of toggling independently, via `TableRows._on_radio_click()`. Two
+    modes, mirroring senar's `byColumn`/`byRow` table fields:
     - **By-column** (default, or `"radio_mode": "column"`) — mutual
       exclusivity spans the whole column: selecting one row's radio
       deselects that same field across every *other currently-loaded*
