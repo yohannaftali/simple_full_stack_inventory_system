@@ -284,6 +284,34 @@ async def main(page: ft.Page):
             )
             splash.show_reload_button(lambda e: page.run_task(_reload_library))
 
+    async def _boot_navigate_to(route: str):
+        """Navigate to a boot destination, handling the same-route case.
+
+        `page.push_route()` only delegates to the client, which fires
+        `on_route_change` back to Python *when the route actually changes*.
+        If the browser is already sitting on the target URL - a reload with
+        a deep link still in the address bar (`/home`, `/modules/...`),
+        which is exactly what a container restart / code change produces -
+        the push is a no-op, `route_change()` never runs, and the splash
+        view appended by `main()` is never replaced. That is issue #51's
+        "stuck on loading" hang.
+
+        Confirmed live before fixing: reloading at `/home` logged
+        `page.route='/home'` already set, a push that fired no route change,
+        and `views=2` (the previous run's home view with a fresh splash
+        stacked on top of it, never cleared).
+
+        Calling the handler directly in that case is what Flet's own
+        `push_route` docstring example does to build the initial view, so
+        this isn't a workaround around the framework - it's the documented
+        way to render the starting route. `route_change` ignores its
+        argument and reads `page.route` itself.
+        """
+        if page.route == route:
+            await route_change(None)
+        else:
+            await _push_route_safe(route)
+
     async def _boot_navigate():
         # "Never configured" is tracked explicitly (server_url.is_configured(),
         # set by load()/set() based on whether a value was actually
@@ -310,11 +338,11 @@ async def main(page: ft.Page):
             await storage.server_url.load()
 
         if not storage.server_url.is_configured():
-            await _push_route_safe("/server_config")
+            await _boot_navigate_to("/server_config")
         elif storage.client_data.is_active():
-            await _push_route_safe("/home")
+            await _boot_navigate_to("/home")
         else:
-            await _push_route_safe("/login")
+            await _boot_navigate_to("/login")
 
     async def _reload_library(e=None):
         # Dev-only recovery button (see SplashScreen.show_reload_button):

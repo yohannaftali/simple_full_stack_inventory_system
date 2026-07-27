@@ -1,6 +1,15 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-27] — fix(frontend): web app hangs on splash when loaded directly at /home (implemented)
+- Issue #51 implemented (status: ready-for-review)
+- **Reproduced and root-caused live before writing the fix** (instrumented `_boot_navigate()` and read `podman logs`): reloading at `/home` logged `page.route` already `/home`, a `push_route("/home")` that fired **no** route-change event, and `views=2` - the previous run's home view with a fresh splash stacked on top of it, never cleared. A websocket reconnect re-runs `main()`, which unconditionally appends another splash; the same-route push then can't replace it
+- Also confirmed from Flet's source that `push_route()` merely delegates to the client (`_invoke_method`), and that Flet's own `push_route` docstring example calls the route handler **directly** to build the initial view - so calling the handler is the documented approach here, not a workaround
+- `frontend/src/main.py`: new `_boot_navigate_to(route)` helper - awaits `route_change(None)` when `page.route` already equals the target, otherwise `_push_route_safe(route)` as before. All three `_boot_navigate()` destinations (`/server_config`, `/home`, `/login`) now route through it
+- Chose this over the originally-proposed `await _push_route_safe("/")` prefix: that also works but flashes the login screen and does a wasted view build on every deep-link boot, whereas this covers all boot targets and any deep `/modules/...` URL with no flash
+- Verified live in the browser: direct load of `/home` renders immediately (previously hung on splash); direct load of `/modules/master_location/index` renders; container restart + reload recovers with no address-bar workaround; in-app navigation still works; no errors in the frontend log
+- Files: frontend/src/main.py, AGENTS.md
+
 ## [2026-07-27] — fix(frontend): web app hangs on splash when loaded directly at /home or a deep route
 - Issue #51 created on GitHub
 - Scope: frontend

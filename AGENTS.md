@@ -70,7 +70,7 @@
 | #48 | fix(frontend): table column widths don't respond to browser window resize/maximize (web) | closed | 2026-07-27 |
 | #49 | fix(frontend): add top padding to master_config/mail_config singleton Form screens | closed | 2026-07-27 |
 | #50 | fix(table): column resize handle stops working on the second drag | open | 2026-07-27 |
-| #51 | fix(frontend): web app hangs on splash when loaded directly at /home or a deep route | open | 2026-07-27 |
+| #51 | fix(frontend): web app hangs on splash when loaded directly at /home or a deep route | ready-for-review | 2026-07-27 |
 
 ## Big Picture
 
@@ -2570,6 +2570,30 @@ managed via `pyproject.toml` (uv/Poetry).
     (`http://backend:5000`), so a properly-configured, logged-in install
     was indistinguishable from a fresh one and every new tab/session got
     bounced to `/server_config` before `is_active()` could restore it.
+  - **Every boot destination goes through `_boot_navigate_to(route)`, never
+    `_push_route_safe()` directly** (issue #51, 2026-07-27).
+    `page.push_route()` only delegates to the client, which fires
+    `on_route_change` back to Python *when the route actually changes* - so
+    when the browser is already sitting on the target URL, the push is a
+    silent no-op, `route_change()` never runs, and the splash view appended
+    by `main()` is never replaced. That is the "web app stuck on loading"
+    hang: it hits whenever the page reloads with a deep link still in the
+    address bar (`/home`, any `/modules/...`), which is exactly what a
+    container restart / code change produces, while a cold boot from `/`
+    works fine because pushing `/home` genuinely changes the route.
+    `_boot_navigate_to()` compares `page.route` against the target and, on
+    a match, awaits `route_change(None)` directly (it ignores its argument
+    and reads `page.route` itself) instead of pushing - which is what
+    Flet's own `push_route` docstring example does to build the initial
+    view, so it's the documented way to render the starting route rather
+    than a workaround. Confirmed live before fixing: reloading at `/home`
+    logged `page.route` already `/home`, a push that fired no route change,
+    and `views=2` - the previous run's home view with a fresh splash
+    stacked on top, never cleared (a websocket reconnect re-runs `main()`,
+    which unconditionally appends another splash). Verified after fixing:
+    direct loads of `/home` and `/modules/master_location/index` both
+    render immediately, a container restart + reload recovers with no
+    address-bar workaround, and in-app navigation is unaffected.
 
 - **Pages** (`src/pages/`): top-level singleton pages (`login`, `home`,
   `server_config`, `troubleshooting`, `error`, `permission_error`, `loader`),
