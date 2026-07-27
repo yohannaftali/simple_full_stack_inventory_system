@@ -2642,6 +2642,61 @@ managed via `pyproject.toml` (uv/Poetry).
     `expand=True` on their control so they fill their `ResponsiveRow`
     column on web — a fix applied after `input`/`label` were initially
     missing it while `select` already had it.
+  - **`icon_picker`** (`components/form/icon_picker.py::IconPickerForm`,
+    2026-07-27 — a sample consumer of issue #45's `"radio"`/by-column
+    column type, not itself a filed issue): same read-only-tap-to-open
+    shape as `date`/`DateForm` — a read-only `ft.TextField` whose leading
+    icon redraws from the field's current text value (a stored Material
+    icon name, e.g. `"chevron_right"`; blank falls back to the field's own
+    `"icon"` styling key as a default), tapping it opens
+    `components/modal/icon_selector.py::IconSelectorModal`. Special-cased
+    in `Form.load()`/`serialize()` via `Form.icon_picker` (same pattern as
+    `Form.date`). First (and so far only) consumer:
+    `pages/modules/ap_module/{new,edit}.py`'s `"icon"` field (a module's
+    home-tile icon), changed from a plain typed `"input"`.
+    `IconSelectorModal` is a reusable `ft.AlertDialog` around a plain
+    `Table` — its `"picked"` column is `"type": "radio"` (default/
+    by-column mode: exactly one row selectable), listing a small static
+    ~80-icon catalog with no backend endpoint (`is_inside_form=True`, same
+    "static local list, no fetch" precedent as `stock_out/item_new.py`).
+    Confirm reads the checked row back via `Table.get_rows_with_input_values()`;
+    Close discards. Not coupled to `icon_picker.py` specifically — any
+    future caller wanting "pick one icon from a small catalog" can
+    construct it directly. Needed a matching new read-only cell format,
+    `"format": "icon"` (`components/table/rows.py`), rendering an actual
+    `ft.Icon` glyph instead of text — this is the picker table's own
+    preview column.
+    **Two real bugs found live (not caught by object-construction-only
+    testing) and fixed**:
+    (1) `ft.Icon(icon=<raw string>)` — e.g. `"category"`, straight from
+    the stored field value — constructs fine in Python but fails to paint
+    on the Flutter client, rendering as a solid gray box (Flutter's
+    error-widget background) that also blows out its column's layout.
+    `utils/icon.py::get_icon()` is this codebase's existing, already-proven
+    fix for exactly this (see `components/home/module_card.py`'s own
+    module-tile icons) — resolves a name to a real `ft.Icons` member via
+    `getattr`, falling back to `ft.Icons.APPS` for anything unrecognized.
+    Both new icon-rendering sites (`icon_picker.py`'s leading icon,
+    `rows.py`'s `"format": "icon"` cells) route every stored value through
+    it before it ever reaches an `ft.Icon`.
+    (2) `components/table/columns.py::get_usable_width()` sizes columns
+    off the *page's* own width (`page.width`, read directly), not any
+    actual container width — a plain `Table` embedded in a small
+    `ft.AlertDialog` computed columns thousands of pixels wide, rendering
+    all row content far outside the dialog's small visible/clipped area
+    (an apparently-empty table). Fixed by setting
+    `self.table.columns.widths`/`manually_resized = True` before
+    `Table.build()` — reusing the column-resize feature's own existing
+    "keep these widths, don't recompute" escape hatch (built for the
+    user's manual drag-resize) for a new purpose: giving a dialog-embedded
+    table small, fixed, known-to-fit widths instead of letting it size
+    itself against the whole page.
+    Verified live end-to-end in the browser (`ap_module/edit/4`,
+    "Materials" module): the picker shows the full catalog with correct
+    preview glyphs and the current value pre-checked; picking a different
+    icon correctly unchecks the previous one first (by-column exclusivity);
+    Confirm updates both the field's text and its leading icon glyph;
+    Close discards an unconfirmed in-progress change.
   - **Select filtering uses Flutter's native `enable_filter`, not a
     server-driven cap** (issue #26, 2026-07-17 — final design, after three
     failed attempts at a hard "cap to 5 + show more" list). Both `SelectForm`

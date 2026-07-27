@@ -3,6 +3,7 @@ import flet as ft
 from components.form.heading import HeadingForm
 from components.form.label import LabelForm
 from components.form.input import InputForm
+from components.form.icon_picker import IconPickerForm
 from components.form.date import DateForm
 from components.form.select import SelectForm
 from components.form.table import TableForm
@@ -79,6 +80,7 @@ class Form:
         self.heading = {}
         self.label = {}
         self.input = {}
+        self.icon_picker = {}
         self.date = {}
         self.select = {}
         self.table = {}
@@ -266,6 +268,12 @@ class Form:
                     self.map_type[field_name] = "input"
                     self.input[field_name] = InputForm(field)
                     control = self.input[field_name].build()
+                elif field_type == "icon_picker":
+                    self.map_type[field_name] = "icon_picker"
+                    self.icon_picker[field_name] = IconPickerForm(
+                        page=self.page, field=field
+                    )
+                    control = self.icon_picker[field_name].build()
                 elif field_type == "date":
                     self.map_type[field_name] = "date"
                     self.date[field_name] = DateForm(
@@ -412,6 +420,13 @@ class Form:
                 # the ISO value straight to control.value here would show
                 # the unformatted ISO string instead.
                 self.date[field_name].set_value(data[0].get(field_name, ""))
+            elif field_name in self.icon_picker:
+                # IconPickerForm.set_value() also refreshes the leading
+                # icon glyph to match the loaded value - a plain
+                # `control.value = ...` assignment below would update the
+                # text but leave the (already-built, now stale) prefix
+                # icon showing whatever was there at construction time.
+                self.icon_picker[field_name].set_value(data[0].get(field_name, ""))
             elif isinstance(control, ft.TextField):
                 self.elements[field_name].value = data[0].get(field_name, "")
 
@@ -525,6 +540,8 @@ class Form:
                 # Submit the true ISO value, not the "dd Mon yyyy" text
                 # displayed in the field - see DateForm.get_value().
                 form_data[field_name] = self.date[field_name].get_value()
+            elif field_name in self.icon_picker:
+                form_data[field_name] = self.icon_picker[field_name].get_value()
             elif is_input:
                 control = self.elements.get(field_name)
                 if isinstance(control, ft.TextField):

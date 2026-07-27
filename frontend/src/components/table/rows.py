@@ -5,6 +5,7 @@ from components.table.columns import TableColumns
 from components.table.remove import ICON_CHECKBOX_CHECKED, ICON_CHECKBOX_UNCHECKED
 from utils.formatting import format_date, format_datetime, format_number, format_time
 from utils.http_client import HttpClient
+from utils.icon import get_icon
 
 _FORMATTERS = {
     "number": format_number,
@@ -206,40 +207,70 @@ class TableRows:
                     cells.append(ft.DataCell(content=cell_content))
                     continue
 
-                formatter = _FORMATTERS.get(field.get("format"))
-                value = formatter(raw_value) if formatter else raw_value
-                is_numeric = field.get("format") == "number"
-                text_align = ft.TextAlign.RIGHT if is_numeric else None
-
-                # Wrap text in container with fixed width if available.
-                # max_lines=1 (alongside overflow=ELLIPSIS) guarantees a
-                # single truncated line rather than wrapping onto a second
-                # one when the column is narrow - same fix as the header
-                # label in Columns._build_data_columns(). `color` must be
-                # set explicitly (issue #35) - Flet's plain Text doesn't
-                # inherit a theme-aware color inside a DataTable cell.
-                content = ft.Text(
-                    str(value),
-                    overflow=ft.TextOverflow.ELLIPSIS,
-                    max_lines=1,
-                    text_align=text_align,
-                    color=ft.Colors.ON_SURFACE,
-                )
-                if columns_widths is not None and i < len(columns_widths):
-                    # Ensure integer pixel widths (Flet expects integers)
-                    w = int(columns_widths[i])
-                    content = ft.Container(
-                        content=ft.Text(
-                            str(value),
-                            overflow=ft.TextOverflow.ELLIPSIS,
-                            max_lines=1,
-                            text_align=text_align,
-                            color=ft.Colors.ON_SURFACE,
-                        ),
-                        width=w,
-                        padding=ft.Padding.symmetric(horizontal=8, vertical=4),
-                        alignment=ft.Alignment.CENTER_RIGHT if is_numeric else None,
+                if field.get("format") == "icon":
+                    # Read-only preview of a stored Material icon-name
+                    # string (e.g. "chevron_right") as an actual glyph
+                    # instead of raw text - first consumer:
+                    # components/modal/icon_selector.py's picker list.
+                    # `raw_value` blank -> the field's own default (falls
+                    # back to a generic app icon), same "blank means
+                    # default" rule components/form/icon_picker.py uses
+                    # for its leading icon. MUST go through get_icon() -
+                    # ft.Icon(icon=<raw unmapped string>) constructs fine
+                    # in Python but fails to paint client-side (Flutter
+                    # renders its gray error-widget box in place, which
+                    # also blows out the cell's layout) - confirmed live,
+                    # see icon_picker.py's docstring for the full story.
+                    icon_value = (
+                        get_icon(raw_value)
+                        if raw_value
+                        else field.get("default_icon", ft.Icons.APPS)
                     )
+                    w = (
+                        int(columns_widths[i])
+                        if columns_widths is not None and i < len(columns_widths)
+                        else None
+                    )
+                    content = ft.Container(
+                        content=ft.Icon(icon=icon_value, color=ft.Colors.ON_SURFACE),
+                        width=w,
+                        alignment=ft.Alignment.CENTER,
+                    )
+                else:
+                    formatter = _FORMATTERS.get(field.get("format"))
+                    value = formatter(raw_value) if formatter else raw_value
+                    is_numeric = field.get("format") == "number"
+                    text_align = ft.TextAlign.RIGHT if is_numeric else None
+
+                    # Wrap text in container with fixed width if available.
+                    # max_lines=1 (alongside overflow=ELLIPSIS) guarantees a
+                    # single truncated line rather than wrapping onto a second
+                    # one when the column is narrow - same fix as the header
+                    # label in Columns._build_data_columns(). `color` must be
+                    # set explicitly (issue #35) - Flet's plain Text doesn't
+                    # inherit a theme-aware color inside a DataTable cell.
+                    content = ft.Text(
+                        str(value),
+                        overflow=ft.TextOverflow.ELLIPSIS,
+                        max_lines=1,
+                        text_align=text_align,
+                        color=ft.Colors.ON_SURFACE,
+                    )
+                    if columns_widths is not None and i < len(columns_widths):
+                        # Ensure integer pixel widths (Flet expects integers)
+                        w = int(columns_widths[i])
+                        content = ft.Container(
+                            content=ft.Text(
+                                str(value),
+                                overflow=ft.TextOverflow.ELLIPSIS,
+                                max_lines=1,
+                                text_align=text_align,
+                                color=ft.Colors.ON_SURFACE,
+                            ),
+                            width=w,
+                            padding=ft.Padding.symmetric(horizontal=8, vertical=4),
+                            alignment=ft.Alignment.CENTER_RIGHT if is_numeric else None,
+                        )
 
                 # A field-level link override (link_key_field, optionally
                 # paired with link_screen) lets this ONE cell navigate

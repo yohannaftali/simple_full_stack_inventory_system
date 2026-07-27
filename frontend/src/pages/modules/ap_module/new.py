@@ -45,7 +45,7 @@ class ModulePage:
             {
                 "name": "icon", "label": "Icon", "icon": ft.Icons.APPS,
                 "row": 2, "col": {"sm": 12, "md": 6},
-                "type": "input", "hint_text": "e.g. chevron_right"
+                "type": "icon_picker", "hint_text": "e.g. chevron_right"
             },
             {
                 "name": "description", "label": "Description", "icon": ft.Icons.NOTES,
