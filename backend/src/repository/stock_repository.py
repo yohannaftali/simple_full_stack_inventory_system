@@ -111,6 +111,7 @@ class StockRepository:
         self,
         material_id: int,
         sort_fields: list[tuple[str, str]] | None = None,
+        keyword: str = "",
     ) -> list[dict]:
         """Current on-hand qty per location for one material, qty > 0 only.
 
@@ -122,6 +123,13 @@ class StockRepository:
         `list_stock_summary` - constant across every row here since MAP is
         per-material, not per-location; `stock_out`'s item form ignores
         these two extra keys, since its own field config never reads them.
+
+        `keyword` (issue #52) is the standard `table-keyword-filter` search,
+        matched against the location's code/name - the stock-out item form's
+        search box previously sent it and this endpoint silently ignored it,
+        so typing (or scanning) there filtered nothing. Optional and
+        defaulted, so `stock_movement`, which reuses this same method, is
+        unaffected.
         """
         with SessionLocal() as session:
             qty_expr = func.sum(StockModel.qty)
@@ -147,6 +155,9 @@ class StockRepository:
                 .filter(StockModel.material_id == material_id)
                 .group_by(LocationModel.id, InventoryValueModel.average_price)
                 .having(func.sum(StockModel.qty) > 0)
+            )
+            query = apply_keyword_filter(
+                query, [LocationModel.code, LocationModel.name], keyword
             )
             column_map = {
                 "location_code": LocationModel.code,

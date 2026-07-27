@@ -2,6 +2,8 @@ import flet as ft
 
 from components.form.menu import MenuForm
 from components.module.view import ModuleView
+from components.scan_input import ScanInput
+from components.table.menu import resolve_option_value
 from components.table.table import Table
 from utils.http_client import HttpClient
 
@@ -101,6 +103,9 @@ class ModulePage:
             # Nothing to fetch until a material is picked - see
             # on_material_select() below.
             is_inside_form=True,
+            # Location is picked by row here rather than from a dropdown, so
+            # scanning a location code filters this table instead (issue #52).
+            qr=True,
         )
 
         self._load_material_options()
@@ -123,10 +128,24 @@ class ModulePage:
             on_select=self.on_material_select,
         )
 
+        self.material_scan = ScanInput(
+            page=self.page,
+            on_scan=self._apply_scanned_material,
+            title="Scan Material",
+            tooltip="Scan Material",
+        )
+
         return ft.Column(
             controls=[
                 ft.Container(
-                    content=self.material_dropdown,
+                    # Row rather than a trailing icon inside the Dropdown -
+                    # Flet's Dropdown owns its trailing slot for the arrow
+                    # (see components/form/select.py's own note, issue #52).
+                    content=ft.Row(
+                        controls=[self.material_dropdown, self.material_scan.build()],
+                        spacing=4,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
                     padding=ft.Padding.symmetric(horizontal=20, vertical=10),
                 ),
                 ft.Container(
@@ -155,6 +174,27 @@ class ModulePage:
         response = client.get(f"C_{self.module}/call_material_id_select")
         if isinstance(response, list):
             self.material_options = response
+
+    def _apply_scanned_material(self, code: str) -> None:
+        """Select the scanned material and load its per-location stock (#52).
+
+        `on_material_select` must be invoked explicitly: assigning
+        `Dropdown.value` programmatically does NOT fire `on_select`, so
+        without this the dropdown would show the right material while the
+        stock table below it still showed the previous one (or nothing).
+        """
+        options = [
+            (str(opt.get("value", "")), str(opt.get("label", "")))
+            for opt in self.material_options or []
+        ]
+        resolved = resolve_option_value(code, options)
+        if resolved is None:
+            self.view.show_error(f"No material found for '{code}'")
+            return
+
+        self.material_dropdown.value = resolved
+        self._safe_update(self.material_dropdown)
+        self.on_material_select(None)
 
     def on_material_select(self, e):
         material_id = self.material_dropdown.value if self.material_dropdown else None

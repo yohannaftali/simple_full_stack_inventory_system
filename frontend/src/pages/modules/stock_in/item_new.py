@@ -36,12 +36,12 @@ class ModulePage:
             {
                 "name": "material_id", "label": "Material", "icon": ft.Icons.INVENTORY_2,
                 "row": 1, "col": {"sm": 12, "md": 6},
-                "type": "select"
+                "type": "select", "qr": True
             },
             {
                 "name": "location_id", "label": "Location", "icon": ft.Icons.PLACE,
                 "row": 1, "col": {"sm": 12, "md": 6},
-                "type": "select"
+                "type": "select", "qr": True
             },
             {
                 "name": "qty_received", "label": "Qty Received", "icon": ft.Icons.NUMBERS,

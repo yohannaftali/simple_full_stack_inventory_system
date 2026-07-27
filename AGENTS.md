@@ -71,7 +71,7 @@
 | #49 | fix(frontend): add top padding to master_config/mail_config singleton Form screens | closed | 2026-07-27 |
 | #50 | fix(table): column resize handle stops working on the second drag | open | 2026-07-27 |
 | #51 | fix(frontend): web app hangs on splash when loaded directly at /home or a deep route | closed | 2026-07-27 |
-| #52 | feat(frontend): scan barcode/QR into Material and Location pickers on stock item screens | open | 2026-07-27 |
+| #52 | feat(frontend): scan barcode/QR into Material and Location pickers on stock item screens | ready-for-review | 2026-07-27 |
 
 ## Big Picture
 
@@ -2927,6 +2927,61 @@ managed via `pyproject.toml` (uv/Poetry).
     `expand=True` on their control so they fill their `ResponsiveRow`
     column on web — a fix applied after `input`/`label` were initially
     missing it while `select` already had it.
+  - **Barcode/QR scan affordance** (`components/scan_input.py::ScanInput`,
+    issue #52, 2026-07-27). The scanner is a **hardware gun acting as a
+    keyboard wedge** — it types the scanned code plus Enter into whatever
+    field has focus — **not** a camera scanner. So there is no dependency,
+    no camera-permission flow, and it works on web (where this app runs)
+    exactly as on native. `ScanInput(page, on_scan=...)` renders an
+    `ft.IconButton` that opens a small `ft.AlertDialog` holding one
+    `autofocus=True` `ft.TextField`, so the next scan lands there and its
+    Enter fires `on_submit`; the caller's `on_scan(code)` decides what the
+    code means. Same pattern as senar's `tm_confirm_seal_mobile/scan.py`
+    (autofocus + `on_submit`) — note that repo has **no** camera scanner to
+    port, only QR *generation* for TOTP, so this was written from scratch.
+    Wired in three places, each opt-in so nothing else changes:
+    - `SelectForm` — a field dict with `"qr": True` makes `build()` return
+      `ft.Row([dropdown, scan_button])`. The button sits **beside** the
+      Dropdown, not inside it: Flet's Dropdown owns its trailing slot for
+      the open/close arrow, and `trailing_icon` *replaces* that arrow
+      rather than sitting next to it (and isn't independently clickable),
+      so an icon inside the field would cost the arrow affordance. Enabled
+      on `stock_in/item_new`'s Material and Location.
+    - `stock_out/item_new`'s hand-built raw `ft.Dropdown` (that screen uses
+      no `Form`) gets the same Row treatment. Its scan handler **must call
+      `on_material_select` explicitly** — assigning `Dropdown.value`
+      programmatically does not fire `on_select`, so without it the
+      dropdown would show the scanned material while the per-location
+      stock table below still showed the previous one.
+    - `Table(..., qr=True)` → `TableSearchBar(qr=True)` puts a scan button
+      to the **left of the clear/X**, both inside the single `suffix_icon`
+      slot via a tight `ft.Row`, with `suffix_icon_size_constraints` widened
+      24→48px. Those constraints are not optional decoration: they exist to
+      stop Flutter reserving its default ~48dp tap target per icon, which is
+      what pushed the clear icon past the field's right edge in issue #19,
+      so they must track the real content width. Enabled on
+      `stock_out/item_new`'s per-location stock table, where Location is
+      picked by row rather than from a dropdown.
+    **Scanned codes resolve via `components/table/menu.py::resolve_option_value()`**
+    (issue #25) — raw DB id, full `"CODE - Name"` label, or bare code
+    prefix — so there is exactly one matching rule app-wide; do not add a
+    second. An unmatched code raises a visible `view.show_error(...)`
+    rather than failing silently.
+    **Knock-on fix in `Form`**: `load()`/`serialize()` used to locate a
+    select's value by `isinstance(control, ft.Dropdown)` on the built
+    control. A scan-enabled select builds as a `Row`, which would have
+    failed that check and silently skipped both populating and submitting
+    the field. Both now read `Form.select[name].select` (the `SelectForm`
+    instance's own Dropdown) instead, which is correct for every select
+    regardless of how it was built.
+    **Knock-on fix in the backend**: `GET C_stock_out/get_stock_by_material`
+    accepted only `material_id` and silently ignored the
+    `table-keyword-filter` its own search box had always been sending, so
+    typing (or scanning) there filtered nothing. It now binds that param and
+    `StockRepository.list_stock_by_material()` takes an optional `keyword`,
+    applying the standard `apply_keyword_filter` against the location's
+    code/name. Optional and defaulted, so `stock_movement` — which reuses
+    that same repository method — is unaffected.
   - **`icon_picker`** (`components/form/icon_picker.py::IconPickerForm`,
     2026-07-27 — a sample consumer of issue #45's `"radio"`/by-column
     column type, not itself a filed issue): same read-only-tap-to-open

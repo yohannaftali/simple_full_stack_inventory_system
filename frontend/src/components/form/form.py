@@ -430,10 +430,17 @@ class Form:
             elif isinstance(control, ft.TextField):
                 self.elements[field_name].value = data[0].get(field_name, "")
 
-            if isinstance(control, ft.Dropdown):
+            # Resolved via the SelectForm instance rather than by
+            # isinstance-checking the built control: a select that opts into
+            # the barcode/QR scan button (issue #52) builds as a Row wrapping
+            # the Dropdown, so an isinstance check here would silently skip
+            # populating it.
+            select_form = self.select.get(field_name)
+            if select_form is not None and select_form.select is not None:
                 field_value = data[0].get(field_name, "")
-                self.elements[field_name].value = field_value if field_value not in [
-                    None, ""] else None
+                select_form.select.value = (
+                    field_value if field_value not in [None, ""] else None
+                )
 
             if isinstance(control, ft.Container):
                 list_data = data[0].get(field_name, [])
@@ -547,9 +554,13 @@ class Form:
                 if isinstance(control, ft.TextField):
                     form_data[field_name] = control.value
             elif is_select:
-                control = self.elements.get(field_name)
-                if isinstance(control, ft.Dropdown):
-                    form_data[field_name] = control.value
+                # Same reasoning as load()'s select branch: read the Dropdown
+                # off the SelectForm instance, since a scan-enabled select
+                # (issue #52) builds as a Row and would fail an isinstance
+                # check here - silently submitting nothing for that field.
+                select_form = self.select.get(field_name)
+                if select_form is not None and select_form.select is not None:
+                    form_data[field_name] = select_form.select.value
             elif is_table or is_list:
                 content_fields = field.get("content", [])
                 if not isinstance(content_fields, list):

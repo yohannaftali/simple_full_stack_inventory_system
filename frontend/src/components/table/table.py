@@ -44,6 +44,7 @@ class Table:
         fill_available_space: bool = True,
         on_remove_row=None,
         on_remove_rows=None,
+        qr: bool = False,
     ):
         """
         Initialize Table
@@ -88,6 +89,10 @@ class Table:
                 used to delete them all in one action. Either callback alone
                 is enough to opt into the remove column; both are normally
                 supplied together.
+            qr (bool, optional): opts this table's search bar into a
+                barcode/QR scan button beside its clear/X icon (issue #52) -
+                a scan fills the search box and filters the table. Defaults
+                to False, so every other table's search bar is unchanged.
         """
         self.page = page
         self.storage: Storage = page.data["storage"]
@@ -153,6 +158,7 @@ class Table:
             on_filter_change=self.on_filter_change,
             on_submit=self.on_submit,
             initial_value=self.filter,
+            qr=qr,
         )
         # Every data table gets the download menu for free - see AGENTS.md's
         # "Table export convention". Reads self.module/self.name/self.filter/

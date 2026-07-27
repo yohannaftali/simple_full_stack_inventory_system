@@ -1,6 +1,18 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-27] — feat(frontend): scan barcode/QR into Material and Location pickers (issue #52, implemented)
+- Issue #52 implemented (status: ready-for-review)
+- New `frontend/src/components/scan_input.py::ScanInput` — an `ft.IconButton` that opens a small `ft.AlertDialog` with one `autofocus=True` `ft.TextField`, so a keyboard-wedge scanner's code+Enter lands there and fires `on_submit`. No dependency, no camera permissions, works on web. Written from scratch: senar has no camera scanner to port, only QR *generation* and the autofocus/`on_submit` pattern this imitates
+- `components/form/select.py`: opt-in `"qr": True` field flag → `build()` returns `ft.Row([dropdown, scan_button])`; new `apply_scanned_code()` resolves via the existing `resolve_option_value()` (issue #25) and surfaces `view.show_error(...)` on no match. Button sits beside the Dropdown, not inside it — Flet's `trailing_icon` would *replace* the open/close arrow rather than sit next to it
+- `pages/modules/stock_in/item_new.py`: `"qr": True` on Material and Location
+- `pages/modules/stock_out/item_new.py`: same Row treatment for its hand-built raw `ft.Dropdown`, plus `Table(qr=True)` on the per-location stock table. Its scan handler explicitly calls `on_material_select` — programmatic `Dropdown.value` assignment does not fire `on_select`, so the stock table would otherwise stay stale
+- `components/table/search_bar.py` + `table.py`: opt-in `qr=True` puts a scan button left of the clear/X inside the single `suffix_icon` slot, widening `suffix_icon_size_constraints` 24→48px to track the real content width (those constraints exist to prevent issue #19's "clear icon too far right" regression, so they had to grow rather than be dropped)
+- **Knock-on fix, `components/form/form.py`**: `load()`/`serialize()` located a select's value via `isinstance(control, ft.Dropdown)`. A scan-enabled select builds as a `Row`, which would have failed that check and silently skipped both populating and submitting the field. Both now read `Form.select[name].select`
+- **Knock-on fix, backend**: `GET C_stock_out/get_stock_by_material` accepted only `material_id` and silently ignored the `table-keyword-filter` its own search box had always sent — so that box had never filtered anything, typed or scanned. Now binds the param; `StockRepository.list_stock_by_material()` takes an optional `keyword` applying `apply_keyword_filter` on location code/name. Optional/defaulted, so `stock_movement`'s reuse of the same method is unaffected
+- Verified live in the browser: bare code `SKU-1` resolves to `SKU-1 - Widget` on both stock_in fields; `MAIN` resolves Location; an unmatched `NOPE-999` shows an error banner and leaves the prior selection intact; on stock_out a material scan loads the per-location table and a location scan filters it to one row. Regressions checked: a non-QR select (ap_module/edit Module Group) still loads *and* serializes (`module_group_id: '5'` confirmed in the submit payload and in the DB afterwards), and a non-QR search bar (master_location) still renders a single, correctly-aligned X
+- Files: frontend/src/components/scan_input.py (new), frontend/src/components/form/{select.py,form.py}, frontend/src/components/table/{search_bar.py,table.py}, frontend/src/pages/modules/stock_in/item_new.py, frontend/src/pages/modules/stock_out/item_new.py, backend/src/repository/stock_repository.py, backend/src/routers/stock_out.py, AGENTS.md
+
 ## [2026-07-27] — feat(frontend): scan barcode/QR into Material and Location pickers on stock item screens
 - Issue #52 created on GitHub
 - Scope: frontend

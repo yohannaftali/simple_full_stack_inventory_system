@@ -1,5 +1,6 @@
 import flet as ft
 
+from components.scan_input import ScanInput
 from repository.storage import Storage
 
 
@@ -13,6 +14,7 @@ class TableSearchBar:
         on_filter_change=None,
         on_submit=None,
         initial_value: str = "",
+        qr: bool = False,
     ):
         """
         Initialize table search bar
@@ -29,6 +31,47 @@ class TableSearchBar:
         self.parent = parent
         self.on_filter_change = on_filter_change
         self.on_submit = on_submit
+        # Opt-in barcode/QR scan button (issue #52) - off by default, so
+        # every other table's search bar is unchanged.
+        self.qr = qr
+        self.scan_input: ScanInput | None = None
+
+        clear_button = ft.IconButton(
+            icon=ft.Icons.CLEAR,
+            icon_color=ft.Colors.ON_SURFACE,
+            icon_size=14,
+            width=24,  # Constrained icon button envelope bounds
+            height=24,
+            padding=0,  # Absolute graphic centering
+            on_click=self.clear_search,
+            tooltip="Clear text",
+        )
+        if self.qr:
+            # The QR button sits to the LEFT of the clear/X, inside the same
+            # suffix slot, since suffix_icon takes a single control. The
+            # width constraints below are widened to fit both - they exist to
+            # stop Flutter reserving its default ~48dp tap target per icon,
+            # which is what pushed the clear icon past the field's right edge
+            # in issue #19, so they must track the real content width rather
+            # than being dropped.
+            self.scan_input = ScanInput(
+                page=page,
+                on_scan=self._apply_scanned_code,
+                title="Scan to Search",
+                tooltip="Scan barcode / QR to search",
+                icon_size=14,
+                width=24,
+                height=24,
+            )
+            suffix_control = ft.Row(
+                controls=[self.scan_input.build(), clear_button],
+                spacing=0,
+                tight=True,
+            )
+            suffix_width = 48
+        else:
+            suffix_control = clear_button
+            suffix_width = 24
 
         # Compact Text Field Configuration replacing the rigid 56dp ft.SearchBar
         self.search_bar = ft.TextField(
@@ -61,22 +104,17 @@ class TableSearchBar:
             # needs (issue #19). `input.py`'s `prefix_icon` usage never had
             # this bug for the same reason.
             prefix_icon=ft.Icon(ft.Icons.SEARCH, color=ft.Colors.ON_SURFACE, size=14),
-            suffix_icon=ft.IconButton(
-                icon=ft.Icons.CLEAR,
-                icon_color=ft.Colors.ON_SURFACE,
-                icon_size=14,
-                width=24,  # Constrained icon button envelope bounds
-                height=24,
-                padding=0,  # Absolute graphic centering
-                on_click=self.clear_search,
-                tooltip="Clear text",
-            ),
+            suffix_icon=suffix_control,
             # Without this, Flutter reserves its default ~48dp tap-target
             # width/height for the suffix icon slot, pushing it well past the
             # field's true right edge - the "clear icon sits too far right"
-            # regression from issue #19.
+            # regression from issue #19. Width tracks the real content (one
+            # icon, or two when the scan button is enabled).
             suffix_icon_size_constraints=ft.BoxConstraints(
-                min_width=24, max_width=24, min_height=24, max_height=24
+                min_width=suffix_width,
+                max_width=suffix_width,
+                min_height=24,
+                max_height=24,
             ),
         )
 
@@ -104,6 +142,22 @@ class TableSearchBar:
         # Notify parent of filter change
         if self.on_filter_change:
             self.on_filter_change(search_text)
+
+    def _apply_scanned_code(self, code: str) -> None:
+        """Put a scanned code into the search box and filter the table (#52).
+
+        Deliberately a plain search rather than an option lookup: this bar
+        filters rows server-side via `table-keyword-filter`, so a scanned
+        location code narrows the table exactly as typing it would - no
+        option list exists here to resolve against.
+        """
+        self.search_bar.value = code
+        self._safe_update()
+        self.storage.table_search.set(
+            self.parent.module, self.parent.screen, self.parent.name, code
+        )
+        if self.on_filter_change:
+            self.on_filter_change(code.lower())
 
     def clear_search(self, e):
         """Clear the search bar value"""

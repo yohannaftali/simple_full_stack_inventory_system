@@ -293,8 +293,12 @@ def get_items(
 
 
 @router.get("/get_stock_by_material")
-def get_stock_by_material(material_id: int, user: UserModel = Depends(_require_access)) -> list:
-    return _stock_repository.list_stock_by_material(material_id)
+def get_stock_by_material(
+    material_id: int,
+    keyword: str = Query("", alias="table-keyword-filter"),
+    user: UserModel = Depends(_require_access),
+) -> list:
+    return _stock_repository.list_stock_by_material(material_id, keyword=keyword)
 
 
 @router.post("/submit_items")

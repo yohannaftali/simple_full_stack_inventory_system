@@ -1,5 +1,7 @@
 import flet as ft
 
+from components.scan_input import ScanInput
+from components.table.menu import resolve_option_value
 from utils.http_client import HttpClient
 
 # Bounds the dropdown menu's visible height to roughly this many rows
@@ -41,6 +43,11 @@ class SelectForm:
         self.bgcolor = field.get("bgcolor", ft.Colors.SURFACE)
         self.enable_filter = field.get("enable_filter", True)
         self.editable = field.get("editable", True)
+        # Opt-in barcode/QR scan button beside this select (issue #52) - off
+        # unless the field dict says `"qr": True`, so every existing select
+        # in the app is untouched.
+        self.qr = field.get("qr", False)
+        self.scan_input: ScanInput | None = None
         self.select = None
         self.data: list = []
         self.options: list = []
@@ -78,7 +85,55 @@ class SelectForm:
             menu_height=_MENU_VISIBLE_ROWS * _MENU_ROW_HEIGHT,
             expand=True,
         )
-        return self.select
+        if not self.qr:
+            return self.select
+
+        # The scan button sits BESIDE the Dropdown, not inside it. Flet's
+        # Dropdown (a Flutter DropdownMenu) owns its trailing slot for the
+        # open/close arrow: `trailing_icon` *replaces* that arrow rather than
+        # sitting next to it, and isn't independently clickable - so putting
+        # the QR icon inside the field would cost the arrow affordance. A Row
+        # keeps both. Note `build()` therefore no longer always returns a
+        # Dropdown; `Form.load()`/`serialize()` read `Form.select[name].select`
+        # rather than isinstance-checking the built control for that reason.
+        self.scan_input = ScanInput(
+            page=self.page,
+            on_scan=self.apply_scanned_code,
+            title=f"Scan {self.label}" if self.label else "Scan Barcode / QR",
+            tooltip=f"Scan {self.label}" if self.label else "Scan barcode / QR",
+        )
+        return ft.Row(
+            controls=[self.select, self.scan_input.build()],
+            spacing=4,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+
+    def apply_scanned_code(self, code: str) -> None:
+        """Select the option a scanned code refers to (issue #52).
+
+        Matching is delegated to `resolve_option_value()` (issue #25) so a
+        bare code (`SKU-1`), a full `"SKU-1 - Widget"` label and a raw DB id
+        all work, with exactly one matching rule app-wide.
+        """
+        options = [
+            (str(opt.get("value", "")), str(opt.get("label", "")))
+            for opt in self.data or []
+        ]
+        resolved = resolve_option_value(code, options)
+        if resolved is None:
+            self._show_error(f"No {self.label or 'match'} found for '{code}'")
+            return
+
+        self.select.value = resolved
+        self._safe_update()
+
+    def _show_error(self, message: str) -> None:
+        """Surface an unmatched scan instead of silently doing nothing."""
+        view = getattr(self.parent, "view", None)
+        if view is not None and hasattr(view, "show_error"):
+            view.show_error(message)
+        else:
+            print(message)
 
     def get_data(self, extra_params: dict = None):
         client = HttpClient(self.page)
