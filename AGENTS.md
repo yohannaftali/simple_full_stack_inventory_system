@@ -56,7 +56,7 @@
 | #35 | fix(frontend): table header/body text and footer page-size input unreadable (black) in dark mode | closed | 2026-07-20 |
 | #32 | fix(inventory): verify stock_in/stock_out header lists default to descending date sort | closed (no-op - already correct) | 2026-07-17 |
 | #36 | feat(frontend): restrict Server Configuration page to desktop/mobile; hide server URL entirely on web | closed | 2026-07-20 |
-| #37 | fix(frontend): table footer layout — reposition toggle icon, combine rows, keep footer pinned to table body not page | ready-for-review | 2026-07-20 |
+| #37 | fix(frontend): table footer layout — reposition toggle icon, combine rows, keep footer pinned to table body not page | closed | 2026-07-27 |
 | #38 | fix(frontend): table header sort icon disappears when column label is truncated/hidden | closed | 2026-07-20 |
 | #39 | fix(frontend): lazy-load scroll never fetches the next page (TableBody._on_scroll never calls on_scroll_end) | closed | 2026-07-20 |
 | #40 | feat(stock_browse): drill into stock-by-location with per-material breakdown | closed | 2026-07-20 |
@@ -64,7 +64,7 @@
 | #42 | feat(table): reusable single/bulk row-remove button (ported from senar) and wire into ap_master_user permission revoke | closed | 2026-07-21 |
 | #43 | chore(table): give the remove column a fixed width instead of participating in dynamic column sizing | closed | 2026-07-22 |
 | #44 | feat(table): checked/unchecked icon style for checkbox cells, and fixed width for checkbox + option columns | closed | 2026-07-21 |
-| #45 | feat(table): reusable radio column type (by-column single-pick, by-row Likert/checklist grid with spanning header) | ready-for-review | 2026-07-22 |
+| #45 | feat(table): reusable radio column type (by-column single-pick, by-row Likert/checklist grid with spanning header) | closed | 2026-07-27 |
 | #46 | feat(table): check-all/uncheck-all header icons for generic checkbox-type columns | closed | 2026-07-22 |
 
 ## Big Picture

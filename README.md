@@ -29,6 +29,7 @@ department usage/cost reporting.
 14. [Filtering and searching table data](#14-filtering-and-searching-table-data)
 15. [Download and Upload Features](#15-download-and-upload-features)
 16. [Paging through table data (lazy-load vs. pagination)](#16-paging-through-table-data-lazy-load-vs-pagination)
+17. [Choosing a module's icon](#17-choosing-a-modules-icon)
 
 ## 1. Deploying the application
 
@@ -543,3 +544,13 @@ Click the toggle again to switch back to lazy-load scrolling at any time.
 **The mode you pick isn't saved** — it only applies to the screen you're
 currently on. Navigating away and back (or reloading the page) always
 starts fresh in lazy-load mode.
+
+## 17. Choosing a module's icon
+
+On the **Modules** screen (Application Configuration → Modules), the
+Add/Edit form's **Icon** field shows the module's current home-tile icon
+next to its name. Click the field to open the **Choose an Icon** dialog:
+a searchable list of icons, each with a radio button — pick one (search
+by name to narrow a long list down), then click **Confirm** to apply it,
+or **Close** to back out without changing anything. The field's leading
+icon updates immediately once you confirm a choice.

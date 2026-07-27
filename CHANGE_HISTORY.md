@@ -1,6 +1,20 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-27] — docs(readme): add "Choosing a module's icon" section
+- README.md had no end-user documentation for the new icon-picker on the Modules admin screen (added this session) - added a new numbered section 17 (TOC entry + short how-to) covering the Choose an Icon dialog
+- Files: README.md
+
+## [2026-07-27] — #45 status changed: ready-for-review → closed
+- Title: feat(table): reusable radio column type (by-column single-pick, by-row Likert/checklist grid with spanning header)
+- Platform: GitHub
+- Closed on GitHub 2026-07-27 (auto-closed by the "Closes #45" trailer on a pushed commit); AGENTS.md's Tracked Issues table was stale, synced during a /planner pass
+
+## [2026-07-27] — #37 status changed: ready-for-review → closed
+- Title: fix(frontend): table footer layout — reposition toggle icon, combine rows, keep footer pinned to table body not page
+- Platform: GitHub
+- Closed on GitHub back on 2026-07-20; AGENTS.md's Tracked Issues table was never updated at the time, synced during a /planner pass
+
 ## [2026-07-27] — fix(table): render "radio" cells as a real circle-with-dot radio glyph
 - Follow-up to the icon-picker/#45-sample-consumer entry below, per direct user feedback after seeing it live: `"radio"`-type cells were reusing `"checkbox"`'s own check-box icon pair (`ICON_CHECKBOX_CHECKED`/`_UNCHECKED`), which looked like a checkbox despite behaving like a radio button (mutual exclusivity)
 - `components/table/rows.py`: `_CheckboxCellValue.__init__` gained an `icon_pair` param (defaulting to the existing checkbox icons, so `"checkbox"` cells are unaffected) instead of hardcoding `ICON_CHECKBOX_CHECKED`/`_UNCHECKED` in `_apply_icon()`; new module-level `ICON_RADIO_CHECKED`/`ICON_RADIO_UNCHECKED` (`ft.Icons.RADIO_BUTTON_CHECKED`/`RADIO_BUTTON_UNCHECKED`) passed in for `"radio"` cells only
