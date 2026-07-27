@@ -1,6 +1,16 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-27] — feat(frontend): scan barcode/QR into Material and Location pickers on stock item screens
+- Issue #52 created on GitHub
+- Scope: frontend
+- Labels: enhancement, frontend
+- **Premise correction recorded in the issue**: raised as "port the existing QR scanner from `C:\Users\IT\Git\senar\flet\senar`", but investigation found **no camera QR scanner in that repo** — a full-tree grep for `camera`/`MobileScanner`/`mobile_scanner`/`zxing`/`barcode`/`permission_handler` across `src/` returns one hit (an icon-name mapping), and its `pyproject.toml` declares only `flet`, `flet-datatable2`, `requests`, `websockets`. What senar has is QR *generation* for TOTP enrolment, plus a hardware keyboard-wedge barcode pattern in `tm_confirm_seal_mobile/scan.py`
+- User confirmed the intended model is the **hardware barcode/QR gun** (types code + Enter into the focused field) — so no new dependency, no camera permissions, and it works on web. The senar screen is a pattern to imitate, not portable code
+- Three integration points identified: `stock_in/item_new`'s Material+Location (both `"type": "select"`, so one `SelectForm` hook covers both), `stock_out/item_new`'s hand-built raw `ft.Dropdown` (programmatic `.value` assignment does NOT fire `on_select`, so `on_material_select` must be invoked manually), and the table search bar for Location on that same screen
+- Key reuse noted so it isn't reimplemented: `components/table/menu.py::resolve_option_value()` (issue #25) already resolves a scanned code against raw id / full label / `"{code} - {name}"` prefix
+- Open design decisions flagged in the issue: the QR icon cannot sit *inside* the Dropdown left of its arrow without replacing the arrow (Flet owns that slot), and the search bar's `suffix_icon` takes a single control with hard 24x24 constraints added for issue #19
+
 ## [2026-07-27] — fix(frontend): keep the current screen on reload instead of bouncing to /home (#51 follow-up)
 - Reported by the user right after the splash-hang fix below: reloading at `/modules/stock_movement/index` redirected to `/home` instead of staying put. Reproduced live before changing anything (log showed `route to: /home from: None`)
 - Not a regression - `_boot_navigate()` only ever targeted `/server_config`/`/home`/`/login`, so a deep route was always discarded on boot. It was simply invisible until now: before the same-route fix, that reload hung on the splash rather than visibly redirecting

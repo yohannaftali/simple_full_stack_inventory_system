@@ -71,6 +71,7 @@
 | #49 | fix(frontend): add top padding to master_config/mail_config singleton Form screens | closed | 2026-07-27 |
 | #50 | fix(table): column resize handle stops working on the second drag | open | 2026-07-27 |
 | #51 | fix(frontend): web app hangs on splash when loaded directly at /home or a deep route | closed | 2026-07-27 |
+| #52 | feat(frontend): scan barcode/QR into Material and Location pickers on stock item screens | open | 2026-07-27 |
 
 ## Big Picture
 
