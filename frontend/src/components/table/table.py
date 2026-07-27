@@ -316,7 +316,11 @@ class Table:
         header_control = self.header.build() if self.header else None
         if header_control is None:
             return None
-        overlay = self.columns.get_resize_overlay()
+        # Resize handles (cached, gesture-identity-preserving) plus any
+        # by-row radio group spanning-header labels (issue #45, rebuilt
+        # fresh every call - see get_radio_group_overlay()'s docstring for
+        # why it doesn't need the same caching the handles do).
+        overlay = self.columns.get_resize_overlay() + self.columns.get_radio_group_overlay()
         return ft.Stack([header_control, *overlay]) if overlay else header_control
 
     def _handle_scroll_end(self):

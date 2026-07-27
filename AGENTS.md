@@ -64,7 +64,7 @@
 | #42 | feat(table): reusable single/bulk row-remove button (ported from senar) and wire into ap_master_user permission revoke | closed | 2026-07-21 |
 | #43 | chore(table): give the remove column a fixed width instead of participating in dynamic column sizing | closed | 2026-07-22 |
 | #44 | feat(table): checked/unchecked icon style for checkbox cells, and fixed width for checkbox + option columns | closed | 2026-07-21 |
-| #45 | feat(table): reusable radio column type (by-column single-pick, by-row Likert/checklist grid with spanning header) | open | 2026-07-21 |
+| #45 | feat(table): reusable radio column type (by-column single-pick, by-row Likert/checklist grid with spanning header) | ready-for-review | 2026-07-22 |
 | #46 | feat(table): check-all/uncheck-all header icons for generic checkbox-type columns | closed | 2026-07-22 |
 
 ## Big Picture
@@ -2028,7 +2028,7 @@ itself grew two small hooks so a sub-table *can* reuse it:
 
   Getting `Table` to support editable cells needed one generically reusable
   addition to `components/table/`, previously read-only display only
-  (`TableRows.load()` always rendered `ft.Text`): six `"type"` values now
+  (`TableRows.load()` always rendered `ft.Text`): seven `"type"` values now
   render an editable control instead of text (`TableRows._build_editable_cell()`
   is the dispatch point) —
   - `"input"` — single-line `ft.TextField` (`hint_text`/`keyboard_type`,
@@ -2048,8 +2048,68 @@ itself grew two small hooks so a sub-table *can* reuse it:
     (calendar-popup TextField, ISO value tracked separately from the
     displayed "dd Mon yyyy" text, including its UTC-offset day-rollback
     correction) - one `DateForm` instance per cell.
-  - `"checkbox"` — `ft.Checkbox` (accepts a bool or a truthy string from
-    the fetched row data).
+  - `"checkbox"` — an `ft.IconButton` toggling between
+    `ICON_CHECKBOX_CHECKED`/`ICON_CHECKBOX_UNCHECKED` (issue #44 restyled
+    this from a plain `ft.Checkbox`; accepts a bool or a truthy string
+    from the fetched row data). Its header renders two icon buttons
+    (check-all/uncheck-all, issue #46) instead of a plain text label —
+    `TableColumns._build_checkbox_header()`, wired through
+    `Table._handle_checkbox_header_click()` into
+    `TableRows.set_all_checkbox()`.
+  - `"radio"` (issue #45) — same checked/unchecked icon control as
+    `"checkbox"` (both share `rows.py`'s `_CheckboxCellValue`), but
+    clicking one enforces exclusivity instead of toggling independently,
+    via `TableRows._on_radio_click()`. Two modes, mirroring senar's
+    `byColumn`/`byRow` table fields:
+    - **By-column** (default, or `"radio_mode": "column"`) — mutual
+      exclusivity spans the whole column: selecting one row's radio
+      deselects that same field across every *other currently-loaded*
+      row. Renders like an ordinary column - plain text-label header, no
+      special-casing in `TableColumns._build_data_columns()` at all (it
+      just falls through the normal label/sort path unmodified).
+    - **By-row** (`"radio_mode": "row"`) — several sibling columns share
+      one `"radio_group"` name; within one row, selecting one of those
+      columns' radios deselects the *other radio_group columns in that
+      same row only* (each row is its own independent exclusivity
+      group) - the Likert-scale/audit-checklist-grid shape (e.g. "Yes"/
+      "No"/"N/A" columns, one row per question). A by-row grid's rows
+      aren't restricted to only radio columns - an ordinary `"input"`
+      (e.g. a free-text "Remarks" column) can sit alongside the
+      radio-group columns in the same row for free, since it's just
+      another field in `_EDITABLE_TYPES`'s existing per-field dispatch.
+    - **By-row groups render one shared/spanning header** (labeled via a
+      `"radio_group_label"` on any one of the group's fields, not each
+      column's own `"label"`) - `TableColumns.get_radio_group_overlay()`.
+      **Spike finding**: Flet's `DataTable`/`DataColumn` has no native
+      column-span (confirmed by reading the installed `flet` package's
+      own `datatable.py` source directly - `DataTable.before_update()`
+      hard-requires every visible `DataRow` to carry exactly
+      `len(columns)` visible `DataCell`s, no colspan/merge concept
+      exists at all). Each grouped radio column still gets its own real
+      `DataColumn` (blank header cell - `_build_data_columns()`'s
+      `radio_mode == "row"` branch), so the column/cell-count invariant
+      holds; the merged look is purely visual, drawn as one positioned
+      `ft.Container` per group (computed left/width from `self.widths`,
+      same `TABLE_HORIZONTAL_MARGIN`/`TABLE_COLUMN_SPACING` cumulative-
+      offset math `_reposition_handles()` already uses) in the same
+      overlay `Stack` sitting on top of the header that the resize
+      handles already occupy (`get_resize_overlay()`,
+      `Table._build_header_with_resize_overlay()`) - the same "overlay a
+      real DataTable" technique, reused for a second, unrelated purpose.
+      Unlike the resize handles, this overlay has no drag-gesture
+      identity to preserve, so it's rebuilt fresh on every call rather
+      than cached. Assumes every field sharing one `"radio_group"` name
+      is listed contiguously in the table's `fields` list (matches how a
+      Likert grid is naturally authored).
+    - `"radio"`-type columns get the same fixed-width treatment as
+      `"remove"`/`"checkbox"`/`"option"` (`_FIXED_WIDTH_TYPES`, 60px
+      default via `_EDITABLE_MIN_WIDTHS`) regardless of mode - never
+      content-derived, overridable per-field via `"min_width"`.
+    - `get_rows_with_input_values()`/`get_input_values()` return a plain
+      `bool` per radio cell, identical contract to `"checkbox"` - no
+      special-casing needed by callers.
+    - Planned first consumers (audit checklist, survey module) are each
+      their own separate, not-yet-scoped issue.
 
   `Table.get_rows_with_input_values()` returns each fetched row's dict
   merged with the current value of every editable-type field in it, in

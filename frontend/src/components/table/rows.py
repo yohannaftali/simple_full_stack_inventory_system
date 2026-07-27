@@ -15,7 +15,15 @@ _FORMATTERS = {
 
 # Field types that render an editable control instead of read-only text -
 # see _build_editable_cell() for what each one builds.
-_EDITABLE_TYPES = {"input", "textarea", "select", "option", "datepicker", "checkbox"}
+_EDITABLE_TYPES = {
+    "input",
+    "textarea",
+    "select",
+    "option",
+    "datepicker",
+    "checkbox",
+    "radio",
+}
 
 # Bounds an editable select/option cell's dropdown menu height to roughly
 # this many rows (scrollable for the rest) instead of a hard option-list cap
@@ -32,7 +40,14 @@ class _CheckboxCellValue:
     icon pair `components/table/remove.py` uses for its own row-selection
     state), not a plain `ft.Checkbox`. `get_input_values()` reads this
     object's own `.value`, kept in sync on every click - same contract as
-    every other editable cell type (a bare `bool`)."""
+    every other editable cell type (a bare `bool`).
+
+    Also reused as-is for `"radio"`-type cells (issue #45) - identical
+    rendering, the only difference is *how* the click is wired: a
+    checkbox's own `on_click` calls `toggle()` directly, while a radio
+    cell's `on_click` goes through `TableRows._on_radio_click()` instead
+    (never `toggle()`), which enforces exclusivity across sibling cells
+    before calling this class's `set_value(True)`."""
 
     def __init__(self, value: bool, control: ft.IconButton):
         self.value = value
@@ -165,7 +180,7 @@ class TableRows:
                         else None
                     )
                     control, value_holder = self._build_editable_cell(
-                        field_type, field, name, raw_value, w
+                        field_type, field, name, raw_value, w, row_index=row
                     )
                     row_inputs[name] = {"type": field_type, "control": value_holder}
                     # Wrap in a fixed-width Container, same as the read-only
@@ -258,13 +273,17 @@ class TableRows:
             row += 1
 
     def _build_editable_cell(
-        self, field_type: str, field: dict, name: str, raw_value, width
+        self, field_type: str, field: dict, name: str, raw_value, width, row_index=None
     ):
         """Build one editable table cell.
 
         Returns (control, value_holder): `control` is what goes in the
         DataCell; `value_holder` is what get_input_values() reads back from
         (usually `control` itself, except "datepicker" - see below).
+
+        `row_index` is only used by `"radio"` (issue #45) - its click
+        handler needs to know which row it's in to enforce exclusivity
+        against sibling cells via `_on_radio_click()`.
         """
         has_value = raw_value not in (None, "")
 
@@ -292,6 +311,20 @@ class TableRows:
             control = ft.IconButton()
             holder = _CheckboxCellValue(value, control)
             control.on_click = holder.toggle
+            return control, holder
+
+        if field_type == "radio":
+            value = (
+                raw_value
+                if isinstance(raw_value, bool)
+                else str(raw_value).strip().lower() in ("1", "true", "yes")
+            )
+            control = ft.IconButton()
+            holder = _CheckboxCellValue(value, control)
+            # Deliberately NOT holder.toggle (unlike "checkbox" above) - a
+            # radio cell's click must enforce exclusivity against its
+            # siblings first, see _on_radio_click().
+            control.on_click = lambda e, n=name, ri=row_index: self._on_radio_click(n, ri)
             return control, holder
 
         if field_type in ("select", "option"):
@@ -344,6 +377,47 @@ class TableRows:
             border_color=ft.Colors.OUTLINE_VARIANT,
         )
         return control, control
+
+    def _on_radio_click(self, field_name: str, row_index: int) -> None:
+        """Exclusivity handler for a `"radio"`-type cell (issue #45).
+        Clicking an already-selected radio is a no-op - standard
+        radio-button semantics, unlike `"checkbox"`'s toggle. Selecting an
+        unselected one first deselects its exclusivity siblings:
+        - `"radio_mode": "row"` - every OTHER `"radio"` column sharing this
+          field's `"radio_group"` name, but only within this same row (a
+          by-row Likert/checklist grid - each row is its own independent
+          group).
+        - default / `"radio_mode": "column"` - this same field/column
+          across every OTHER currently-loaded row (mutual exclusivity
+          spans the whole column).
+        Only touches rows currently rendered client-side, same
+        "lazy-loaded pages aren't retroactively updated" scope every other
+        cross-row Table mechanic in this codebase already has (e.g. #46's
+        checkbox header check-all)."""
+        if row_index is None or row_index >= len(self.input_controls):
+            return
+        entry = self.input_controls[row_index].get(field_name)
+        if entry is None:
+            return
+        holder = entry["control"]
+        if holder.value:
+            return
+
+        field = self.columns.fields_by_name.get(field_name, {})
+        if field.get("radio_mode") == "row":
+            group = field.get("radio_group")
+            for name, other in self.input_controls[row_index].items():
+                if name == field_name or other.get("type") != "radio":
+                    continue
+                if self.columns.fields_by_name.get(name, {}).get("radio_group") == group:
+                    other["control"].set_value(False)
+        else:
+            for row_inputs in self.input_controls:
+                other = row_inputs.get(field_name)
+                if other is not None and other is not entry:
+                    other["control"].set_value(False)
+
+        holder.set_value(True)
 
     def _get_select_options(self, field: dict, name: str) -> list[dict]:
         """Fetch (and cache) a "select"-type column's options, same shape as

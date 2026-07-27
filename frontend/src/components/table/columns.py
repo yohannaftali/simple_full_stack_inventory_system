@@ -28,6 +28,11 @@ _EDITABLE_MIN_WIDTHS = {
     # components/table/remove.py's module docstring for why this is two
     # always-visible buttons per mode rather than one Shift-click toggle).
     "remove": 80,
+    # A single checked/unchecked icon (issue #45) - no header buttons of
+    # its own (a "column"-mode header is a plain text label like any
+    # ordinary column; a "row"-mode header is blank, its group's shared
+    # label is drawn by get_radio_group_overlay() instead).
+    "radio": 60,
 }
 _DEFAULT_MIN_WIDTH = 40
 
@@ -35,8 +40,9 @@ _DEFAULT_MIN_WIDTH = 40
 # row content - see TableColumns.load()'s docstring below. "remove"
 # started this (issue #42/#43); "checkbox"/"option" generalized it
 # (issue #44) since neither a checkbox toggle nor a fixed dropdown-option
-# list's width depends on what's in a given row either.
-_FIXED_WIDTH_TYPES = {"remove", "checkbox", "option"}
+# list's width depends on what's in a given row either; "radio" (issue
+# #45) is the same reasoning again - one icon's width, never content-derived.
+_FIXED_WIDTH_TYPES = {"remove", "checkbox", "option", "radio"}
 
 # Below this column width, a header label is dropped entirely instead of
 # rendered as one unreadable truncated character - see
@@ -315,6 +321,29 @@ class TableColumns:
                 )
                 continue
 
+            if field.get("type") == "radio" and field.get("radio_mode") == "row":
+                # A by-row radio group's shared header is NOT this column's
+                # own DataColumn label - Flet's DataTable has no native
+                # column-span (confirmed by reading the installed flet
+                # package's own DataTable source: every DataRow.cells must
+                # equal len(columns) exactly, no colspan/merge concept).
+                # The merged look is drawn separately, as a positioned
+                # Container spanning every sibling column's combined width
+                # in an overlay Stack on top of the header (see
+                # get_radio_group_overlay(), same "overlay on top of the
+                # real DataTable" technique the resize handles already
+                # use) - this column's own header cell stays blank so the
+                # DataTable's per-column cell-count invariant still holds.
+                # A "column"-mode radio field (the default) needs none of
+                # this - it falls straight through to the normal
+                # plain-text-label path below, unmodified.
+                cols.append(
+                    ft.DataColumn(
+                        label=ft.Container(width=w), numeric=False, on_sort=None
+                    )
+                )
+                continue
+
             is_sortable = interactive and bool(field.get("sort"))
             # Excel-style: a shrunk column truncates its label to one
             # ellipsized line rather than wrapping onto multiple lines
@@ -431,6 +460,75 @@ class TableColumns:
             )
 
         return cols
+
+    def get_radio_group_overlay(self) -> list[ft.Control]:
+        """Positioned spanning-header labels for every by-row radio group
+        (`"radio_mode": "row"`, issue #45) - one per unique `"radio_group"`
+        name, drawn as a `left`/`width`-positioned `ft.Container` in the
+        same overlay `Stack` the resize handles already occupy on top of
+        the header (see `get_resize_overlay()`/`Table._build_header_with_resize_overlay()`).
+        Assumes every field sharing one `"radio_group"` name is listed
+        contiguously in `self.fields` - matches how a Likert/checklist
+        grid is naturally authored (one block of sibling columns) and
+        keeps the span-width math a single contiguous run instead of a
+        scattered union.
+
+        Unlike `get_resize_overlay()`, this is rebuilt fresh on every call
+        rather than cached - there's no drag-gesture identity to preserve
+        across rebuilds here, just a handful of cheap Containers whose
+        position/width depend on the current `self.widths`."""
+        if not self.widths:
+            return []
+
+        groups: dict[str, dict] = {}
+        order: list[str] = []
+        num_columns = len(self.widths)
+        cumulative = TABLE_HORIZONTAL_MARGIN
+        for i, name in enumerate(self.index):
+            width = self.widths[i] if i < num_columns else 0
+            field = self.fields_by_name.get(name, {})
+            if field.get("type") == "radio" and field.get("radio_mode") == "row":
+                group_name = field.get("radio_group") or name
+                if group_name not in groups:
+                    groups[group_name] = {
+                        "left": cumulative,
+                        "right": cumulative + width,
+                        "label": field.get("radio_group_label"),
+                    }
+                    order.append(group_name)
+                else:
+                    groups[group_name]["right"] = cumulative + width
+                    if groups[group_name]["label"] is None:
+                        groups[group_name]["label"] = field.get("radio_group_label")
+
+            cumulative += width
+            if i < num_columns - 1:
+                cumulative += TABLE_COLUMN_SPACING
+
+        overlay: list[ft.Control] = []
+        for group_name in order:
+            g = groups[group_name]
+            overlay.append(
+                ft.Container(
+                    content=ft.Text(
+                        g["label"] or group_name,
+                        overflow=ft.TextOverflow.ELLIPSIS,
+                        max_lines=1,
+                        text_align=ft.TextAlign.CENTER,
+                        color=ft.Colors.ON_SECONDARY_CONTAINER,
+                    ),
+                    left=g["left"],
+                    top=0,
+                    bottom=0,
+                    width=g["right"] - g["left"],
+                    alignment=ft.Alignment.CENTER,
+                    # Matches header.py's heading_row_color - hides the
+                    # (blank) real header cells underneath it rather than
+                    # showing through to them.
+                    bgcolor=ft.Colors.SECONDARY_CONTAINER,
+                )
+            )
+        return overlay
 
     def _build_checkbox_header(self, field_name: str, width: int | None) -> ft.Control:
         """Header cell for a generic `"checkbox"`-type column (issue #46) -
