@@ -118,6 +118,11 @@ class Table:
 
         self.columns: TableColumns = TableColumns(page, self.fields)
         self.columns.remove = self.remove
+        # Lets TableColumns tell whether it's still the live instance for
+        # the current screen or a leftover from a previously-visited one
+        # whose client-side gesture widgets are still firing events - see
+        # TableColumns._is_live().
+        self.columns.owner = self
         self.rows: TableRows = TableRows(page, self.columns, parent=self)
         # Lets TableColumns request a full header/body/rows rebuild after every
         # resize step (drag tick or double-tap reset) - see

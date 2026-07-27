@@ -140,6 +140,19 @@ class TableColumns:
         # build reports values too small to be usable directly.
         self._drag_index: int | None = None
         self._drag_last_x: float | None = None
+        # Single source of truth for which resize handle (if any) should
+        # currently render highlighted - hover or active drag, doesn't
+        # matter which. Every bar's color is a pure function of this one
+        # value (see _refresh_resize_handle_colors()); no per-handle
+        # imperative highlight/unhighlight state to keep in sync with
+        # anything else.
+        self._highlighted_index: int | None = None
+        self._resize_handle_bars: dict[int, ft.Container] = {}
+        # Back-reference to the owning Table, set by Table.__init__ (same
+        # wiring style as `self.remove`/`self.on_resize_commit`). Used only
+        # by `_is_live()` to tell a live instance from a stale one left
+        # over from a previously-visited screen - see that method.
+        self.owner = None
         # Multi-column sort state: an ordered `[(field_name, "ASC"|"DESC"),
         # ...]` list, list order = sort priority (first entry is the
         # primary sort key) - mirrors the senar reference's
@@ -628,6 +641,65 @@ class TableColumns:
 
         self._safe_page_update()
 
+    def _is_live(self) -> bool:
+        """Whether this instance's resize handles are still the ones on
+        screen, as opposed to leftovers from a previously-visited screen.
+
+        Navigating between module screens clears `page.data["active_tables"]`
+        (see `main.py`'s `route_change`) and builds a fresh `Table`, but the
+        *client* keeps the old screen's `GestureDetector` widgets alive and
+        keeps dispatching pointer events to them - and those events reach
+        the old `TableColumns` instance, because the handler closures hold a
+        reference to it. Confirmed live via diagnostics: hovering the single
+        resize handle of a 2-column table produced handler calls from BOTH
+        the live instance (`bars=[0]`) and a stale 3-column one
+        (`bars=[0, 1]`) still mounted from an earlier screen.
+
+        That is exactly what produced every symptom reported against the
+        resize handle's highlight - "hovering shows no color" (the stale
+        instance handled the event and painted a bar that isn't on screen),
+        and "the color stays after moving away" (the live instance was lit
+        by one event while the matching exit went to the stale one). Three
+        earlier rounds of fixes all targeted the highlight bookkeeping
+        itself, which was never the problem.
+
+        `page.data["active_tables"]` is authoritative and already
+        maintained: route change empties it, so every stale instance stops
+        being live the moment its screen is left."""
+        owner = self.owner
+        if owner is None:
+            return True
+        data = getattr(self.page, "data", None)
+        if not isinstance(data, dict):
+            return True
+        return any(table is owner for table in data.get("active_tables", []))
+
+    def _refresh_resize_handle_colors(self) -> None:
+        """The one place any resize handle's color is ever set - every
+        bar's color is a pure function of `self._highlighted_index` (the
+        single source of truth for "which handle, if any, should render
+        highlighted right now"). Replaces three successive rounds of
+        scattered per-handle highlight/unhighlight state (each fixing one
+        symptom - stuck-highlighted-after-drag, hover breaking after the
+        first drag, one column's hover breaking after dragging a different
+        column - while leaving the underlying "N places all need to agree
+        on N pieces of state" design in place, which is exactly what kept
+        finding new ways to desync). There is now exactly one flag to set
+        and one function that reads it - nothing else to keep in sync."""
+        for i, bar in self._resize_handle_bars.items():
+            bar.bgcolor = (
+                ft.Colors.PRIMARY if i == self._highlighted_index else ft.Colors.SURFACE
+            )
+            # Update each bar directly rather than `page.update()` - a
+            # whole-page update was confirmed live NOT to flush this nested
+            # bgcolor change at all (the handler ran with correct state, the
+            # bar stayed unhighlighted on screen), while a targeted
+            # `bar.update()` does.
+            try:
+                bar.update()
+            except RuntimeError:
+                pass
+
     def _build_resize_handle(self, index: int) -> ft.GestureDetector:
         """Draggable divider positioned over column `index`'s right edge,
         Excel/Sheets-style manual column resize - a wide but invisible hit
@@ -638,13 +710,21 @@ class TableColumns:
         background color at rest, highlighting to the primary color on
         hover or while actively dragging (hovering/dragging anywhere in
         the wider hit zone counts, not just over the thin line itself).
-        Double-tap resets both neighboring columns back to auto-fit."""
+        Double-tap resets both neighboring columns back to auto-fit.
+
+        Every event handler below just sets `self._highlighted_index` and
+        calls `_refresh_resize_handle_colors()` - see that method's
+        docstring for why this replaced three rounds of per-handle
+        highlight/unhighlight closures that each independently tried to
+        track "should I be highlighted" and kept finding new ways to
+        disagree with each other."""
         # `expand=True` so the thin line fills the hit zone's full height
         # (set externally via top=0/bottom=0 below), not just its own
         # natural (near-zero) content height.
         bar = ft.Container(
             width=_RESIZE_HANDLE_VISIBLE_WIDTH, bgcolor=ft.Colors.SURFACE, expand=True
         )
+        self._resize_handle_bars[index] = bar
         hit_area = ft.Container(
             content=bar,
             width=_RESIZE_HANDLE_HIT_WIDTH,
@@ -652,28 +732,26 @@ class TableColumns:
             bgcolor=ft.Colors.TRANSPARENT,
         )
 
-        def _highlight():
-            bar.bgcolor = ft.Colors.PRIMARY
-            self._safe_update(bar)
-
-        def _unhighlight():
-            bar.bgcolor = ft.Colors.SURFACE
-            self._safe_update(bar)
-
-        def _on_enter(e):
-            _highlight()
+        def _on_enter(e, i=index):
+            if not self._is_live():
+                return
+            self._highlighted_index = i
+            self._refresh_resize_handle_colors()
 
         def _on_exit(e, i=index):
-            # Don't unhighlight mid-drag just because a fast pointer
-            # movement momentarily left the hit zone - only a real
-            # hover-away (no drag in progress) should revert the color.
-            if self._drag_index != i:
-                _unhighlight()
+            if not self._is_live():
+                return
+            if self._highlighted_index == i:
+                self._highlighted_index = None
+                self._refresh_resize_handle_colors()
 
         def _on_pan_start(e, i=index):
+            if not self._is_live():
+                return
             self._drag_index = i
             self._drag_last_x = e.global_position.x
-            _highlight()
+            self._highlighted_index = i
+            self._refresh_resize_handle_colors()
 
         def _on_pan_update(e, i=index):
             if self._drag_index != i or self._drag_last_x is None:
@@ -691,12 +769,16 @@ class TableColumns:
                 self.manually_resized = True
             self._drag_index = None
             self._drag_last_x = None
-            _unhighlight()
+            if self._highlighted_index == i:
+                self._highlighted_index = None
+                self._refresh_resize_handle_colors()
 
         def _on_pan_cancel(e, i=index):
             self._drag_index = None
             self._drag_last_x = None
-            _unhighlight()
+            if self._highlighted_index == i:
+                self._highlighted_index = None
+                self._refresh_resize_handle_colors()
 
         def _on_double_tap(e, i=index):
             self.reset_column_pair(i)
@@ -720,13 +802,6 @@ class TableColumns:
             on_double_tap=_on_double_tap,
             content=hit_area,
         )
-
-    @staticmethod
-    def _safe_update(control: ft.Control) -> None:
-        try:
-            control.update()
-        except RuntimeError:
-            pass
 
     def _safe_page_update(self) -> None:
         try:

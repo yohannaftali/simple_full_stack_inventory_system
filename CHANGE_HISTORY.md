@@ -1,6 +1,15 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-27] — fix(table): resize-handle highlight - stale screens' handles were stealing the events
+- Reported symptoms (across three rounds of failed fixes): highlight stayed blue after releasing a drag; hovering stopped highlighting at all after the first drag; hovering one column broke after dragging a different one; finally "no highlight on hover at all, and sometimes highlight shown after the cursor already moved away"
+- **Root cause (found by instrumenting the handlers and reading the live logs, not by more reasoning about the bookkeeping)**: navigating between module screens leaves the previous screen's `GestureDetector` widgets alive on the *client*, still dispatching pointer events into the old `TableColumns` instance (the handler closures keep it alive). Diagnostics showed hovering the single handle of a 2-column table firing handlers on BOTH the live instance (`bars=[0]`) and a stale 3-column one (`bars=[0, 1]`) from an earlier screen. The stale instance would handle the event and paint a bar that isn't on screen - hence "no highlight" - or handle only one half of an enter/exit pair - hence "stuck highlighted"
+- All three previous rounds had targeted the highlight bookkeeping itself, which was never the problem
+- `components/table/columns.py`: new `TableColumns._is_live()` (checks membership in `page.data["active_tables"]`, already cleared on route change by `main.py`, via a new `TableColumns.owner` back-reference) guarding `_on_enter`/`_on_exit`/`_on_pan_start`; highlight state reduced to one flag (`_highlighted_index`) read by one function (`_refresh_resize_handle_colors()`); colors flushed with a targeted `bar.update()` per bar after confirming live that `page.update()` does not flush this nested `bgcolor` change at all
+- `components/table/table.py`: `Table.__init__` sets `self.columns.owner = self`
+- Verified live in the browser, deliberately reproducing the ghost-instance scenario (visit the 6-column Modules table, navigate back to Home, open the 2-column Locations table): hover highlights, moving away clears, drag-resize works, releasing clears, and **re-hovering after a drag highlights again** - the case that kept failing - then clears again on exit
+- Files: frontend/src/components/table/columns.py, frontend/src/components/table/table.py, AGENTS.md
+
 ## [2026-07-27] — fix(frontend): actual root cause of #48 - page.on_resized was never a real Flet event
 - The proportional-rescale fix (previous entry below) turned out not to be enough - the user directly tested a real physical browser window resize/maximize and confirmed the table still didn't reflow at all
 - Root cause: `main.py` registered the handler as `page.on_resized` (trailing "d"). Flet's `BasePage` (`flet/controls/base_page.py`) declares the real field as `on_resize` (no "d") - `Optional[EventHandler["PageResizeEvent"]]`. `Page` isn't a slotted dataclass, so assigning to the wrong name doesn't raise - it silently attaches a dead, never-invoked attribute. **Every table on every screen had been ignoring window resize/maximize entirely**, not just ones with a manually-resized column

@@ -2328,6 +2328,40 @@ itself grew two small hooks so a sub-table *can* reuse it:
     dragging (hovering/dragging anywhere in the wider hit zone counts, not
     just over the thin line itself); double-tap resets that pair back to
     auto-fit.
+    - **Stale handles from a previously-visited screen keep receiving
+      pointer events - guard every handler with `TableColumns._is_live()`**
+      (2026-07-27). Navigating between module screens clears
+      `page.data["active_tables"]` (`main.py`'s `route_change`) and builds a
+      fresh `Table`, but the *client* keeps the old screen's
+      `GestureDetector` widgets alive and keeps dispatching pointer events
+      to them; those events reach the old `TableColumns` instance because
+      the handler closures hold a reference to it. Confirmed live with
+      diagnostics: hovering the single resize handle of a 2-column table
+      produced handler calls from BOTH the live instance (`bars=[0]`) and a
+      stale 3-column one (`bars=[0, 1]`) still mounted from an earlier
+      screen. This produced every reported resize-highlight symptom -
+      "hovering shows no color" (the stale instance handled the event and
+      painted a bar that isn't on screen) and "the color stays after moving
+      away" (the live instance was lit while the matching exit went to the
+      stale one). **Three earlier rounds of fixes all targeted the
+      highlight bookkeeping itself, which was never the problem** - the
+      lesson is that a handler misbehaving "only after navigating/after the
+      first interaction" should be suspected of running on a stale instance
+      before its own logic is rewritten. `_is_live()` checks membership in
+      `page.data["active_tables"]` (already maintained, and authoritative:
+      route change empties it), via a `TableColumns.owner` back-reference
+      set by `Table.__init__`.
+    - **Highlight state is one flag, not per-handle bookkeeping**:
+      `TableColumns._highlighted_index` is the single source of truth for
+      which handle (if any) renders highlighted - hover and active drag
+      both just set it, and `_refresh_resize_handle_colors()` is the only
+      place any bar's color is ever assigned, as a pure function of it.
+      Colors are flushed with a targeted `bar.update()` per bar, **not**
+      `page.update()` - a whole-page update was confirmed live not to flush
+      this nested `bgcolor` change at all (handlers ran with correct state
+      while the bar stayed unhighlighted on screen), and **not** a full
+      header rebuild via `on_resize_commit` either, which was tried and
+      broke hover wiring for subsequent interactions.
     - **Handles live outside the `DataTable` entirely**, in an
       absolutely-positioned overlay `ft.Stack` on top of the header
       (`TableColumns.get_resize_overlay()`, built once and cached - reused as
