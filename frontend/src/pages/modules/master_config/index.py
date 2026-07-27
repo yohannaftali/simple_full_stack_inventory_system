@@ -1,7 +1,7 @@
 import flet as ft
 
-from components.module.view import ModuleView
 from components.form.form import Form
+from components.module.view import ModuleView
 
 
 class ModulePage:
@@ -17,28 +17,34 @@ class ModulePage:
 
         self.fields = [
             {
-                "name": "app_title", "label": "Application Title", "icon": ft.Icons.TITLE,
-                "row": 1, "col": {"sm": 12, "md": 6},
-                "type": "input", "autofocus": True
+                "name": "app_title",
+                "label": "Application Title",
+                "icon": ft.Icons.TITLE,
+                "row": 1,
+                "col": {"sm": 12, "md": 6},
+                "type": "input",
+                "autofocus": True,
             },
             {
-                "name": "footer", "label": "Footer", "icon": ft.Icons.NOTES,
+                "name": "footer",
+                "label": "Footer",
+                "icon": ft.Icons.NOTES,
                 "row": 2,
-                "type": "input"
+                "col": {"sm": 12, "md": 6},
+                "type": "input",
             },
             {
-                "name": "timezone", "label": "Timezone", "icon": ft.Icons.SCHEDULE,
-                "row": 3, "col": {"sm": 12, "md": 6},
-                "type": "select"
-            }
+                "name": "timezone",
+                "label": "Timezone",
+                "icon": ft.Icons.SCHEDULE,
+                "row": 3,
+                "col": {"sm": 12, "md": 6},
+                "type": "select",
+            },
         ]
 
         self.form = Form(
-            page=page,
-            parent=self,
-            name="index",
-            fields=self.fields,
-            custom_param={}
+            page=page, parent=self, name="index", fields=self.fields, custom_param={}
         )
 
         self.view = ModuleView(page, module, screen)

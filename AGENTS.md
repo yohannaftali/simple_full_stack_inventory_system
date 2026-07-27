@@ -67,6 +67,8 @@
 | #45 | feat(table): reusable radio column type (by-column single-pick, by-row Likert/checklist grid with spanning header) | closed | 2026-07-27 |
 | #46 | feat(table): check-all/uncheck-all header icons for generic checkbox-type columns | closed | 2026-07-22 |
 | #47 | feat(backend): app-wide configurable timezone (IANA via zoneinfo) with UTC storage | closed | 2026-07-27 |
+| #48 | fix(frontend): table column widths don't respond to browser window resize/maximize (web) | open | 2026-07-27 |
+| #49 | fix(frontend): add top padding to master_config/mail_config singleton Form screens | open | 2026-07-27 |
 
 ## Big Picture
 

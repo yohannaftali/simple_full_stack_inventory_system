@@ -1,6 +1,18 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-27] — fix(frontend): add top padding to master_config/mail_config singleton Form screens
+- Issue #49 created on GitHub
+- Scope: frontend
+- Labels: bug, frontend
+- Prior investigation (this session, /planner, no code changes made): traced the full padding chain and found the reported cramped/fine distinction is NOT currently backed by any real padding difference - `ModuleView.build(padding=0)` and `Form`'s row containers (`top=0, bottom=0` hardcoded) are identical for every Form/Table screen shape; `Form.build()`'s own `padding` argument is dead code for vertical spacing (reassigns `self.padding_row` but never re-runs `build_elements()`, and no caller anywhere passes it explicitly anyway). Likely explanation for the perceived difference: `ap_mail/index.py` starts with a `"heading"` field giving it visible top structure, while `master_config`/`mail_config` start directly with a plain input. Since no shared component distinguishes these two screens from ordinary new/edit Form screens, the only isolated fix is a per-file `body()` wrap in exactly these two files.
+
+## [2026-07-27] — fix(frontend): table column widths don't respond to browser window resize/maximize (web)
+- Issue #48 created on GitHub
+- Scope: frontend
+- Labels: bug, frontend
+- Prior investigation (this session, /planner, no code changes made): `Table.on_page_resize()` → `Table.load()` does perform a real rebuild (recomputes widths, rebuilds header/body DataTables, calls `.update()`) - structurally sound. Two real gaps found: (1) `TableColumns.load()`'s `manually_resized` early-return permanently disables window-resize responsiveness the first time a user ever drags a column divider on that table, since it explicitly skips recomputing from screen width on every future reload including a resize; (2) no evidence anywhere in AGENTS.md/CHANGE_HISTORY.md/git history that `page.on_resized` has ever been confirmed to actually fire on a genuine browser window resize/maximize in Flet's web target - unlike the manual drag-resize feature, which has extensive, repeated live-browser verification notes, this path has none.
+
 ## [2026-07-27] — feat(backend): app-wide configurable timezone, implemented (issue #47)
 - Issue #47 implemented on GitHub (status: ready-for-review)
 - New `backend/src/core/timezone.py`: `AwareDateTime` (SQLAlchemy `TypeDecorator` — MariaDB has no native `TIMESTAMP WITH TIME ZONE`, so this converts an aware `datetime` to naive UTC before writing and re-attaches `UTC` on read, rather than relying on the dialect's no-op `DateTime(timezone=True)`), `utcnow()`, `get_app_timezone()` (reads the live `app_configs.timezone` row on every call, no caching, so an admin change takes effect with no restart), `to_app_timezone()`/`isoformat_app_timezone()`, `common_timezones()` (curated `zoneinfo.available_timezones()` subset for the picker)
