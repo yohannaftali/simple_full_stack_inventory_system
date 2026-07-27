@@ -222,8 +222,21 @@ async def main(page: ft.Page):
         else:
             page.run_task(page.push_route, "/home")
 
-    def page_resized(e: ft.ControlEvent):
-        print("New page size:", page.width, page.height)
+    def page_resized(e: ft.PageResizeEvent):
+        # Issue #48 root cause: this handler was wired to `page.on_resized`
+        # (with a trailing "d") for who knows how long - Flet's actual
+        # BasePage field is `on_resize` (no "d"), declared as
+        # `Optional[EventHandler["PageResizeEvent"]]` in
+        # flet/controls/base_page.py. Setting `page.on_resized = ...`
+        # doesn't raise (Page isn't a slotted dataclass), so it silently
+        # attached a dead, never-invoked attribute instead of actually
+        # registering a resize handler - every table on every screen has
+        # been ignoring window resize/maximize entirely, not just tables
+        # with a manually-resized column (the narrower bug #48 originally
+        # set out to fix). `e.width`/`e.height` are the new page size in
+        # logical pixels straight from the event, more direct than reading
+        # `page.width`/`page.height` back off the page object.
+        print("New page size:", e.width, e.height)
         print("New window size:", page.window.width, page.window.height)
         page.window.width = max(page.window.width, 400)
         page.window.height = max(page.window.height, 600)
@@ -249,7 +262,7 @@ async def main(page: ft.Page):
 
     page.on_route_change = route_change
     page.on_view_pop = view_pop
-    page.on_resized = page_resized
+    page.on_resize = page_resized
 
     async def _push_route_safe(route: str):
         # page.push_route() round-trips to the client (_invoke_method) with

@@ -1,6 +1,14 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-27] — fix(frontend): actual root cause of #48 - page.on_resized was never a real Flet event
+- The proportional-rescale fix (previous entry below) turned out not to be enough - the user directly tested a real physical browser window resize/maximize and confirmed the table still didn't reflow at all
+- Root cause: `main.py` registered the handler as `page.on_resized` (trailing "d"). Flet's `BasePage` (`flet/controls/base_page.py`) declares the real field as `on_resize` (no "d") - `Optional[EventHandler["PageResizeEvent"]]`. `Page` isn't a slotted dataclass, so assigning to the wrong name doesn't raise - it silently attaches a dead, never-invoked attribute. **Every table on every screen had been ignoring window resize/maximize entirely**, not just ones with a manually-resized column
+- Fixed: `page.on_resized = page_resized` -> `page.on_resize = page_resized`; handler signature/print updated to use the event's own `e.width`/`e.height` (a `PageResizeEvent`, logical pixels) instead of reading `page.width`/`page.height` back off the page object
+- This also explains why the sandboxed automation environment's own resize test was inconclusive - with the wrong attribute name, no signal would reach Python regardless of whether the browser viewport actually changed, so that test couldn't have detected a difference either way
+- Files: frontend/src/main.py, AGENTS.md
+- **Still needs live re-confirmation from the user** - resize/maximize the browser window again and confirm both a plain table and a manually-resized one now reflow correctly
+
 ## [2026-07-27] — fix(table): rescale manually-resized columns proportionally on window resize (issue #48, implemented)
 - Issue #48 implemented (status: ready-for-review)
 - `components/table/columns.py`: `TableColumns.load()` gained a `rescale: bool = False` param; when a table has `manually_resized` widths AND `rescale=True`, new `_rescale_manual_widths()` scales every non-fixed-width column by `new_usable_width / old_sizable_total`, preserving the user's chosen proportions while fitting the new screen width - fixed-width columns (`"remove"`/`"checkbox"`/`"option"`/`"radio"`) are excluded, same as the normal auto-fit path. A normal (non-resize) reload keeps the exact prior behavior unchanged - manual widths untouched.

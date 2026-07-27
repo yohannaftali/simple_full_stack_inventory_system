@@ -2407,16 +2407,39 @@ itself grew two small hooks so a sub-table *can* reuse it:
       preserved to within rounding) both when shrinking and growing the
       window, while the fixed-width column never changes. Manual
       drag-resize itself re-confirmed live in the browser (still works
-      unchanged). **Whether `page.on_resized` actually fires on a genuine
-      browser window resize on web remains unconfirmed** - the automation
-      environment available this session runs Chrome at a fixed display
-      resolution (`resize_window` reports success but `window.innerWidth`
-      never actually changes, confirmed via direct JS check both before
-      and after two different resize attempts; a synthetic
-      `window.dispatchEvent(new Event('resize'))` also produced no
-      server-side response) - so this specific question needs a real,
-      physical browser window resize (or DevTools' device-toolbar
-      viewport override) to verify, not scriptable in this sandbox.
+      unchanged).
+
+      **The actual root cause of #48, found after this proportional-rescale
+      fix still didn't resolve the user's real-browser report**:
+      `main.py` registered the resize handler as `page.on_resized` (with a
+      trailing "d"). Flet's `BasePage` (`flet/controls/base_page.py`)
+      declares the real field as `on_resize` (no "d") -
+      `Optional[EventHandler["PageResizeEvent"]]`, firing with a
+      `PageResizeEvent` carrying `width`/`height` in logical pixels
+      directly. `Page` isn't a slotted dataclass, so assigning to the
+      wrong attribute name doesn't raise - it silently attaches a dead,
+      never-invoked instance attribute instead of actually registering a
+      handler. **Every table on every screen had been ignoring window
+      resize/maximize entirely** - not just tables with a manually-resized
+      column, which is what the original investigation (correctly, as far
+      as it went) concluded needed fixing. Fixed by changing
+      `page.on_resized = page_resized` to `page.on_resize = page_resized`
+      and updating the handler's event type/print to use the event's own
+      `e.width`/`e.height` rather than reading `page.width`/`page.height`
+      back off the page object afterward.
+
+      This explains why the sandboxed automation environment's own
+      `resize_window` test (see the now-superseded note this replaced)
+      couldn't detect a difference either way - with the wrong attribute
+      name, no resize signal would have reached Python regardless of
+      whether the browser-side viewport genuinely changed, so that test
+      was inconclusive by construction, not just by environment limits.
+      Confirmed by the user directly (real physical browser resize/
+      maximize, not automation) that the table did NOT reflow before this
+      fix. **Live re-confirmation after the `on_resize` fix is still
+      pending** - ask the user to resize/maximize their browser window
+      again and confirm both a plain table and one with a manually-resized
+      column now reflow correctly.
     - Shrinking a column narrow enough used to wrap its header label onto
       multiple lines, growing the header row into the row below it
       instead of truncating - both `TableColumns._build_data_columns()`'s
