@@ -2594,6 +2594,23 @@ managed via `pyproject.toml` (uv/Poetry).
     direct loads of `/home` and `/modules/master_location/index` both
     render immediately, a container restart + reload recovers with no
     address-bar workaround, and in-app navigation is unaffected.
+  - **A logged-in boot stays on the current screen instead of bouncing to
+    `/home`** (#51 follow-up, same day): `_boot_navigate()` only ever
+    targeted `/server_config`/`/home`/`/login`, so reloading at e.g.
+    `/modules/stock_movement/index` silently lost your place. That was
+    always true but invisible - before the same-route fix above, such a
+    reload hung on the splash rather than visibly redirecting.
+    `_preserved_boot_route()` returns `page.route` when it starts with
+    `/modules/`/`/modals/`, and the active-session branch uses
+    `_preserved_boot_route() or "/home"`. Deliberately narrow: the routes
+    the boot conditions themselves own (`/`, `/login`, `/server_config`)
+    must keep being *decided* by those conditions rather than echoed back,
+    or a logged-out session sitting on `/login` would never be
+    re-evaluated. It is only consulted inside the `is_active()` branch, so
+    a logged-out deep-link still falls through to `/login` by construction;
+    an unknown or unauthorized module still degrades gracefully because
+    `route_change` already permission-checks and falls back to an
+    `ErrorPage`.
 
 - **Pages** (`src/pages/`): top-level singleton pages (`login`, `home`,
   `server_config`, `troubleshooting`, `error`, `permission_error`, `loader`),

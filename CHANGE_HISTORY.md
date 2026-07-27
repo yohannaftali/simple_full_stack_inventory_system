@@ -1,6 +1,14 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-27] — fix(frontend): keep the current screen on reload instead of bouncing to /home (#51 follow-up)
+- Reported by the user right after the splash-hang fix below: reloading at `/modules/stock_movement/index` redirected to `/home` instead of staying put. Reproduced live before changing anything (log showed `route to: /home from: None`)
+- Not a regression - `_boot_navigate()` only ever targeted `/server_config`/`/home`/`/login`, so a deep route was always discarded on boot. It was simply invisible until now: before the same-route fix, that reload hung on the splash rather than visibly redirecting
+- `frontend/src/main.py`: new `_preserved_boot_route()` returns `page.route` when it starts with `/modules/`/`/modals/`; the active-session branch now uses `_preserved_boot_route() or "/home"`
+- Deliberately narrow - `/`, `/login` and `/server_config` are owned by the boot conditions themselves and must keep being decided by them rather than echoed back, or a logged-out session sitting on `/login` would never be re-evaluated. Only consulted inside the `is_active()` branch, so a logged-out deep-link still falls through to `/login` by construction; unknown/unauthorized modules still degrade via `route_change`'s existing permission check + ErrorPage
+- Verified live: direct load of `/modules/stock_movement/index` renders that screen with the URL preserved, F5 on it stays put, `/home` still loads normally, in-app navigation unaffected, no errors in the frontend log. The logged-out path was **not** exercised end-to-end - clearing cookies from JS can't remove the httpOnly `client_id`, so the session persisted; it rests on the structural guarantee above rather than a live test
+- Files: frontend/src/main.py, AGENTS.md
+
 ## [2026-07-27] — fix(frontend): web app hangs on splash when loaded directly at /home (implemented)
 - Issue #51 implemented (status: ready-for-review)
 - **Reproduced and root-caused live before writing the fix** (instrumented `_boot_navigate()` and read `podman logs`): reloading at `/home` logged `page.route` already `/home`, a `push_route("/home")` that fired **no** route-change event, and `views=2` - the previous run's home view with a fresh splash stacked on top of it, never cleared. A websocket reconnect re-runs `main()`, which unconditionally appends another splash; the same-route push then can't replace it

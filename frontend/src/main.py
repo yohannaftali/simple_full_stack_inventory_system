@@ -312,6 +312,29 @@ async def main(page: ft.Page):
         else:
             await _push_route_safe(route)
 
+    def _preserved_boot_route() -> str | None:
+        """The current route if boot should stay on it instead of going to
+        `/home` - i.e. reloading/deep-linking a real screen keeps you on
+        that screen (issue #51 follow-up).
+
+        `_boot_navigate()` only ever targeted `/server_config`, `/home` or
+        `/login`, so reloading at e.g. `/modules/stock_movement/index`
+        silently bounced you to `/home` and lost your place. That was
+        always the behavior, but it was masked until now: before the
+        same-route fix above, a reload at a deep route hung on the splash
+        instead of visibly redirecting.
+
+        Only `/modules/...`/`/modals/...` are preserved - the routes the
+        boot conditions themselves own (`/`, `/login`, `/server_config`)
+        must keep being decided by those conditions, not echoed back, or a
+        logged-out session sitting on `/login` would never be re-evaluated.
+        Only consulted when the session is active; an unknown or
+        unauthorized module still degrades gracefully, since `route_change`
+        already permission-checks and falls back to an ErrorPage.
+        """
+        route = page.route or ""
+        return route if route.startswith(("/modules/", "/modals/")) else None
+
     async def _boot_navigate():
         # "Never configured" is tracked explicitly (server_url.is_configured(),
         # set by load()/set() based on whether a value was actually
@@ -340,7 +363,7 @@ async def main(page: ft.Page):
         if not storage.server_url.is_configured():
             await _boot_navigate_to("/server_config")
         elif storage.client_data.is_active():
-            await _boot_navigate_to("/home")
+            await _boot_navigate_to(_preserved_boot_route() or "/home")
         else:
             await _boot_navigate_to("/login")
 
