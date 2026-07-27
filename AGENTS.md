@@ -67,7 +67,7 @@
 | #45 | feat(table): reusable radio column type (by-column single-pick, by-row Likert/checklist grid with spanning header) | closed | 2026-07-27 |
 | #46 | feat(table): check-all/uncheck-all header icons for generic checkbox-type columns | closed | 2026-07-22 |
 | #47 | feat(backend): app-wide configurable timezone (IANA via zoneinfo) with UTC storage | closed | 2026-07-27 |
-| #48 | fix(frontend): table column widths don't respond to browser window resize/maximize (web) | ready-for-review | 2026-07-27 |
+| #48 | fix(frontend): table column widths don't respond to browser window resize/maximize (web) | closed | 2026-07-27 |
 | #49 | fix(frontend): add top padding to master_config/mail_config singleton Form screens | closed | 2026-07-27 |
 
 ## Big Picture
@@ -2436,10 +2436,8 @@ itself grew two small hooks so a sub-table *can* reuse it:
       was inconclusive by construction, not just by environment limits.
       Confirmed by the user directly (real physical browser resize/
       maximize, not automation) that the table did NOT reflow before this
-      fix. **Live re-confirmation after the `on_resize` fix is still
-      pending** - ask the user to resize/maximize their browser window
-      again and confirm both a plain table and one with a manually-resized
-      column now reflow correctly.
+      fix, and separately confirmed live afterward that the fix resolved
+      it - window resize/maximize now correctly reflows table columns.
     - Shrinking a column narrow enough used to wrap its header label onto
       multiple lines, growing the header row into the row below it
       instead of truncating - both `TableColumns._build_data_columns()`'s
