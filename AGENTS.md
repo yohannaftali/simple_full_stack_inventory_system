@@ -69,6 +69,7 @@
 | #47 | feat(backend): app-wide configurable timezone (IANA via zoneinfo) with UTC storage | closed | 2026-07-27 |
 | #48 | fix(frontend): table column widths don't respond to browser window resize/maximize (web) | closed | 2026-07-27 |
 | #49 | fix(frontend): add top padding to master_config/mail_config singleton Form screens | closed | 2026-07-27 |
+| #50 | fix(table): column resize handle stops working on the second drag | open | 2026-07-27 |
 
 ## Big Picture
 
@@ -2351,6 +2352,17 @@ itself grew two small hooks so a sub-table *can* reuse it:
       `page.data["active_tables"]` (already maintained, and authoritative:
       route change empties it), via a `TableColumns.owner` back-reference
       set by `Table.__init__`.
+    - **Known open bug - the second drag on a screen fails** (issue #50,
+      deferred deliberately): after the `_is_live()` fix above, the *first*
+      drag on a screen works end to end (hover highlights, drag resizes,
+      release clears, re-hover highlights), but a second drag does not.
+      Failure mode not yet characterised. Prime suspect is that every drag
+      *tick* rebuilds the header (`on_resize_commit(False)`) around the
+      cached handle controls, leaving stale `_drag_index`/`_drag_last_x` or
+      a confused client-side gesture arena once the Stack has been replaced
+      many times. Start by instrumenting the pan handlers and reading
+      `podman logs sfsis-frontend` - that is what found the stale-instance
+      cause; abstract reasoning about the bookkeeping repeatedly did not.
     - **Highlight state is one flag, not per-handle bookkeeping**:
       `TableColumns._highlighted_index` is the single source of truth for
       which handle (if any) renders highlighted - hover and active drag

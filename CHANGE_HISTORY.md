@@ -1,6 +1,13 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-27] — fix(table): column resize handle stops working on the second drag
+- Issue #50 created on GitHub
+- Scope: frontend
+- Labels: bug, frontend
+- Follow-up to `53b94a3` (stale resize-handle instances, entry below), which the user confirmed fixed the first drag on a screen - hover highlights, drag resizes, release clears, re-hover highlights - while a second drag still fails. Exact failure mode not yet characterised; deferred deliberately by the user ("we leave it ... we will fix it later, not now")
+- Issue records the approaches already ruled out so they aren't re-tried: rewriting the highlight bookkeeping (three fruitless rounds), `page.update()` for flushing (confirmed not to flush the nested bgcolor at all), and a full header rebuild via `on_resize_commit` (breaks hover wiring). Prime suspect noted as the per-tick header rebuild around the cached handle controls
+
 ## [2026-07-27] — fix(table): resize-handle highlight - stale screens' handles were stealing the events
 - Reported symptoms (across three rounds of failed fixes): highlight stayed blue after releasing a drag; hovering stopped highlighting at all after the first drag; hovering one column broke after dragging a different one; finally "no highlight on hover at all, and sometimes highlight shown after the cursor already moved away"
 - **Root cause (found by instrumenting the handlers and reading the live logs, not by more reasoning about the bookkeeping)**: navigating between module screens leaves the previous screen's `GestureDetector` widgets alive on the *client*, still dispatching pointer events into the old `TableColumns` instance (the handler closures keep it alive). Diagnostics showed hovering the single handle of a 2-column table firing handlers on BOTH the live instance (`bars=[0]`) and a stale 3-column one (`bars=[0, 1]`) from an earlier screen. The stale instance would handle the event and paint a bar that isn't on screen - hence "no highlight" - or handle only one half of an enter/exit pair - hence "stuck highlighted"
