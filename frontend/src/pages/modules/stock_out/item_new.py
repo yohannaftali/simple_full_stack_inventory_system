@@ -1,7 +1,11 @@
 import flet as ft
 
 from components.form.menu import MenuForm
-from components.form.select import SCAN_BUTTON_SIZE, SCAN_ICON_SIZE
+from components.form.select import (
+    SCAN_BUTTON_SIZE,
+    SCAN_ICON_SIZE,
+    SCAN_TRAILING_SPACING,
+)
 from components.module.view import ModuleView
 from components.scan_input import ScanInput
 from components.table.menu import resolve_option_value
@@ -177,7 +181,7 @@ class ModulePage:
                 self.material_scan.build(),
                 ft.Icon(arrow, size=SCAN_ICON_SIZE),
             ],
-            spacing=0,
+            spacing=SCAN_TRAILING_SPACING,
             tight=True,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )

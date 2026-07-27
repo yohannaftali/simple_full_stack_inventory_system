@@ -26,6 +26,9 @@ _MENU_ROW_HEIGHT = 48
 # a Control-typed suffix_icon caused on TextField, issue #52).
 SCAN_BUTTON_SIZE = 24
 SCAN_ICON_SIZE = 18
+# Gap between the scan button and the open/close arrow sharing the trailing
+# slot, so the two don't read as one control.
+SCAN_TRAILING_SPACING = 6
 
 
 class SelectForm:
@@ -126,7 +129,7 @@ class SelectForm:
                 self.scan_input.build(),
                 ft.Icon(arrow, color=self.value_color, size=SCAN_ICON_SIZE),
             ],
-            spacing=0,
+            spacing=SCAN_TRAILING_SPACING,
             tight=True,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
