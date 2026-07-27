@@ -20,6 +20,13 @@ from utils.http_client import HttpClient
 _MENU_VISIBLE_ROWS = 5
 _MENU_ROW_HEIGHT = 48
 
+# The scan button lives inside the field's decoration box, so it must be
+# sized explicitly - an unconstrained IconButton there carries Flutter's
+# ~48dp tap target and visibly grows the field's height (the same ballooning
+# a Control-typed suffix_icon caused on TextField, issue #52).
+SCAN_BUTTON_SIZE = 24
+SCAN_ICON_SIZE = 18
+
 
 class SelectForm:
 
@@ -43,7 +50,7 @@ class SelectForm:
         self.bgcolor = field.get("bgcolor", ft.Colors.SURFACE)
         self.enable_filter = field.get("enable_filter", True)
         self.editable = field.get("editable", True)
-        # Opt-in barcode/QR scan button beside this select (issue #52) - off
+        # Opt-in barcode/QR scan button inside this select (issue #52) - off
         # unless the field dict says `"qr": True`, so every existing select
         # in the app is untouched.
         self.qr = field.get("qr", False)
@@ -88,23 +95,39 @@ class SelectForm:
         if not self.qr:
             return self.select
 
-        # The scan button sits BESIDE the Dropdown, not inside it. Flet's
-        # Dropdown (a Flutter DropdownMenu) owns its trailing slot for the
-        # open/close arrow: `trailing_icon` *replaces* that arrow rather than
-        # sitting next to it, and isn't independently clickable - so putting
-        # the QR icon inside the field would cost the arrow affordance. A Row
-        # keeps both. Note `build()` therefore no longer always returns a
-        # Dropdown; `Form.load()`/`serialize()` read `Form.select[name].select`
-        # rather than isinstance-checking the built control for that reason.
+        # The scan button sits INSIDE the field, immediately before the
+        # open/close arrow - the same shape the table search bar uses for its
+        # scan-then-X pair. `trailing_icon` *replaces* the arrow rather than
+        # sitting beside it, so the arrow can't simply be left alone; but the
+        # slot is typed `IconDataOrControl`, so a Row carrying both the scan
+        # button and an explicit arrow Icon restores the affordance while
+        # keeping the button inside the decoration box. `selected_trailing_icon`
+        # (rendered while the menu is open) needs its own pair - a control
+        # instance can't occupy two slots in the tree at once - so the shared
+        # ScanInput is built twice; both buttons drive the same handler and only
+        # one is ever visible.
         self.scan_input = ScanInput(
             page=self.page,
             on_scan=self.apply_scanned_code,
             title=f"Scan {self.label}" if self.label else "Scan Barcode / QR",
             tooltip=f"Scan {self.label}" if self.label else "Scan barcode / QR",
+            icon_size=SCAN_ICON_SIZE,
+            width=SCAN_BUTTON_SIZE,
+            height=SCAN_BUTTON_SIZE,
         )
+        self.select.trailing_icon = self._build_trailing(ft.Icons.ARROW_DROP_DOWN)
+        self.select.selected_trailing_icon = self._build_trailing(ft.Icons.ARROW_DROP_UP)
+        return self.select
+
+    def _build_trailing(self, arrow: str) -> ft.Row:
+        """Scan button + arrow as one trailing control (see build())."""
         return ft.Row(
-            controls=[self.select, self.scan_input.build()],
-            spacing=4,
+            controls=[
+                self.scan_input.build(),
+                ft.Icon(arrow, color=self.value_color, size=SCAN_ICON_SIZE),
+            ],
+            spacing=0,
+            tight=True,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
 

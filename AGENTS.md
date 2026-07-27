@@ -2940,15 +2940,30 @@ managed via `pyproject.toml` (uv/Poetry).
     (autofocus + `on_submit`) — note that repo has **no** camera scanner to
     port, only QR *generation* for TOTP, so this was written from scratch.
     Wired in three places, each opt-in so nothing else changes:
-    - `SelectForm` — a field dict with `"qr": True` makes `build()` return
-      `ft.Row([dropdown, scan_button])`. The button sits **beside** the
-      Dropdown, not inside it: Flet's Dropdown owns its trailing slot for
-      the open/close arrow, and `trailing_icon` *replaces* that arrow
-      rather than sitting next to it (and isn't independently clickable),
-      so an icon inside the field would cost the arrow affordance. Enabled
-      on `stock_in/item_new`'s Material and Location.
+    - `SelectForm` — a field dict with `"qr": True` puts the scan button
+      **inside** the field, immediately before the open/close arrow (the
+      same shape the table search bar uses for its scan-then-X pair).
+      `build()` still returns the `ft.Dropdown` itself. Flet's
+      `trailing_icon` *replaces* the arrow rather than sitting beside it,
+      so the arrow can't simply be left alone — but the slot is typed
+      `IconDataOrControl`, so `_build_trailing()` supplies an
+      `ft.Row([scan_button, arrow_icon])` that restores the affordance
+      while keeping the button in the decoration box. `selected_trailing_icon`
+      (rendered while the menu is open) needs its **own** pair, since one
+      control instance can't occupy two slots in the tree at once — the
+      shared `ScanInput` is therefore built twice, both buttons driving the
+      same handler, only one ever visible. The button must be explicitly
+      sized (`SCAN_BUTTON_SIZE`/`SCAN_ICON_SIZE`, public so
+      `stock_out/item_new` shares one definition): an unconstrained
+      `IconButton` in that slot carries Flutter's ~48dp tap target and
+      visibly grows the field's height. Verified live that the arrow still
+      opens the menu, flips to the up state, and that clicking the scan
+      button opens the dialog *without* also opening the menu — the two
+      targets are independent. Enabled on `stock_in/item_new`'s Material
+      and Location.
     - `stock_out/item_new`'s hand-built raw `ft.Dropdown` (that screen uses
-      no `Form`) gets the same Row treatment. Its scan handler **must call
+      no `Form`) gets the same in-field treatment via its own
+      `_build_scan_trailing()`. Its scan handler **must call
       `on_material_select` explicitly** — assigning `Dropdown.value`
       programmatically does not fire `on_select`, so without it the
       dropdown would show the scanned material while the per-location

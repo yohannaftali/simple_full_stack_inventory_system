@@ -1,6 +1,7 @@
 import flet as ft
 
 from components.form.menu import MenuForm
+from components.form.select import SCAN_BUTTON_SIZE, SCAN_ICON_SIZE
 from components.module.view import ModuleView
 from components.scan_input import ScanInput
 from components.table.menu import resolve_option_value
@@ -114,6 +115,16 @@ class ModulePage:
         return self.view.build(self.body())
 
     def body(self):
+        self.material_scan = ScanInput(
+            page=self.page,
+            on_scan=self._apply_scanned_material,
+            title="Scan Material",
+            tooltip="Scan Material",
+            icon_size=SCAN_ICON_SIZE,
+            width=SCAN_BUTTON_SIZE,
+            height=SCAN_BUTTON_SIZE,
+        )
+
         self.material_dropdown = ft.Dropdown(
             label="Material",
             hint_text="Select a material",
@@ -126,26 +137,17 @@ class ModulePage:
             ],
             expand=True,
             on_select=self.on_material_select,
-        )
-
-        self.material_scan = ScanInput(
-            page=self.page,
-            on_scan=self._apply_scanned_material,
-            title="Scan Material",
-            tooltip="Scan Material",
+            # Scan button inside the field, immediately before the arrow -
+            # see components/form/select.py's own note for why the arrow has
+            # to be supplied explicitly here (issue #52).
+            trailing_icon=self._build_scan_trailing(ft.Icons.ARROW_DROP_DOWN),
+            selected_trailing_icon=self._build_scan_trailing(ft.Icons.ARROW_DROP_UP),
         )
 
         return ft.Column(
             controls=[
                 ft.Container(
-                    # Row rather than a trailing icon inside the Dropdown -
-                    # Flet's Dropdown owns its trailing slot for the arrow
-                    # (see components/form/select.py's own note, issue #52).
-                    content=ft.Row(
-                        controls=[self.material_dropdown, self.material_scan.build()],
-                        spacing=4,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
+                    content=self.material_dropdown,
                     padding=ft.Padding.symmetric(horizontal=20, vertical=10),
                 ),
                 ft.Container(
@@ -167,6 +169,17 @@ class ModulePage:
             ],
             expand=True,
             scroll=ft.ScrollMode.AUTO,
+        )
+
+    def _build_scan_trailing(self, arrow: str) -> ft.Row:
+        return ft.Row(
+            controls=[
+                self.material_scan.build(),
+                ft.Icon(arrow, size=SCAN_ICON_SIZE),
+            ],
+            spacing=0,
+            tight=True,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
 
     def _load_material_options(self):
