@@ -70,7 +70,18 @@ class ModulePage:
         return self.view.build(self.body())
 
     def body(self):
-        return self.form.build()
+        # Singleton settings screens (issue #49) have no "heading" field to
+        # give them visual top structure the way a new/edit Form screen's
+        # first row often does, and Form.build()'s own padding argument is
+        # dead code for vertical spacing (see AGENTS.md) - so this screen
+        # (and master_config/index.py, the only other singleton Form screen)
+        # wraps the form in its own top padding instead of relying on a
+        # shared default that would also affect every new/edit Form screen.
+        return ft.Container(
+            content=self.form.build(),
+            padding=ft.Padding(top=20, left=0, right=0, bottom=0),
+            expand=True,
+        )
 
     def callback_submit(self, e):
         self.form.submit()

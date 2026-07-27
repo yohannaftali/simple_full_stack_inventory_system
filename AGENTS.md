@@ -68,7 +68,7 @@
 | #46 | feat(table): check-all/uncheck-all header icons for generic checkbox-type columns | closed | 2026-07-22 |
 | #47 | feat(backend): app-wide configurable timezone (IANA via zoneinfo) with UTC storage | closed | 2026-07-27 |
 | #48 | fix(frontend): table column widths don't respond to browser window resize/maximize (web) | open | 2026-07-27 |
-| #49 | fix(frontend): add top padding to master_config/mail_config singleton Form screens | open | 2026-07-27 |
+| #49 | fix(frontend): add top padding to master_config/mail_config singleton Form screens | ready-for-review | 2026-07-27 |
 
 ## Big Picture
 
@@ -2057,6 +2057,31 @@ current settings. `mail_config`'s `smtp_password` field sets `"password":
 True` — this is the only user of `components/form/input.py`'s optional
 password-masking support (`password`/`can_reveal_password`, defaulting to
 off, added specifically for this field).
+
+**Extra top padding on these two screens only** (issue #49, 2026-07-27):
+`body()` on both `master_config/index.py` and `mail_config/index.py` wraps
+`self.form.build()` in an `ft.Container(padding=ft.Padding(top=20, left=0,
+right=0, bottom=0), expand=True)` instead of returning the form directly.
+Traced first, before changing anything: `Form.build()`'s own `padding`
+argument (default 20) is dead code for vertical spacing everywhere in this
+codebase — it reassigns `self.padding_row` after `build_elements()` has
+already run, so it never affects the already-built row `Container`s, whose
+`top`/`bottom` are hardcoded to `0` regardless (only left/right ever read
+`padding_row`) — and no caller anywhere passes it explicitly either way.
+`ModuleView.build()`'s own `padding` default (`0`) is likewise identical
+for every screen shape (Table `index.py`, Form `new.py`/`edit.py`, and
+these two singleton Form `index.py` screens). So the "singleton screens
+look more cramped than new/edit ones" report wasn't backed by any actual
+padding difference in the code at all — confirmed by live comparison
+against `ap_module/edit` (a regular Form screen), which sits exactly as
+flush against the toolbar as `master_config`/`mail_config` did before this
+fix. Since no shared component distinguishes these two screens from
+ordinary new/edit Form screens, a per-file `body()` wrap was the only way
+to add spacing here without also affecting every other Form screen (or
+Table screens, via `ModuleView.build()`'s shared default). Verified live in
+the browser: both screens now show a visible gap below the toolbar before
+their first field, `ap_module/edit` (new/edit Form) is unchanged, and no
+Table screen is affected.
 
 `stock_in`/`stock_out` needed a **header/item master-detail pattern that
 doesn't exist elsewhere in this codebase**. A road not taken, and why:

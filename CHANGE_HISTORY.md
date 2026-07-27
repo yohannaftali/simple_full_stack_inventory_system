@@ -1,6 +1,13 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-27] — fix(frontend): add top padding to master_config/mail_config singleton Form screens (implemented)
+- Issue #49 implemented (status: ready-for-review)
+- `pages/modules/master_config/index.py::body()` and `pages/modules/mail_config/index.py::body()` now wrap `self.form.build()` in `ft.Container(padding=ft.Padding(top=20, left=0, right=0, bottom=0), expand=True)` instead of returning the form directly
+- Confirmed via code trace before touching anything (matches the issue's own prior investigation): `Form.build()`'s `padding` argument is dead code for vertical spacing everywhere (reassigns `self.padding_row` after `build_elements()` already ran; row containers hardcode `top=0`/`bottom=0`), and `ModuleView.build()`'s `padding=0` default is identical across every screen shape - there was no existing padding difference to explain the reported cramped look, so a per-file wrap on just these two screens was the only isolated fix
+- Verified live in the browser: `master_config` and `mail_config` both now show a visible gap between the toolbar and their first field; `ap_module/edit` (a representative new/edit Form screen) is unchanged, still flush against the toolbar exactly as before; no Table screen touched
+- Files: frontend/src/pages/modules/master_config/index.py, frontend/src/pages/modules/mail_config/index.py, AGENTS.md
+
 ## [2026-07-27] — fix(frontend): add top padding to master_config/mail_config singleton Form screens
 - Issue #49 created on GitHub
 - Scope: frontend
