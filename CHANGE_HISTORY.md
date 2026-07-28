@@ -1527,3 +1527,9 @@
 - Files: frontend/src/components/table/rows.py
 - `_build_flush_textfield()`'s TextField now explicitly sets `border=ft.InputBorder.NONE`, `filled=False`, and `content_padding=ft.Padding.all(0)` alongside `collapsed=True`, rather than relying on `collapsed` alone to imply them.
 - Verified live (stock_out/item_new/2, fresh tab, Qty Issue/Remarks cells): no visible border, no padding, fill flush edge-to-edge with the cell.
+
+## [2026-07-28] — fix(frontend): table editable input/textarea cells still not fully flush (padding/border remnant)
+- Issue #54 created on GitHub
+- Scope: frontend (components/table/rows.py::_build_flush_textfield())
+- Labels: bug, frontend
+- Follow-up on #53: user reported padding/border still visible in table input cells after the collapsed=True fix, despite a fresh-tab verification showing it flush. Filed as a deprioritized/pending bug rather than continuing to chase live, since the discrepancy between "verified flush" and "still shows padding" needs a clean repro first.

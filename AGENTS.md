@@ -72,7 +72,8 @@
 | #50 | fix(table): column resize handle stops working on the second drag | open | 2026-07-27 |
 | #51 | fix(frontend): web app hangs on splash when loaded directly at /home or a deep route | closed | 2026-07-27 |
 | #52 | feat(frontend): scan barcode/QR into Material and Location pickers on stock item screens | ready-for-review | 2026-07-27 |
-| #53 | feat(frontend): borderless filled inputs with focus-color swap (PRIMARY_CONTAINER / TERTIARY_CONTAINER) | ready-for-review | 2026-07-28 |
+| #53 | feat(frontend): borderless filled inputs with focus-color swap (PRIMARY_CONTAINER / TERTIARY_CONTAINER) | done | 2026-07-28 |
+| #54 | fix(frontend): table editable input/textarea cells still not fully flush (padding/border remnant) | open (pending) | 2026-07-28 |
 
 ## Big Picture
 
