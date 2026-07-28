@@ -13,25 +13,47 @@ class ModulePage:
         self.screen = screen
 
         self.fields = [
+            {"name": "id", "type": "hidden", "key": True, "serialize": False},
             {
-                "name": "id",
-                "type": "hidden", "key": True, "serialize": False
+                # Icon instead of a text label on the leading position
+                # (issue #65) - matches senar's own List convention
+                # (confirmed directly against real consumers in
+                # C:\Users\IT\Git\senar\flet\senar\src\pages\modules\
+                # pm_data_cbu_inbound/ri_receiving\index.py: a leading date
+                # field gets "icon": ft.Icons.DATE_RANGE, never a "label").
+                # Table tolerates a missing "label" gracefully too
+                # (TableColumns._build_data_columns() already falls back to
+                # icon-only when label is None), so the same shared fields
+                # list still works for the Table view (issue #56's
+                # ViewToggle) - the Date column header becomes a calendar
+                # icon instead of the text "Date".
+                "name": "date",
+                "icon": ft.Icons.CALENDAR_TODAY,
+                "type": "label",
+                "format": "date",
+                "sort": True,
+                "filter": True,
+                "position": "leading",
+                "row": 0,
             },
             {
-                "name": "date", "label": "Date",
-                "type": "label", "format": "date", "sort": True, "filter": True,
-                "position": "leading", "row": 0
+                "name": "supplier_name",
+                "label": "Supplier",
+                "type": "label",
+                "sort": True,
+                "filter": True,
+                "position": "title",
+                "row": 0,
             },
             {
-                "name": "description", "label": "Description",
-                "type": "label", "sort": True, "filter": True,
-                "position": "title", "row": 0
+                "name": "description",
+                "label": "Description",
+                "type": "label",
+                "sort": True,
+                "filter": True,
+                "position": "subtitle",
+                "row": 0,
             },
-            {
-                "name": "supplier_name", "label": "Supplier",
-                "type": "label", "sort": True, "filter": True,
-                "position": "subtitle", "row": 0
-            }
         ]
 
         self.view = ModuleView(page, module, screen)

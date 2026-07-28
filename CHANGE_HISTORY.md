@@ -1,6 +1,54 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-28] — fix(frontend): Table icon-only header bled into the first data row (issue #65 follow-up)
+- User reported the new calendar icon (added for the "date" field's Table column header) also visibly appeared overlapping the first data row
+- Root cause: the same documented bug class already fixed for sort icons/remove/checkbox headers - `TableBody`'s hidden structural header row (`interactive=False`, `heading_row_height=0`, exists purely for column-width alignment) isn't fully clipped by Flutter when its content includes a real icon, so the icon rendered there bled visibly into the row underneath. The icon-wrapping fix added earlier in issue #65 never gated on `interactive`, unlike every other icon-bearing header element in this file
+- `components/table/columns.py::_build_data_columns()`: the icon is now only added to `row_children` when `interactive` is `True` - the label `Text` is unaffected (plain text never had this bleed problem)
+- Also confirmed (no code change needed): when a field has both `"icon"` and `"label"`, they already render as `[icon, text]` in a left-aligned, tight `ft.Row` - icon-leading-then-label, consistent with plain text-only headers, exactly as requested
+- Verified live (dark theme, `stock_in/index` Table view): the calendar icon now renders exactly once, in the header only - no overlap with row 1
+- Files: frontend/src/components/table/columns.py, AGENTS.md
+
+## [2026-07-28] — feat(frontend): List field labels become hover tooltips instead of visible caption lines (issue #65 follow-up)
+- User asked why "Supplier"/"Description" still showed as visible text on `stock_in/index`, and suggested a tooltip-on-hover instead
+- Resolves the tension noted in the original #65 write-up (title/subtitle labels were left as visible text specifically because Table's column header, sharing the same `fields` list via issue #56's `ViewToggle`, has no fallback for a field with neither label nor icon)
+- `components/list/layout.py`: no longer builds a visible `ft.Text(label)` line at all - stores the raw label string as `label_text` and the built icon control separately as `icon_control` in each field's `field_data`, instead of the old combined `"label"` control. Table is completely unaffected (`TableColumns` never reads through `Layout` at all)
+- `components/list/tiles.py::Tiles.load()`: the value `ft.Text` now sets `tooltip=label_text` directly (a plain property every Flet `Control` has - there is no separate `ft.Tooltip(...)` wrapper class in this Flet version, an incorrect first attempt raised `Tooltip.__init__() got an unexpected keyword argument 'content'`) instead of rendering the label as a second, permanently-visible line. The icon (e.g. the "date" field's calendar icon from the earlier #65 pass) still renders visibly, unaffected
+- Verified live (dark theme, `stock_in/index`): "Supplier"/"Description" captions no longer show permanently; hovering the Supplier value now shows a "Supplier" tooltip; zebra striping and the calendar icon are both still intact
+- Files: frontend/src/components/list/layout.py, frontend/src/components/list/tiles.py, AGENTS.md
+
+## [2026-07-28] — feat(frontend): zebra-striped List tiles + demonstrate icon-instead-of-label (issue #65, implemented)
+- Issue #65 implemented (status: ready-for-review)
+- Confirmed `components/list/layout.py`'s label/icon logic was already identical to senar's own - no new code needed there. Checked senar's real `List` consumers directly and applied their leading-field-gets-icon convention to `stock_in/index.py`'s `"date"` field (`"icon": ft.Icons.CALENDAR_TODAY` replacing `"label": "Date"`) - title/subtitle labels left alone since those fields are shared with the Table view via issue #56's ViewToggle, and Table has no fallback for a column with neither label nor icon
+- Bug #1: `ft.ListTile.bgcolor` does nothing in this Flet build (confirmed with an unmissable RED test) - fixed by wrapping each tile in a plain `ft.Container(bgcolor=...)` instead, same lesson issue #60 already taught for `DataRow.color`
+- Bug #2 (the actual root cause, found while debugging #1): the zebra counter in `Tiles.load()` was first named `row`, colliding with and getting silently overwritten by the loop's own pre-existing `for row, row_data in position_data.items()` - renamed to `tile_index`
+- Bug #3 (bonus fix, found verifying Table still worked): `TableColumns._build_data_columns()` never wrapped a field's raw `"icon"` value in `ft.Icon(...)` before appending it to a header Row, so any icon-only column header rendered completely blank with no error - fixed with the same wrapping `components/list/layout.py` already did correctly
+- Verified live (dark theme, `stock_in/index`): List tiles show a clear, consistent alternating background across all 30 records; leading position shows a calendar icon instead of "Date" text; Table view's Date column header now shows the same icon (previously blank) with no other regressions
+- Files: frontend/src/components/list/tiles.py, frontend/src/components/table/columns.py, frontend/src/pages/modules/stock_in/index.py, AGENTS.md
+
+## [2026-07-28] — feat(frontend): zebra-striped List tiles + demonstrate label/icon-only fields
+- Issue #65 created on GitHub
+- Scope: frontend
+- Labels: enhancement, frontend
+- User asked whether List can hide labels / show an icon instead, pointing at senar's Flet port (`C:\Users\IT\Git\senar\flet\senar`) as reference, plus requested zebra-striped tile backgrounds
+- Checked senar's `components/list/layout.py` against this project's own directly - **already identical** for the label/icon logic (label only rendered `if field_label is not None`, icon wrapped via a field's `"icon"` key, combined as `Row([icon, text])` when both present) - this capability already exists in this codebase, just never exercised by any real screen (every current field sets an explicit `"label"`)
+- Zebra striping does NOT exist yet for List tiles - `Tiles.load()` builds plain `ft.ListTile`s with no `bgcolor`. Confirmed `ft.ListTile` has a real `bgcolor` property, so Table's issue #57 position-based technique ports directly
+- Bonus finding noted for a future issue, not required here: `ft.ListTile` has a genuine `hover_color` property (a real Flutter `InkWell`-backed widget, unlike `DataRow.color`'s broken `ControlState` resolution issue #60 had to work around) - a List row-hover match to Table's #60 work would be much simpler here
+
+## [2026-07-28] — fix(frontend): ListToolbar button sizing/outer padding (issue #62 follow-up)
+- User reported two remaining gaps after #62's styling fix landed: some toolbar buttons not vertically centered, and List content missing Table's left/right outer padding
+- `components/list/toolbar.py::ListToolbar.add_button()`: now passes `size=32, radius=16` to `Button(...)`, matching `TableToolbar.add_button()` - without it, plain buttons fell back to Flet's default unconstrained ~48dp IconButton, which doesn't fit centered in the bar's ~32px content height the way the already-32x32 export_menu hamburger does
+- `components/list/list.py::List.build()`: default `padding` changed from a bare `0` to `Padding.symmetric(horizontal=TABLE_OUTER_HORIZONTAL_PADDING)`, importing the same shared constant `Table.build()` uses (issue #27) rather than duplicating the literal. No matching width-budget fix needed the way Table's own #27 fix required - List's tiles are positionally flexible, not fixed-pixel-column based
+- Verified live (dark theme, `stock_in/index`, both List and Table view): all four toolbar icons now render as uniformly-sized, vertically-centered 32px buttons; list content shows the same left/right inset as Table's own
+- Files: frontend/src/components/list/toolbar.py, frontend/src/components/list/list.py, AGENTS.md
+
+## [2026-07-28] — fix(frontend): ListToolbar styling doesn't match TableToolbar (issue #62, implemented)
+- Issue #62 implemented (status: ready-for-review)
+- `components/list/toolbar.py::ListToolbar.build()`: container styling copied verbatim from `TableToolbar.build()` - `height=48`, `padding=Padding.symmetric(horizontal=16, vertical=8)`, `bgcolor=SURFACE_CONTAINER_LOW`, bottom `OUTLINE_VARIANT` hairline border - replacing the pre-#21 `padding=Padding.all(10)`/`bgcolor=PRIMARY`/no-fixed-height design. Layout structure (left/middle-search/right Row) unchanged
+- `add_button()`'s default `icon_color` changed from `ON_PRIMARY` to `ON_SURFACE_VARIANT`, matching `TableToolbar.add_button()`'s standard M3 icon-button default
+- Verified live (dark theme, `stock_in/index`): List toolbar now renders the same low-emphasis dark bar/gray icons as Table; toggling between List and Table view (issue #56's toggle) no longer shows any visible color/height jump
+- Files: frontend/src/components/list/toolbar.py, AGENTS.md
+
 ## [2026-07-28] — feat(table): match date-formatted columns by displayed text in per-column filter (issue #61)
 - Issue #61 implemented (status: ready-for-review)
 - `backend/src/core/table_query.py::apply_column_filters`: new `date_fields` parameter (same shape as the existing `numeric_fields`) - a named column is wrapped in `func.date_format(column, '%d %b %Y')` (mirroring `frontend/src/utils/formatting.py::format_date()`'s Python `strftime` format token-for-token) before a case-insensitive `LIKE '%value%'`

@@ -81,9 +81,10 @@
 | #59 | fix(frontend): TOTP copy-secret button fails - Page.set_clipboard removed in Flet 0.85 | closed | 2026-07-28 |
 | #60 | feat(frontend): M3 row hover/focus state layer on Table (preserve zebra stripe) | closed | 2026-07-28 |
 | #61 | feat(table): match date-formatted columns by displayed text in per-column filter | closed | 2026-07-28 |
-| #62 | fix(frontend): ListToolbar styling doesn't match TableToolbar (bg/icon color/padding) | open | 2026-07-28 |
+| #62 | fix(frontend): ListToolbar styling doesn't match TableToolbar (bg/icon color/padding) | ready-for-review | 2026-07-28 |
 | #63 | chore(frontend): extract shared SearchBar component (dedupe Table/List search bars) | open | 2026-07-28 |
 | #64 | feat(frontend): camera-based barcode/QR scan option alongside manual entry | open | 2026-07-28 |
+| #65 | feat(frontend): zebra-striped List tiles + demonstrate label/icon-only fields | ready-for-review | 2026-07-28 |
 
 ## Big Picture
 
@@ -3753,6 +3754,167 @@ managed via `pyproject.toml` (uv/Poetry).
       `200 OK` and the matching backend `GET /C_stock_in/export_detail?format=csv`
       -> `200 OK`); the search bar visibly fills its toolbar row width on
       both List and Table.
+  - **ListToolbar container styling matched to TableToolbar** (issue #62,
+    2026-07-28): `ListToolbar.build()` still had its pre-issue-#21
+    styling - a solid filled `bgcolor=Colors.PRIMARY` bar, no fixed
+    height, `padding=Padding.all(10)` - never updated when
+    `TableToolbar.build()` was redesigned to a low-emphasis
+    `SURFACE_CONTAINER_LOW` bar (`height=48`,
+    `padding=Padding.symmetric(horizontal=16, vertical=8)`, a bottom
+    `OUTLINE_VARIANT` hairline). Most visible once issue #56 put a
+    Table/List view toggle on the same screen (`stock_in/index`) -
+    switching views visibly changed the toolbar's color/height, reading
+    as a bug rather than "just" a styling gap. Fixed by copying
+    `TableToolbar.build()`'s container properties onto
+    `ListToolbar.build()`'s `ft.Container` verbatim (layout structure -
+    the left/middle-search/right `Row` - unchanged, only the outer
+    container's height/padding/bgcolor/border changed) and changing
+    `ListToolbar.add_button()`'s default `icon_color` from
+    `Colors.ON_PRIMARY` to `Colors.ON_SURFACE_VARIANT`, matching
+    `TableToolbar.add_button()`'s standard M3 icon-button default. The
+    search bar itself was already fixed under issue #56 - this only
+    touched the surrounding toolbar container. Verified live (dark
+    theme, `stock_in/index`): the List toolbar now renders the same
+    low-emphasis dark bar with gray icons as every Table screen, and
+    toggling between List and Table view no longer produces any visible
+    color/height jump - a direct side-by-side screenshot comparison of
+    both views showed pixel-identical toolbar styling.
+    **Same-day follow-up, two more parity gaps found after this landed**:
+    (1) `ListToolbar.add_button()` never passed `size`/`radius` to
+    `Button(...)`, so every plain toolbar button (filter toggle, view
+    toggle, "Add New") fell back to Flet's default, unconstrained
+    `IconButton` (~48dp tap target) instead of the compact 32x32 box
+    `TableToolbar.add_button()` always builds - that default button
+    doesn't actually fit centered within the 48px-tall/8px-padded bar's
+    real ~32px content height the way the already-correctly-sized
+    `export_menu` hamburger does, which read as "some buttons not
+    vertically centered" next to it. Fixed by passing `size=32,
+    radius=16` through, matching `TableToolbar.add_button()` exactly.
+    (2) `List.build()`'s own default `padding` was still a bare `0` (an
+    int), while `Table.build()`'s default has been
+    `Padding.symmetric(horizontal=TABLE_OUTER_HORIZONTAL_PADDING)` since
+    issue #27 - so a List screen's content sat flush against the screen
+    edges while a Table screen always had 12px of breathing room. Fixed
+    by giving `List.build()` the identical default (imported from
+    `components/table/columns.py`, the same shared constant, not a
+    duplicated literal). Unlike `Table`, `List`'s tiles have no
+    fixed-pixel-column width budget to keep in sync with this padding
+    (`Columns.get_usable_width()`'s own issue #27 overflow bug doesn't
+    apply here - `List`'s positional leading/title/subtitle/trailing
+    layout is flexible, not pixel-column-based), so no matching
+    width-budget correction was needed the way Table's own fix required.
+    Verified live (dark theme, `stock_in/index`, both List and Table
+    view): all four toolbar icons (filter, view-toggle, "+", hamburger)
+    now render as uniformly-sized, vertically-centered 32px buttons, and
+    the list content shows the same left/right inset as Table's own.
+  - **Zebra-striped tiles + icon-instead-of-label fields** (issue #65,
+    2026-07-28): the user asked whether List can hide a field's label and
+    show an icon instead, pointing at senar's Flet port
+    (`C:\Users\IT\Git\senar\flet\senar`) as reference, plus zebra-striped
+    tile backgrounds. Checked `components/list/layout.py` against senar's
+    own directly - **already byte-for-byte identical** for the label/icon
+    logic (a field's `ft.Text(label)` is only built `if field_label is not
+    None`; an `"icon"` key is wrapped in `ft.Icon(...)`; both combine as
+    `ft.Row([icon, text])` when present together) - this capability
+    already existed in this codebase and needed no new code, it had just
+    never been exercised (every field on the one real `List` consumer,
+    `stock_in/index.py`, set an explicit `"label"`). Separately checked
+    senar's own real `List` consumers directly (`pm_data_cbu_inbound`,
+    `ri_receiving`, `tm_confirm_seal_mobile` - `pages/modules/*/index.py`)
+    and confirmed the actual convention: leading/trailing fields get an
+    icon instead of a label (`"icon": ft.Icons.DATE_RANGE`), title/subtitle
+    fields carry neither. Applied the leading-field half of that
+    convention to `stock_in/index.py`'s `"date"` field (`"icon":
+    ft.Icons.CALENDAR_TODAY` replacing `"label": "Date"`) - title/subtitle
+    labels (`supplier_name`/`description`) were deliberately left alone,
+    since this screen's fields are shared with the `Table` view via issue
+    #56's `ViewToggle`, and Table has no fallback identifier for a column
+    with neither label nor icon (a blank header), unlike List's title/
+    subtitle text which reads fine standing alone.
+    **Two real, previously-latent bugs found and fixed along the way**:
+    1. `ft.ListTile.bgcolor` does nothing in this Flet build - setting it
+       directly, and separately wrapping a `ListTile` in a padded
+       `ft.Container` with its own `bgcolor`, both produced zero visible
+       color even with an unmissable `ft.Colors.RED` test value. Fixed by
+       giving up on `ListTile.bgcolor` entirely and wrapping each tile in
+       a plain `ft.Container(bgcolor=...)` - once the *next* bug (below)
+       was also fixed, this reliably renders, same "don't trust the
+       control's own color property" lesson issue #60 already established
+       for `DataRow.color`.
+    2. The zebra position counter in `components/list/tiles.py::Tiles.load()`
+       was first named `row` - but that loop body already uses `row` as
+       the per-position row-GROUP index (`for row, row_data in
+       position_data.items()`, `Layout`'s own `"row": N` grouping within
+       one leading/title/subtitle/trailing slot), so the zebra counter was
+       silently shadowed and overwritten every iteration, staying at
+       whatever value the inner loop last left it - which is why the
+       Container-bgcolor fix above *also* initially looked broken (indistinguishable
+       from bug #1 until the counter's actual runtime value was traced).
+       Renamed to `tile_index` to remove the collision. `_TILE_COLOR_EVEN`/
+       `_TILE_COLOR_ODD` reuse the exact same `ft.Colors.SURFACE`/
+       `SURFACE_CONTAINER_LOW` tokens `components/table/rows.py` uses
+       (issue #57), continuing correctly across lazy-load append the same
+       way (`tile_index = len(self.tiles) if append else 0`).
+    3. **Bonus fix, found verifying Table still rendered correctly with
+       the new icon-only "date" field**: `TableColumns._build_data_columns()`
+       read a field's raw `"icon"` value (an `ft.Icons` enum member) and
+       appended it directly into a header `Row`'s `controls` list without
+       ever wrapping it in `ft.Icon(...)` - Flet silently renders nothing
+       for a non-`Control` item there rather than raising, so the Table
+       view's Date column header was completely blank, no error anywhere.
+       `components/list/layout.py`'s own icon handling already did this
+       wrapping correctly; `TableColumns` just never had a reason to
+       exercise this path before, since no field had ever set `"icon"`
+       without also setting `"label"`. Fixed with the same wrapping.
+    4. **Same-day follow-up - the icon bled into the first data row**:
+       reported live after the bonus fix above landed. Root cause: the
+       icon-wrapping code never gated on `interactive`, unlike every other
+       icon-bearing header element in this file (sort icons, remove/
+       checkbox headers) - `TableBody`'s hidden structural header row
+       (`interactive=False`, `heading_row_height=0`, column-width
+       alignment only) isn't fully clipped by Flutter when its content
+       includes a real icon, so the icon rendered there visibly bled into
+       the real first row underneath, the exact same documented bug class
+       already fixed for sort icons under issue #38's own history. Fixed
+       by only adding the icon to `row_children` when `interactive` is
+       `True` (the label `Text` is unaffected - plain text never had this
+       bleed problem). Also confirmed, no code change needed: when a
+       field sets both `"icon"` and `"label"`, they already render as
+       `[icon, text]` in a left-aligned tight `Row` - icon-leading-then-
+       label, consistent with every plain text-only header, exactly what
+       was asked for. Verified live: the calendar icon now renders
+       exactly once, in the header only.
+    Verified live (dark theme, `stock_in/index`): List tiles show a clear
+    alternating background with no double-adjacent-same-color tiles,
+    confirmed consistent while scrolling through all 30 records; the
+    leading position shows a calendar icon instead of the text "Date"; the
+    Table view (via the #56 view toggle) now correctly shows the same
+    calendar icon in its Date column header (previously blank) with no
+    other regressions to Supplier/Description.
+    **Same-day follow-up - labels become hover tooltips, not visible
+    captions**: the deliberate choice above to leave Supplier/Description's
+    `"label"` as visible text (to avoid blanking Table's column headers,
+    which have no fallback for a field with neither label nor icon) turned
+    out not to be what the user wanted - asked directly why those captions
+    still showed, suggesting a tooltip-on-hover instead. This actually
+    resolves the tension cleanly rather than trading it off: `Table` reads
+    a field's `"label"` directly off the shared `fields` list and was
+    never touched by this change at all; only `List`'s own rendering
+    stopped treating `"label"` as something to draw as a second visible
+    line. `components/list/layout.py::Layout.get()` no longer builds a
+    visible `ft.Text(label)` control - it hands the raw label string
+    through as `field_data["label_text"]` (and the built icon separately
+    as `field_data["icon_control"]`, replacing the old combined
+    `"label"` key entirely) . `components/list/tiles.py::Tiles.load()`
+    sets `tooltip=label_text` directly on the tile's value `ft.Text` -
+    `tooltip` is a plain property every Flet `Control` has, there is no
+    separate `ft.Tooltip(...)` wrapper class in this Flet version (an
+    incorrect first attempt using one raised `Tooltip.__init__() got an
+    unexpected keyword argument 'content'` - confirmed via `flet.controls.
+    control.Control`'s own base class, not a per-widget subclass). Verified
+    live: "Supplier"/"Description" no longer show as permanent captions;
+    hovering a value now surfaces its field's label as a native tooltip;
+    zebra striping and the leading calendar icon are both unaffected.
 
 - **Repositories / state & persistence** (`src/repository/`): each repo
   wraps `page.data` (in-memory cache) plus an optional persistence `store`.

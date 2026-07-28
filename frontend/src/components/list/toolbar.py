@@ -40,7 +40,18 @@ class ListToolbar:
         safe_left = [c for c in self.left if c is not None] if self.left else None
         safe_right = [c for c in right if c is not None] if right else None
 
+        # Styling matches TableToolbar.build() exactly (issue #62) - a
+        # List screen's toolbar used to render a solid filled PRIMARY bar
+        # with no fixed height (pre-#21 design), visibly different from
+        # every Table-based screen's low-emphasis SURFACE_CONTAINER_LOW bar
+        # with a bottom hairline - most noticeable since issue #56 put a
+        # Table/List view toggle on the same screen, where switching views
+        # used to also visibly change the toolbar's color/height.
         return ft.Container(
+            height=48,
+            padding=ft.Padding.symmetric(horizontal=16, vertical=8),
+            bgcolor=ft.Colors.SURFACE_CONTAINER_LOW,
+            border=ft.Border.only(bottom=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
             content=ft.Row(
                 [
                     ft.Container(
@@ -58,17 +69,29 @@ class ListToolbar:
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
-            padding=ft.Padding.all(10),
-            bgcolor=ft.Colors.PRIMARY,
         )
 
     def add_button(self, position, callback, icon=ft.Icons.ABC, tooltip="", icon_color=None):
-        """Return an button"""
+        """Return an button - standard M3 icon button (issue #62), matching
+        TableToolbar.add_button()'s default: transparent background, no
+        forced bgcolor unless a caller passes one explicitly.
+
+        `size=32, radius=16` (issue #62 follow-up) - without an explicit
+        size, `Button` falls back to a plain, Flet-default `IconButton`
+        (an unconstrained ~48dp tap target) that doesn't actually fit
+        centered within this toolbar's 48px-tall/8px-vertical-padding
+        content area (32px of real vertical room) the way `export_menu`'s
+        already-compact 32x32 hamburger does - the mismatch is what read
+        as "some buttons not vertically centered" next to it. Matches
+        TableToolbar.add_button()'s own fixed 32dp/16-radius sizing
+        exactly."""
         button = Button(
             icon=icon,
             on_click=callback,
             tooltip=tooltip,
-            icon_color=icon_color or ft.Colors.ON_PRIMARY,
+            icon_color=icon_color or ft.Colors.ON_SURFACE_VARIANT,
+            size=32,
+            radius=16,
         ).build()
         if position == "right":
             self.right = [] if self.right is None else self.right

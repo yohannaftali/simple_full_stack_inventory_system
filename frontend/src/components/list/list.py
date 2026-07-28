@@ -7,6 +7,7 @@ from components.list.menu import ListMenu
 from components.list.search_bar import ListSearchBar
 from components.list.tiles import Tiles
 from components.list.toolbar import ListToolbar
+from components.table.columns import TABLE_OUTER_HORIZONTAL_PADDING
 from components.table.footer import MODE_LAZY, TableFooter
 from repository.storage import Storage
 from utils.http_client import HttpClient
@@ -122,7 +123,13 @@ class List:
         if not is_inside_form:
             self.get_data()
 
-    def build(self, padding: int = 0, height: int | None = None):
+    def build(
+        self,
+        padding: ft.PaddingValue = ft.Padding.symmetric(
+            horizontal=TABLE_OUTER_HORIZONTAL_PADDING
+        ),
+        height: int | None = None,
+    ):
         self.body = Body(
             page=self.page,
             layout=self.layout,

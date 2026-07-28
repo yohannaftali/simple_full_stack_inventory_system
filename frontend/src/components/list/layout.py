@@ -41,9 +41,6 @@ class Layout:
             field_label = field.get("label")
             field_icon = field.get("icon")
 
-            field_text = ft.Text(
-                field_label) if field_label is not None else None
-
             # Wrap icon in Icon control if it's an Icons enum
             field_icon_control = None
             if field_icon is not None:
@@ -54,25 +51,28 @@ class Layout:
                     # It's already a control
                     field_icon_control = field_icon
 
-            field_content = None
-            if field_text is not None and field_icon_control is None:
-                field_content = field_text
-            elif field_text is not None and field_icon_control is not None:
-                field_content = ft.Row([
-                    field_icon_control,
-                    field_text
-                ])
-            elif field_text is None and field_icon_control is not None:
-                field_content = field_icon_control
-
             field_row = int(field.get("row", 0))
             # Ensure row exists in position
             if field_row not in self.layout[field_position]:
                 self.layout[field_position][field_row] = []
 
+            # `label` is NOT rendered as its own visible text line here
+            # (issue #65 follow-up, per direct user feedback) - a List
+            # tile is dense enough without a "Supplier"/"Description"
+            # caption above every value, and the label already has a
+            # legitimate second job: `Table` reads this exact same field's
+            # `"label"` for its own column header text (both components
+            # share one `fields` list via issue #56's `ViewToggle`), so it
+            # can't simply be deleted from the field configs. Instead the
+            # raw text is handed to `Tiles.load()` as `label_text`, which
+            # wraps the tile's *value* Text in an `ft.Tooltip` using it -
+            # the label surfaces on hover, not as permanent on-screen
+            # chrome. `icon_control` (unaffected) still renders visibly
+            # as a prefix, same as before.
             field_data = {
                 "name": field_name,
-                "label": field_content,
+                "label_text": field_label,
+                "icon_control": field_icon_control,
                 "col": field.get("col"),
                 "format": field.get("format")
             }

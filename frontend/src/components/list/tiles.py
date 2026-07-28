@@ -14,6 +14,15 @@ _FORMATTERS = {
     "datetime": format_datetime,
 }
 
+# Position-based zebra stripe (issue #65, porting Table's own issue #57) -
+# derived fresh from each tile's index in the CURRENT render pass (the
+# `row` counter below), never stored on the record, so it's automatically
+# correct after any full rebuild (search/filter/sort) with no separate
+# bookkeeping. Same semantic M3 tokens Table's own TableRows.load() uses,
+# for visual consistency between the two components.
+_TILE_COLOR_EVEN = ft.Colors.SURFACE
+_TILE_COLOR_ODD = ft.Colors.SURFACE_CONTAINER_LOW
+
 
 class Tiles:
     def __init__(
@@ -54,6 +63,20 @@ class Tiles:
             self.tiles = []
             self.index = []
 
+        # Continues from the last already-rendered tile's index on a
+        # lazy-load append (not 0), matching TableRows.load()'s own
+        # counter exactly - the stripe pattern doesn't reset/clash at the
+        # page boundary. Deliberately named `tile_index`, NOT `row` - this
+        # loop body already uses `row` as the per-position row-group index
+        # (`for row, row_data in position_data.items()`, Layout's own
+        # "row": N grouping within one leading/title/subtitle/trailing
+        # slot) - a first attempt named this counter `row` too and got
+        # silently shadowed by that inner loop on every iteration, which
+        # is why the stripe never appeared (looked identical to a broken
+        # ft.ListTile.bgcolor problem at first, until tracing the actual
+        # value showed the counter was never advancing per-tile at all).
+        tile_index = len(self.tiles) if append else 0
+
         key_field = self.layout.record_key
         for record in data:
             layout = self.layout.layout
@@ -71,18 +94,33 @@ class Tiles:
                     for field_data in row_data:
                         name = field_data.get("name")
                         col = field_data.get("col")
-                        label = field_data.get("label")
+                        label_text = field_data.get("label_text")
+                        icon_control = field_data.get("icon_control")
                         value = record.get(name, "")
                         formatter = _FORMATTERS.get(field_data.get("format"))
                         display_value = formatter(value) if formatter and value not in (None, "") else value
 
+                        # The label is a hover tooltip on the value, not a
+                        # permanent visible caption line (issue #65
+                        # follow-up) - see layout.py's docstring for why
+                        # (the same field's "label" is still needed
+                        # verbatim by Table's own column header, sharing
+                        # one fields list via issue #56's ViewToggle).
+                        value_text = ft.Text(
+                            str(display_value),
+                            overflow=ft.TextOverflow.ELLIPSIS,
+                            # `tooltip` is a plain property every Control
+                            # has (not a separate wrapping widget) - no
+                            # `ft.Tooltip(...)` class exists in this Flet
+                            # version.
+                            tooltip=label_text if label_text else None,
+                        )
+
                         # Build controls list, filtering out None
                         controls_list = []
-                        if label is not None:
-                            controls_list.append(label)
-                        controls_list.append(
-                            ft.Text(str(display_value), overflow=ft.TextOverflow.ELLIPSIS)
-                        )
+                        if icon_control is not None:
+                            controls_list.append(icon_control)
+                        controls_list.append(value_text)
 
                         # Wrap text in container with fixed width if available
                         content = ft.Column(controls=controls_list, col=col)
@@ -158,15 +196,28 @@ class Tiles:
 
                     on_tap_handler = _make_tap(key_field, key_value, module)
 
+            list_tile = ft.ListTile(
+                title=tile_content.get("title"),
+                subtitle=tile_content.get("subtitle"),
+                subtitle_text_style=self.subtitle.get("subtitle_text_style")
+                if self.subtitle is not None
+                else None,
+                leading=tile_content.get("leading"),
+                trailing=tile_content.get("trailing"),
+                on_click=on_tap_handler if on_tap_handler is not None else None,
+            )
+            # `ft.ListTile` itself paints an opaque background regardless
+            # of its own `bgcolor` property (confirmed live - setting
+            # `ListTile(bgcolor=...)` directly, and separately wrapping it
+            # in a padded Container with its own bgcolor, both failed to
+            # show any color at all) - so the zebra color is set on this
+            # wrapping Container instead, which reliably renders bgcolor
+            # everywhere else in this codebase (e.g. issue #53's flush
+            # table-cell TextField wrapper).
             self.tiles.append(
-                ft.ListTile(
-                    title=tile_content.get("title"),
-                    subtitle=tile_content.get("subtitle"),
-                    subtitle_text_style=self.subtitle.get("subtitle_text_style")
-                    if self.subtitle is not None
-                    else None,
-                    leading=tile_content.get("leading"),
-                    trailing=tile_content.get("trailing"),
-                    on_click=on_tap_handler if on_tap_handler is not None else None,
+                ft.Container(
+                    content=list_tile,
+                    bgcolor=_TILE_COLOR_EVEN if tile_index % 2 == 0 else _TILE_COLOR_ODD,
                 )
             )
+            tile_index += 1

@@ -295,7 +295,22 @@ class TableColumns:
         cols: list = []
         for visible_idx, field in enumerate(visible_fields):
             label = field.get("label")
-            icon = field.get("icon")
+            # A field's raw "icon" value (a `ft.Icons` enum member or a
+            # bare string) must be wrapped in a real `ft.Icon(...)` control
+            # before going into a Row's `controls` list - appending the
+            # raw enum/string directly (the previous code here) rendered a
+            # completely blank header cell with no error, since Flet
+            # doesn't validate a non-Control item in that position (issue
+            # #65, found once a "date" field first opted into this path -
+            # `components/list/layout.py`'s own icon handling already did
+            # this wrapping correctly, this is what Table's own header was
+            # missing to match).
+            raw_icon = field.get("icon")
+            icon = (
+                ft.Icon(raw_icon)
+                if raw_icon is not None and not isinstance(raw_icon, ft.Control)
+                else raw_icon
+            )
             is_numeric = field.get("is_numeric") or field.get("format") == "number"
 
             w = (
@@ -392,7 +407,18 @@ class TableColumns:
             )
 
             row_children = []
-            if icon is not None:
+            # `interactive=False` is TableBody's own hidden structural
+            # header row (heading_row_height=0) - it exists purely for
+            # column-width alignment, never actually visible, but Flutter
+            # doesn't fully clip a zero-height heading row's own content
+            # (the same bug class already documented for sort icons/
+            # remove/checkbox headers above) - a field icon rendered there
+            # visibly bled into the real first data row underneath it
+            # (issue #65 follow-up, reported live once a field first used
+            # `"icon"` with no `"label"`). The label Text is unaffected
+            # (plain text has never bled through), so only the icon is
+            # gated here.
+            if icon is not None and interactive:
                 row_children.append(icon)
             if text is not None:
                 row_children.append(text)
