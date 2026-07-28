@@ -97,9 +97,15 @@ class ListFilter:
     def _build_filter_field(self, field: dict) -> ft.TextField:
         name = field["name"]
         label = field.get("label", name)
+        # Date columns match against their DISPLAYED "dd Mon yyyy" text, not
+        # the raw stored value (issue #61) - same "format": "date"
+        # auto-inference TableFilter._build_field() uses, so a List filter
+        # row reads consistently with a Table's own.
+        is_date = bool(field.get("date_filter") or field.get("format") == "date")
+        hint_text = "e.g. 27 or Jul" if is_date else f"Filter {label}"
         text_field = ft.TextField(
             label=label,
-            hint_text=f"Filter {label}",
+            hint_text=hint_text,
             dense=True,
             border_radius=10,
             filled=True,

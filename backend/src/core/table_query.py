@@ -26,7 +26,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Mapping, Sequence
 
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Query
 
 # L_database::return_rows_limited() always attaches db_sql (PHP's
@@ -140,17 +140,27 @@ def apply_column_filters(
     query_params,
     column_map: Mapping[str, object],
     numeric_fields: Sequence[str] = (),
+    date_fields: Sequence[str] = (),
 ) -> Query:
     """Per-column `{field}-filter` mechanism ported from senar's
     `L_database::filter()` — every column in `column_map` gets its own
-    independently-optional filter: `LIKE '%value%'` by default, or
-    operator-syntax (`_parse_numeric_filter`) for any column named in
-    `numeric_fields`. Mirrors `filter()`'s own precedence: skipped entirely
-    if `table-keyword-filter` is also present (the free-text search and
-    the per-column filter row are mutually exclusive on the PHP side, not
-    combined) — call `apply_keyword_filter` first and only reach this
-    helper when `keyword` was blank, same ordering `apply_sort` already
-    expects relative to `apply_keyword_filter`.
+    independently-optional filter: `LIKE '%value%'` by default, operator-
+    syntax (`_parse_numeric_filter`) for any column named in
+    `numeric_fields`, or displayed-text substring matching (issue #61) for
+    any column named in `date_fields` — the column is wrapped in
+    `DATE_FORMAT(column, '%d %b %Y')` (mirroring
+    `frontend/src/utils/formatting.py::format_date()`'s Python-side
+    `strftime("%d %b %Y")` token-for-token, so the SQL-side text matches
+    what the user actually sees on screen) before a case-insensitive
+    `LIKE '%value%'` — so typing `27` matches "27 Jul 2026" *and*
+    "15 Jul 2027" (day or year, anywhere in the formatted string), and
+    typing `jul` (any case) matches every date in July. Mirrors `filter()`'s
+    own precedence: skipped entirely if `table-keyword-filter` is also
+    present (the free-text search and the per-column filter row are
+    mutually exclusive on the PHP side, not combined) — call
+    `apply_keyword_filter` first and only reach this helper when `keyword`
+    was blank, same ordering `apply_sort` already expects relative to
+    `apply_keyword_filter`.
 
     `query_params` needs `.multi_items()` (FastAPI/Starlette
     `Request.query_params`) or a plain iterable of `(key, value)` pairs —
@@ -183,6 +193,7 @@ def apply_column_filters(
             values[field] = value
 
     numeric_set = set(numeric_fields)
+    date_set = set(date_fields)
     for field, param in values.items():
         param = (param or "").strip()
         if not param:
@@ -191,6 +202,9 @@ def apply_column_filters(
         if field in numeric_set:
             for operator, value in _parse_numeric_filter(param):
                 query = query.filter(_FIELD_FILTER_OPS[operator](column, value))
+        elif field in date_set:
+            formatted = func.date_format(column, "%d %b %Y")
+            query = query.filter(func.lower(formatted).like(f"%{param.lower()}%"))
         else:
             query = query.filter(column.like(f"%{param}%"))
     return query

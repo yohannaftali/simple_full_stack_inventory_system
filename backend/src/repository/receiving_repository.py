@@ -25,12 +25,15 @@ from models.unit_of_material import UnitOfMaterialModel
 _HEADER_FILTER_COLUMN_MAP = {
     "description": ReceivingHeaderModel.description,
     "supplier_name": SupplierModel.name,
+    # Filterable by its displayed "dd Mon yyyy" text (issue #61), not the
+    # raw stored date - see apply_column_filters()'s date_fields handling.
+    # The frontend's stock_in/index.py "date" field already marks
+    # "filter": True (it's List's default leading/sortable/filterable
+    # column), which silently no-op'd server-side until this was wired in.
+    "date": ReceivingHeaderModel.date,
 }
-# date isn't a per-column *filter* (no {field}-filter UI for it - the
-# purchase/usage reports already own date-range filtering), but it's a real
-# column worth sorting a transaction list by, so it's sort-only, kept out of
-# _HEADER_FILTER_COLUMN_MAP.
-_HEADER_SORT_COLUMN_MAP = {**_HEADER_FILTER_COLUMN_MAP, "date": ReceivingHeaderModel.date}
+_HEADER_DATE_FILTER_FIELDS = {"date"}
+_HEADER_SORT_COLUMN_MAP = _HEADER_FILTER_COLUMN_MAP
 _ITEM_FILTER_COLUMN_MAP = {
     "remarks": ReceivingItemModel.remarks,
     "qty_plan": ReceivingItemModel.qty_plan,
@@ -77,7 +80,12 @@ class ReceivingRepository:
                 keyword,
             )
             if query_params is not None:
-                query = apply_column_filters(query, query_params, _HEADER_FILTER_COLUMN_MAP)
+                query = apply_column_filters(
+                    query,
+                    query_params,
+                    _HEADER_FILTER_COLUMN_MAP,
+                    date_fields=_HEADER_DATE_FILTER_FIELDS,
+                )
             if sort_fields:
                 query = apply_sort(query, sort_fields, _HEADER_SORT_COLUMN_MAP)
             else:

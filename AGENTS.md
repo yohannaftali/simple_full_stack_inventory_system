@@ -80,7 +80,7 @@
 | #58 | fix(frontend): TOTP QR generation fails - PyPNG library not installed | closed | 2026-07-28 |
 | #59 | fix(frontend): TOTP copy-secret button fails - Page.set_clipboard removed in Flet 0.85 | closed | 2026-07-28 |
 | #60 | feat(frontend): M3 row hover/focus state layer on Table (preserve zebra stripe) | closed | 2026-07-28 |
-| #61 | feat(table): match date-formatted columns by displayed text in per-column filter | open | 2026-07-28 |
+| #61 | feat(table): match date-formatted columns by displayed text in per-column filter | ready-for-review | 2026-07-28 |
 | #62 | fix(frontend): ListToolbar styling doesn't match TableToolbar (bg/icon color/padding) | open | 2026-07-28 |
 | #63 | chore(frontend): extract shared SearchBar component (dedupe Table/List search bars) | open | 2026-07-28 |
 | #64 | feat(frontend): camera-based barcode/QR scan option alongside manual entry | open | 2026-07-28 |
@@ -562,6 +562,52 @@ audit timestamps were in scope.
     params — same wire-format convention, no special-casing needed on the
     frontend for the keyword-vs-column-filter mutual exclusivity (the
     backend enforces that; sending both is harmless).
+  - **Date-formatted columns match by displayed text** (issue #61,
+    2026-07-28): a `date`-formatted column's `{field}-filter` used to
+    `LIKE` the column's raw stored value (an ISO `YYYY-MM-DD` string) —
+    typing `27` only matched if the raw ISO text happened to contain
+    "27" literally, and typing a month name (`jul`) could never match at
+    all, since the raw value has no month name in it. Checked senar's
+    `L_database.php` for a reference first (same precedent this feature
+    already follows for `numeric_fields`) — found only a commented-out,
+    never-finished `filter_datetime()` stub (~line 1150), no working
+    implementation to port; this is a new feature built on the existing
+    `numeric_fields` pattern, not a straight port.
+    `core/table_query.py::apply_column_filters` gained a `date_fields:
+    Sequence[str] = ()` parameter (same shape as `numeric_fields`) — any
+    column named there is wrapped in `func.date_format(column, '%d %b
+    %Y')` (MariaDB) before a case-insensitive `LIKE '%value%'`. The
+    format string is a deliberate, token-for-token mirror of
+    `frontend/src/utils/formatting.py::format_date()`'s Python-side
+    `strftime("%d %b %Y")` — `%d` day, `%b` abbreviated month, `%Y` 4-digit
+    year — so the SQL-side text always matches what's actually rendered on
+    screen. Typing `27` now matches every date containing "27" anywhere in
+    its formatted text (day 27 *or* year ending 2027, e.g. both "27 Jul
+    2026" and "15 Jul 2027"); typing `jul` (any case) matches every date in
+    July. Frontend: `components/table/filter.py`/`components/list/filter.py`
+    both infer date-filter treatment the same way the existing numeric hint
+    is inferred — automatically from `"format": "date"`, or an explicit
+    `"date_filter": True` override — swapping the filter field's hint text
+    to `"e.g. 27 or Jul"` (no operator syntax needed, unlike numeric — it's
+    a plain substring match either way, the hint is purely to tell the user
+    what kind of substring to type).
+    **Reference implementation, wired end-to-end**:
+    `receiving_repository.py`'s header `list_headers` — its `date` column
+    used to be **sort-only** (see the now-corrected note below), even
+    though `stock_in/index.py`'s frontend `date` field already had
+    `"filter": True` set (it's a `List` screen's default leading/sortable/
+    filterable column) - meaning that filter input was rendered but
+    silently did nothing server-side until this issue wired `date` into
+    `_HEADER_FILTER_COLUMN_MAP` (merged with what used to be the separate
+    `_HEADER_SORT_COLUMN_MAP`, now just one map since `date` is both
+    sortable and filterable) and passed `date_fields={"date"}` to
+    `apply_column_filters`. Verified live in the browser (`stock_in/index`,
+    List view, 30 real records): filtering `27` correctly narrowed to
+    exactly the one record dated "27 Jul 2026" (`Record 1-1 of 1`);
+    filtering `jul` correctly returned all 30 July records (`Record 1-20 of
+    30`, i.e. unfiltered — every seeded record happens to be in July);
+    backend logs confirmed clean `200 OK` responses for both
+    `date-filter=27`/`date-filter=jul` requests, no errors.
   - **Multi-column sort** (ported from the same original app's
     `y.form.js`/`y.panel.js` sortable-header UI, ADR discussion 2026-07-13):
     `table_query.py::parse_sort_fields(request.query_params)` parses
@@ -603,12 +649,18 @@ audit timestamps were in scope.
       passes it through, so an export honors whatever sort is currently
       applied on screen, same as `master_location`'s own export already did.
       `receiving_repository.py`/`stock_out_repository.py`'s header
-      `list_headers` additionally gained a **sort-only** `date` entry (a
-      real column, but not part of the per-column *filter* map — no
-      `date-filter` UI exists for these headers, that's the purchase/usage
-      reports' job) via a small `_HEADER_SORT_COLUMN_MAP = {**_HEADER_FILTER_COLUMN_MAP,
-      "date": ...}` spread, since sorting a transaction list by date is
-      clearly useful even though filtering by it isn't wired here.
+      `list_headers` additionally gained a `date` sort entry (a real
+      column) — **originally sort-only** (no `date-filter` UI existed for
+      these headers, that was the purchase/usage reports' own job) via a
+      separate `_HEADER_SORT_COLUMN_MAP = {**_HEADER_FILTER_COLUMN_MAP,
+      "date": ...}` spread. **Superseded for `receiving_repository.py` by
+      issue #61** (see "Date-formatted columns match by displayed text"
+      above) — `date` is now filterable too (matching its *displayed*
+      text, not the raw value), so `_HEADER_FILTER_COLUMN_MAP` and
+      `_HEADER_SORT_COLUMN_MAP` collapsed into one map there.
+      `stock_out_repository.py`'s own header `date` remains sort-only for
+      now — issue #61 only wired one reference repository end-to-end, this
+      one wasn't touched.
       **Deliberately still unsortable**: every join-derived/denormalized
       display field with no real column in its own repository's query —
       the exact same list already documented as a filtering gap under

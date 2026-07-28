@@ -109,7 +109,17 @@ class TableFilter:
             or field.get("is_numeric")
             or field.get("format") == "number"
         )
-        hint_text = "e.g. >=5and<=10" if is_numeric else f"Filter {label}"
+        # Date columns match against their DISPLAYED "dd Mon yyyy" text, not
+        # the raw stored value (issue #61) - inferred the same way as the
+        # numeric hint above, one source of truth ("format": "date") rather
+        # than a second flag every date field must separately remember.
+        is_date = bool(field.get("date_filter") or field.get("format") == "date")
+        if is_numeric:
+            hint_text = "e.g. >=5and<=10"
+        elif is_date:
+            hint_text = "e.g. 27 or Jul"
+        else:
+            hint_text = f"Filter {label}"
         text_field = ft.TextField(
             label=label,
             hint_text=hint_text,

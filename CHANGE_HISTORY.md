@@ -1,6 +1,14 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-28] — feat(table): match date-formatted columns by displayed text in per-column filter (issue #61)
+- Issue #61 implemented (status: ready-for-review)
+- `backend/src/core/table_query.py::apply_column_filters`: new `date_fields` parameter (same shape as the existing `numeric_fields`) - a named column is wrapped in `func.date_format(column, '%d %b %Y')` (mirroring `frontend/src/utils/formatting.py::format_date()`'s Python `strftime` format token-for-token) before a case-insensitive `LIKE '%value%'`
+- `backend/src/repository/receiving_repository.py`: `date` moved from sort-only into `_HEADER_FILTER_COLUMN_MAP` (merged with the old separate `_HEADER_SORT_COLUMN_MAP`) with `date_fields={"date"}` passed to `apply_column_filters` in `list_headers` - the reference end-to-end wiring; fixes a real live no-op (`stock_in/index.py`'s `date` field already had `"filter": True` set, but the backend silently ignored it since `date` wasn't in the filter map)
+- `frontend/src/components/table/filter.py` / `components/list/filter.py`: date-filter hint text (`"e.g. 27 or Jul"`) auto-inferred from `"format": "date"`, same pattern the existing numeric hint already uses
+- Verified live (`stock_in/index`, List view, real data): filtering `27` correctly narrowed to exactly "27 Jul 2026"; filtering `jul` correctly returned all July records, case-insensitive; backend logs confirmed clean 200 OK responses
+- Files: backend/src/core/table_query.py, backend/src/repository/receiving_repository.py, frontend/src/components/table/filter.py, frontend/src/components/list/filter.py, AGENTS.md
+
 ## [2026-07-28] — #64 updated: senar DOES have a working camera scanner (correction)
 - Issue #64's body updated on GitHub (not a new issue) after the user pointed at the right file
 - Correction: my original #64 investigation only checked `senar\flet\senar` (a Flet-specific port, correctly found to have no scanner during issue #52). The user pointed at senar's actual PHP/JS app instead - `code/public/js/framework/y.form.js`'s `handleScanCamera()` (~line 7168) is a real, working, purely client-side live camera QR/barcode scanner using the third-party `html5-qrcode` library via `getUserMedia`, with front/rear camera switching (`facingCamera`: `"environment"`/`"user"`)
