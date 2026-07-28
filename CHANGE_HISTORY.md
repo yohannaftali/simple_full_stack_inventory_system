@@ -1,6 +1,12 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-28] — #64 updated: senar DOES have a working camera scanner (correction)
+- Issue #64's body updated on GitHub (not a new issue) after the user pointed at the right file
+- Correction: my original #64 investigation only checked `senar\flet\senar` (a Flet-specific port, correctly found to have no scanner during issue #52). The user pointed at senar's actual PHP/JS app instead - `code/public/js/framework/y.form.js`'s `handleScanCamera()` (~line 7168) is a real, working, purely client-side live camera QR/barcode scanner using the third-party `html5-qrcode` library via `getUserMedia`, with front/rear camera switching (`facingCamera`: `"environment"`/`"user"`)
+- Confirmed Flet 0.85.3 has no `WebView`/`Html` control and no JS-eval API at all (checked the installed package directly) - there's no simple way to embed `html5-qrcode` the way senar does. Two real paths noted: (1) a proper Flet extension package wrapping a Flutter camera-scanning plugin, if a maintained one exists for this Flet version (worth a short check before assuming it's unavailable) - true live in-browser scan with camera switching; (2) the original `FilePicker(IMAGE) + pyzbar` single-photo approach, kept as the safe fallback either way
+- Also confirmed (per the user's own observation, verified in the code): senar's own scanner has no fallback at all when no camera is available - `#startCameraForScanQr` just logs a console error. Issue #64 now explicitly requires our implementation to offer the image/file/photo picker in that case, improving on senar's own gap rather than just matching it
+
 ## [2026-07-28] — feat(frontend): camera-based barcode/QR scan option alongside manual entry
 - Issue #64 created on GitHub
 - Scope: frontend
