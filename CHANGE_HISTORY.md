@@ -1,6 +1,14 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-28] — feat(table): match date-formatted columns by displayed text in per-column filter
+- Issue #61 created on GitHub
+- Scope: backend + frontend
+- Labels: enhancement, frontend, backend
+- User requested this after noticing typing "27" into a date column's filter doesn't match "27 Jul 2026"/"15 Jul 2027" the way a full-text substring search would, and pointed at senar's `y.form.js`/`y.panel.js`/`L_database.php` as the pattern to check
+- Investigated senar's actual code before scoping: `L_database.php` has only a commented-out, unfinished `filter_datetime()` (~line 1150) - no live reference implementation exists to port. This is a new feature extending this app's own already-shipped `numeric_fields` precedent (issue #10), not a straight port
+- Root cause of the current gap: `apply_column_filters` LIKE-matches a date column's RAW stored value, not its displayed `"dd Mon yyyy"` text - proposed fix wraps date-hinted columns in SQL `DATE_FORMAT(col, '%d %b %Y')` (mirrors `frontend/src/utils/formatting.py::format_date()`'s Python-side `strftime` format token-for-token) before the LIKE, with the same `"format": "date"` auto-inference convention the existing numeric hint already uses on the frontend
+
 ## [2026-07-28] — feat(frontend): per-cell hover highlight on top of row highlight (issue #60 follow-up 2)
 - User asked for the individual hovered cell to highlight too, on top of the now-working row highlight (previously scoped out of #60 as a stretch item)
 - `components/table/rows.py`: new `_CELL_HOVER_COLOR = ft.Colors.SURFACE_CONTAINER_HIGHEST` (one M3 tonal step brighter than `_ROW_HOVER_COLOR`, same ladder issue #53 already uses). `_on_row_hover` now also sets/clears `e.control.bgcolor` (the specific hovered cell's own Container, via the standard Flet `e.control` convention) alongside the existing row-color swap - same direct-mutate-and-`.update()` pattern, no new mechanism introduced
