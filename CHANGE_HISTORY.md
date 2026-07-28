@@ -1,6 +1,13 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-28] — feat(frontend): Table row borders replaced with position-based zebra striping (issue #57)
+- Issue #57 implemented (status: ready-for-review)
+- `components/table/header.py`/`body.py`: `border=None, divider_thickness=0` on both `ft.DataTable`s - the outer-frame `border` alone never controlled the per-row horizontal lines, Flutter's separate `divider_thickness` (default 1.0) does
+- `components/table/rows.py::TableRows.load()`: each built `ft.DataRow` now gets `color` from `_ROW_COLOR_EVEN`/`_ROW_COLOR_ODD` (`ft.Colors.SURFACE`/`SURFACE_CONTAINER_LOW`) based on `row % 2`, reusing the same position counter (`row = len(self.rows) if append else 0`) already driving `self.index`/key navigation - a genuine per-render, position-derived stripe (not stored on the record), so sort/filter/remove/lazy-load-append all get a correct, consistent stripe for free with no extra bookkeeping
+- Verified live (light theme): `master_location` and `stock_in`'s Table view (30 rows, including scrollbar-drag-triggered lazy-load append) both show no border/divider lines and no two adjacent same-colored rows, including across the page-1/page-2 append boundary. Dark theme not independently re-confirmed this session (browser automation hit repeated splash/blank-page flakiness reaching the Dark Mode toggle in `home`'s user menu) - relies on the same semantic M3 tokens already verified to adapt correctly elsewhere (issue #53)
+- Files: frontend/src/components/table/{header.py,body.py,rows.py}, AGENTS.md
+
 ## [2026-07-28] — feat(frontend): List gains download menu, full-width search bar, and Table/List view toggle (issue #56)
 - Issue #56 implemented (status: ready-for-review)
 - New `frontend/src/components/list/menu.py::ListMenu` - download-only equivalent of `TableMenu` (6 formats, same `GET C_{module}/export_{name}` backend endpoint / `/download/{module}/{name}` proxy, no backend changes), reading `List`'s own `filter`/`filter_row.serialize()` state instead of `Table`'s `columns.serialize_sort()`/`custom_param`. Upload deliberately out of scope - `List` has no editable-cell field types

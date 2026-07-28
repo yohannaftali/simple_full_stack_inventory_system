@@ -15,11 +15,11 @@ class TableHeader:
             column_spacing=TABLE_COLUMN_SPACING,
             heading_row_color=ft.Colors.SECONDARY_CONTAINER,
             horizontal_margin=TABLE_HORIZONTAL_MARGIN,
-            border=ft.Border.only(
-                left=ft.BorderSide(1, ft.Colors.OUTLINE),
-                right=ft.BorderSide(1, ft.Colors.OUTLINE),
-                top=ft.BorderSide(1, ft.Colors.OUTLINE),
-            ),
+            # No border/divider lines (issue #57) - the header no longer
+            # frames itself with an outline; TableBody's own zebra striping
+            # is what visually separates the header from the body now.
+            border=None,
+            divider_thickness=0,
             # Material 3's own default is 56dp - tightened to match
             # body.py's now-denser data_row_max_height (44) for a
             # consistent look, since our header labels are always

@@ -42,6 +42,20 @@ _EDITABLE_TYPES = {
 _MENU_VISIBLE_ROWS = 5
 _MENU_ROW_HEIGHT = 48
 
+# Position-based zebra stripe colors (issue #57, replacing the table's old
+# border/divider lines) - CSS :nth-child(even/odd)-style: derived fresh from
+# a row's index in the CURRENT render pass every time (the `row` counter
+# below, already the same index `self.index`/`input_controls` track), never
+# stored on the record. A row added/removed/reordered by any existing
+# mechanism (sort, filter, TableRemove delete, lazy-load append) already
+# triggers a full rebuild from this same counter, so the stripe is always
+# correct with no separate bookkeeping - including the lazy-load append
+# path, where `row` starts at `len(self.rows)` (the last already-rendered
+# row's index + 1), not 0, so the pattern continues instead of resetting at
+# the page boundary. Semantic tokens (not fixed hex) so both themes hold up.
+_ROW_COLOR_EVEN = ft.Colors.SURFACE
+_ROW_COLOR_ODD = ft.Colors.SURFACE_CONTAINER_LOW
+
 
 class _CheckboxCellValue:
     """`value_holder` for a `"checkbox"`-type editable cell (issue #44) -
@@ -315,7 +329,8 @@ class TableRows:
 
                 cells.append(cell)
 
-            self.rows.append(ft.DataRow(cells=cells))
+            row_color = _ROW_COLOR_EVEN if row % 2 == 0 else _ROW_COLOR_ODD
+            self.rows.append(ft.DataRow(cells=cells, color=row_color))
             self.index.append(row)
             self.input_controls.append(row_inputs)
             row += 1

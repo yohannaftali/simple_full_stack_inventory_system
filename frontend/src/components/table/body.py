@@ -31,12 +31,15 @@ class TableBody:
             column_spacing=TABLE_COLUMN_SPACING,
             horizontal_margin=TABLE_HORIZONTAL_MARGIN,
             heading_row_height=0,  # Hide header
-            border=ft.Border.only(
-                left=ft.BorderSide(1, ft.Colors.OUTLINE),
-                right=ft.BorderSide(1, ft.Colors.OUTLINE),
-                bottom=ft.BorderSide(1, ft.Colors.OUTLINE),
-            ),
-            border_radius=ft.BorderRadius.only(bottom_left=5, bottom_right=5),
+            # No border/row-divider lines (issue #57) - replaced by
+            # TableRows.load()'s position-based zebra striping, which reads
+            # more cleanly row-to-row than a boxed grid with divider lines.
+            # `divider_thickness=0` is the actual fix for the horizontal
+            # lines Flutter's DataTable draws between rows by default (1.0)
+            # - border alone only ever controlled the table's own outer
+            # frame, never those per-row dividers.
+            border=None,
+            divider_thickness=0,
             # Material 3's own DataTable default is 52dp per data row -
             # this is already a step tighter ("dense" density) since our
             # cell content is always single-line text/inputs, never

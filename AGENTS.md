@@ -76,7 +76,7 @@
 | #54 | fix(frontend): table editable input/textarea cells still not fully flush (padding/border remnant) | open (pending) | 2026-07-28 |
 | #55 | feat(frontend): bring List component to parity with Table (lazy-load pagination toggle, per-field search, sortable) - no backend changes | ready-for-review | 2026-07-28 |
 | #56 | feat(frontend): List gains Table download menu, full-width search bar, and Table/List view toggle | closed | 2026-07-28 |
-| #57 | feat(frontend): replace Table row borders with position-based zebra striping | open | 2026-07-28 |
+| #57 | feat(frontend): replace Table row borders with position-based zebra striping | ready-for-review | 2026-07-28 |
 | #58 | fix(frontend): TOTP QR generation fails - PyPNG library not installed | closed | 2026-07-28 |
 | #59 | fix(frontend): TOTP copy-secret button fails - Page.set_clipboard removed in Flet 0.85 | closed | 2026-07-28 |
 
@@ -2538,6 +2538,56 @@ itself grew two small hooks so a sub-table *can* reuse it:
       is the M3 spec height for a standalone search bar (unlike the
       table's row heights, which aren't pinned to a single "correct" M3
       number the same way).
+  - **Row border/divider lines replaced with position-based zebra
+    striping** (issue #57, 2026-07-28): `components/table/header.py`/
+    `body.py` both set `border=None, divider_thickness=0` on their
+    `ft.DataTable`s - `border` alone (the old `ft.Border.only(...)`
+    setup) only ever controlled the table's own outer frame; the
+    horizontal lines actually drawn *between* rows are Flutter's
+    `DataTable.divider_thickness` (default `1.0`), a separate property
+    neither file had touched before. `TableRows.load()` now sets each
+    built `ft.DataRow`'s `color` from `_ROW_COLOR_EVEN`
+    (`ft.Colors.SURFACE`) / `_ROW_COLOR_ODD`
+    (`ft.Colors.SURFACE_CONTAINER_LOW`) based on `row % 2`, where `row`
+    is the same position counter `self.index`/`self.input_controls`
+    already tracked (`len(self.rows)` on append, `0` on a fresh
+    non-append load) - a genuine CSS `:nth-child`-style computation from
+    current render position, never stored on the record, so it already
+    inherited every existing "rebuild from `self.data`" mechanism for
+    free: sort, per-column filter, `TableRemove`'s single/bulk delete
+    (all rebuild via `Table.load(self.data, append=False)`, restarting
+    the counter at `0`), and lazy-load append (continuing from
+    `len(self.rows)`, not resetting at the page-1/page-2 boundary) all
+    automatically produce a correct, consistent stripe with zero
+    additional bookkeeping - confirmed by the fact that no other file
+    needed changes for any of those paths. Both stripe colors are
+    semantic M3 tokens (not fixed hex), matching every other themed
+    color in this codebase, so both light/dark theme are expected to
+    hold up the same way `SURFACE_CONTAINER_HIGH`/`_HIGHEST` already do
+    elsewhere (issue #53).
+    Verified live in the browser (light theme): `master_location`
+    (2 rows) and `stock_in`'s Table view (30 rows, both via direct
+    lazy-load-triggered fetch and by dragging the scrollbar) both show
+    clean alternating row backgrounds with no border/divider lines
+    anywhere and no two adjacent rows sharing a color, including across
+    the page-1/page-2 lazy-load append boundary (row 20 "f" -> row 21
+    "e" correctly alternates, confirmed by reading the full 30-row
+    sequence off screen after the scrollbar drag triggered the append
+    fetch - `Table._handle_scroll_end`'s real `on_scroll` event never
+    fired from the automation tool's synthetic wheel-scroll actions this
+    session, a known class of interaction the mouse-wheel-emulating
+    click/scroll tool doesn't always reproduce faithfully against a
+    Flutter canvas; dragging the native scrollbar thumb did trigger it
+    correctly). **Dark theme not independently re-confirmed this
+    session** - the in-app Dark Mode toggle lives in `home`'s user menu
+    only (`components/home/user_menu.py`), and the browser automation
+    hit the same splash/blank-page flakiness this repo's own
+    `_push_route_safe` comments already document repeatedly, blocking a
+    clean toggle-then-navigate round trip; the color choice itself
+    relies on the same semantic-token mechanism already verified to
+    adapt correctly elsewhere in this app, but a direct dark-theme
+    screenshot of the striped table specifically should still be taken
+    next time the environment cooperates.
 - Full stock-in → MAP calc across two receipts → edit-item MAP correction →
   browse → stock-out (FIFO across 3 lots, partial-lot deduction, insufficient-
   stock rejection, issue-from-empty-location rejection) → permission-gating
