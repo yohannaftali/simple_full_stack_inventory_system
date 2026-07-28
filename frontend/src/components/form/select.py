@@ -43,14 +43,27 @@ class SelectForm:
         self.hint_text = field.get("hint_text", f"Please input {self.label}")
         self.icon = field.get("icon")
         self.autofocus = field.get("autofocus", False)
-        self.value_size = field.get("value_size", 16)
-        self.label_size = field.get("label_size", 14)
+        self.value_size = field.get("value_size", 14)
+        self.label_size = field.get("label_size", 13)
+        # M3 filled text field color roles - see components/form/input.py's
+        # class docstring for the full spec-correction rationale (issue #53
+        # follow-up). Fill/text are constant; only the label turns PRIMARY
+        # on focus. `ft.Dropdown` has no `focused_bgcolor`/live-swappable
+        # fill of its own (its `bgcolor` prop colors the *popup menu*, not
+        # the field), so the constant fill is still applied via a wrapping
+        # `ft.Container` (see `build()`) - the Dropdown itself renders
+        # transparent (`fill_color=TRANSPARENT`) so the wrapper's color
+        # shows through; only `label_style` needs a live on_focus/on_blur
+        # swap now.
         self.value_color = field.get("color", ft.Colors.ON_SURFACE)
-        self.label_color = field.get("color", ft.Colors.ON_SECONDARY_CONTAINER)
-        self.border_color = field.get("border_color", ft.Colors.ON_SURFACE)
+        self.label_color = field.get("label_color", ft.Colors.ON_SURFACE_VARIANT)
+        self.focused_label_color = field.get("focused_label_color", ft.Colors.PRIMARY)
+        self.border_color = field.get("border_color", ft.Colors.ON_SURFACE_VARIANT)
+        self.focused_border_color = field.get("focused_border_color", ft.Colors.PRIMARY)
         self.leading_icon = None
-        self.filled = field.get("filled", False)
-        self.bgcolor = field.get("bgcolor", ft.Colors.SURFACE)
+        self.filled = field.get("filled", True)
+        self.bgcolor = field.get("bgcolor", ft.Colors.SURFACE_CONTAINER_HIGHEST)
+        self.container: ft.Container | None = None
         self.enable_filter = field.get("enable_filter", True)
         self.editable = field.get("editable", True)
         # Opt-in barcode/QR scan button inside this select (issue #52) - off
@@ -73,42 +86,61 @@ class SelectForm:
         self.leading_icon = (
             ft.Icon(
                 icon=self.icon,
-                color=self.value_color) if self.icon is not None else None
+                color=ft.Colors.ON_SURFACE_VARIANT) if self.icon is not None else None
         )
         self.select = ft.Dropdown(
             label=self.label,
             hint_text=self.hint_text,
+            hint_style=ft.TextStyle(color=ft.Colors.ON_SURFACE_VARIANT),
             leading_icon=self.leading_icon,
-            border_radius=10,
+            border_radius=0,
+            border=ft.InputBorder.UNDERLINE,
             border_color=self.border_color,
+            focused_border_color=self.focused_border_color,
             autofocus=self.autofocus,
             text_size=self.value_size,
             color=self.value_color,
+            content_padding=ft.Padding.only(
+                left=12 if self.icon else 16, right=16, top=8, bottom=8
+            ),
             label_style=ft.TextStyle(
                 size=self.label_size,
                 color=self.label_color,
             ),
             filled=self.filled,
-            bgcolor=self.bgcolor,
+            fill_color=ft.Colors.TRANSPARENT,
             enable_filter=self.enable_filter,
             editable=self.editable,
             menu_height=_MENU_VISIBLE_ROWS * _MENU_ROW_HEIGHT,
             expand=True,
+            on_focus=self._on_focus,
+            on_blur=self._on_blur,
+        )
+        self.container = ft.Container(
+            bgcolor=self.bgcolor,
+            border_radius=0,
+            padding=0,
+            expand=True,
         )
         if not self.qr:
-            return self.select
+            self.container.content = self.select
+            return self.container
 
-        # The scan button sits INSIDE the field, immediately before the
-        # open/close arrow - the same shape the table search bar uses for its
-        # scan-then-X pair. `trailing_icon` *replaces* the arrow rather than
-        # sitting beside it, so the arrow can't simply be left alone; but the
-        # slot is typed `IconDataOrControl`, so a Row carrying both the scan
-        # button and an explicit arrow Icon restores the affordance while
-        # keeping the button inside the decoration box. `selected_trailing_icon`
-        # (rendered while the menu is open) needs its own pair - a control
-        # instance can't occupy two slots in the tree at once - so the shared
-        # ScanInput is built twice; both buttons drive the same handler and only
-        # one is ever visible.
+        # The scan button used to sit INSIDE the field's own trailing_icon
+        # slot, next to the open/close arrow. That put both controls inside
+        # the Dropdown's own decoration box, and Flutter's MouseRegion-based
+        # hover detection doesn't stop at a nested child's bounds the way
+        # tap/click hit-testing does - hovering *anywhere* in the decoration
+        # (the label, blank space, either icon) lit up the whole field's own
+        # hover overlay, which made the scan button and the arrow look like
+        # they shared one hover state (reported live, 2026-07-28). The two
+        # can only be made to look and behave fully independently by taking
+        # the scan button out of the Dropdown's decoration entirely - a
+        # sibling control next to it, not a child inside it - so its own
+        # IconButton hover/ripple is the only thing that ever lights up when
+        # hovering it, and the Dropdown's own field-level hover is the only
+        # thing that lights up for the rest of the field (label, arrow,
+        # blank space), each independent of the other.
         self.scan_input = ScanInput(
             page=self.page,
             on_scan=self.apply_scanned_code,
@@ -118,21 +150,35 @@ class SelectForm:
             width=SCAN_BUTTON_SIZE,
             height=SCAN_BUTTON_SIZE,
         )
-        self.select.trailing_icon = self._build_trailing(ft.Icons.ARROW_DROP_DOWN)
-        self.select.selected_trailing_icon = self._build_trailing(ft.Icons.ARROW_DROP_UP)
-        return self.select
-
-    def _build_trailing(self, arrow: str) -> ft.Row:
-        """Scan button + arrow as one trailing control (see build())."""
-        return ft.Row(
-            controls=[
-                self.scan_input.build(),
-                ft.Icon(arrow, color=self.value_color, size=SCAN_ICON_SIZE),
-            ],
+        # The scan button is a sibling control, not part of the Dropdown's
+        # own decoration (see the class-level docstring for why), so it
+        # doesn't inherit the Dropdown's own right-side content_padding -
+        # without an explicit right inset here it sat flush against the
+        # container's true right edge, unlike every other trailing icon in
+        # the app (the QR button's own trailing arrow, the table search
+        # bar's icons, etc.), which all sit inside a padded decoration box.
+        self.container.padding = ft.Padding.only(right=8)
+        self.container.content = ft.Row(
+            controls=[self.select, self.scan_input.build()],
             spacing=SCAN_TRAILING_SPACING,
-            tight=True,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            expand=True,
         )
+        return self.container
+
+    def _on_focus(self, e=None) -> None:
+        self.select.label_style = ft.TextStyle(size=self.label_size, color=self.focused_label_color)
+        self._safe_container_update()
+
+    def _on_blur(self, e=None) -> None:
+        self.select.label_style = ft.TextStyle(size=self.label_size, color=self.label_color)
+        self._safe_container_update()
+
+    def _safe_container_update(self) -> None:
+        try:
+            self.container.update()
+        except RuntimeError:
+            pass
 
     def apply_scanned_code(self, code: str) -> None:
         """Select the option a scanned code refers to (issue #52).

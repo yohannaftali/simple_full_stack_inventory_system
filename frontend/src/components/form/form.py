@@ -266,7 +266,7 @@ class Form:
                     control = self.label[field_name].build()
                 elif is_input:
                     self.map_type[field_name] = "input"
-                    self.input[field_name] = InputForm(field)
+                    self.input[field_name] = InputForm(self.page, field)
                     control = self.input[field_name].build()
                 elif field_type == "icon_picker":
                     self.map_type[field_name] = "icon_picker"

@@ -45,6 +45,14 @@ class TableSearchBar:
             padding=0,  # Absolute graphic centering
             on_click=self.clear_search,
             tooltip="Clear text",
+            # `width`/`height` alone don't stop Flutter's default IconButton
+            # tap-target/ink region from exceeding this box - see
+            # scan_input.py's ScanInput.build() for the full explanation
+            # (issue #52 follow-up). Matched here so the clear button and
+            # the scan button never bleed hover/highlight into each other.
+            size_constraints=ft.BoxConstraints(
+                min_width=24, max_width=24, min_height=24, max_height=24
+            ),
         )
         if self.qr:
             # The QR button sits to the LEFT of the clear/X, inside the same

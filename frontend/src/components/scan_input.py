@@ -49,6 +49,28 @@ class ScanInput:
         self.field: ft.TextField | None = None
 
     def build(self) -> ft.IconButton:
+        # `width`/`height` alone only set this control's own layout box -
+        # Flutter's Material IconButton still applies its own default
+        # minimum tap-target constraints (~40-48dp) to the ink/hover
+        # region underneath regardless of that box, so a 24x24 button
+        # sitting a few px from a neighboring icon (the dropdown's own
+        # arrow, or another trailing icon) had its hover/splash circle
+        # visibly overflow past its own bounds and bleed onto that
+        # neighbor - the "hovering one highlights the other, and one
+        # shows extra highlight behind it" symptom reported for issue
+        # #52's select/dropdown scan button. `size_constraints` is the
+        # one IconButton property that actually clamps that internal
+        # tap-target/ink region itself, not just the outer layout box.
+        size_constraints = (
+            ft.BoxConstraints(
+                min_width=self.width or self.icon_size or 24,
+                max_width=self.width or self.icon_size or 24,
+                min_height=self.height or self.icon_size or 24,
+                max_height=self.height or self.icon_size or 24,
+            )
+            if self.width or self.height
+            else None
+        )
         return ft.IconButton(
             icon=ft.Icons.QR_CODE_SCANNER,
             tooltip=self.tooltip,
@@ -58,6 +80,7 @@ class ScanInput:
             width=self.width,
             height=self.height,
             padding=0 if self.width or self.height else None,
+            size_constraints=size_constraints,
         )
 
     def _open(self, e=None) -> None:

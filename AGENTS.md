@@ -72,6 +72,7 @@
 | #50 | fix(table): column resize handle stops working on the second drag | open | 2026-07-27 |
 | #51 | fix(frontend): web app hangs on splash when loaded directly at /home or a deep route | closed | 2026-07-27 |
 | #52 | feat(frontend): scan barcode/QR into Material and Location pickers on stock item screens | ready-for-review | 2026-07-27 |
+| #53 | feat(frontend): borderless filled inputs with focus-color swap (PRIMARY_CONTAINER / TERTIARY_CONTAINER) | ready-for-review | 2026-07-28 |
 
 ## Big Picture
 
@@ -2997,6 +2998,44 @@ managed via `pyproject.toml` (uv/Poetry).
     applying the standard `apply_keyword_filter` against the location's
     code/name. Optional and defaulted, so `stock_movement` — which reuses
     that same repository method — is unaffected.
+    **Follow-up fix — shared hover highlight between the scan button and the
+    dropdown's own arrow** (2026-07-28, user-reported, confirmed live):
+    hovering the QR button on a `"qr": True` select also lit up the whole
+    Dropdown field (including its arrow), and vice versa. Root cause (found
+    by direct pixel comparison in a live browser, not by reasoning about
+    `IconButton` alone — an earlier `size_constraints` fix on `ScanInput`
+    was a real but secondary issue, see below): the scan button lived
+    *inside* the Dropdown's own `trailing_icon` slot, i.e. inside its
+    decoration box. Flutter's hover `MouseRegion` detection doesn't stop at
+    a nested child's bounds the way tap hit-testing does, so hovering
+    *anywhere* in the decoration - the label, blank space, either icon - lit
+    the field's own field-wide hover overlay, and that overlay visually
+    covered both icons regardless of which one the mouse was actually over.
+    Confirmed directly: hovering dead-center blank space in the middle of
+    the field (nowhere near either icon) still lit the same overlay,
+    proving it was never about the two icons sharing state with each
+    other - it was the field's own hover applying to its whole box, of
+    which the trailing icons were just one part. Fixed by moving the scan
+    button **out of** the Dropdown's `trailing_icon`/`selected_trailing_icon`
+    slots entirely - `SelectForm.build()` now wraps the plain, unmodified
+    `ft.Dropdown` (native single arrow, no custom trailing composite) and a
+    sibling `ScanInput` button in an `ft.Row`, so the two are independent
+    controls with independent hover regions, not one nested inside the
+    other's decoration. Verified live: hovering the QR button no longer
+    lights the Dropdown at all, and hovering anywhere in the Dropdown
+    (including directly over its own arrow) no longer lights the QR button.
+    The earlier, narrower `size_constraints=ft.BoxConstraints(...)` fix to
+    `ScanInput.build()` (clamping its `IconButton`'s internal tap-target/ink
+    region to its own visible bounds, since Flutter's default minimum
+    tap-target ignores `width`/`height` alone) is still correct and kept -
+    it fixes the QR button's own ripple being oversized relative to its
+    icon, a separate, real issue from the shared-field-hover one above -
+    and the identical fix was also applied to the table search bar's
+    `clear_button` (`components/table/search_bar.py`) for the same latent
+    risk next to its own scan button (that button's scan+clear pair is
+    still nested inside one `TextField.suffix_icon` slot, unlike the select
+    fix above - not yet reported as an issue there, so left as-is rather
+    than restructured speculatively).
   - **`icon_picker`** (`components/form/icon_picker.py::IconPickerForm`,
     2026-07-27 — a sample consumer of issue #45's `"radio"`/by-column
     column type, not itself a filed issue): same read-only-tap-to-open
@@ -3052,6 +3091,200 @@ managed via `pyproject.toml` (uv/Poetry).
     icon correctly unchecks the previous one first (by-column exclusivity);
     Confirm updates both the field's text and its leading icon glyph;
     Close discards an unconfirmed in-progress change.
+  - **Borderless filled inputs, M3-spec-accurate colors** (issue #53,
+    2026-07-28, corrected same day after checking the real spec at
+    m3.material.io/components/text-fields/specs): every form field type
+    (`input`, `textarea`, `select`, `date`, `label` —
+    `components/form/{input,date,label,select}.py`) renders with
+    `border=ft.InputBorder.NONE`, `filled=True`,
+    `bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST` — **constant across
+    every state**, matching the real M3 filled-text-field spec, which
+    does NOT swap the fill color on focus. Input text is a constant
+    `ft.Colors.ON_SURFACE`; hint text and leading icons are
+    `ft.Colors.ON_SURFACE_VARIANT`; only the **label** swaps live,
+    `ON_SURFACE_VARIANT` at rest → `PRIMARY` on focus.
+    `content_padding` matches the spec table (`top`/`bottom=8`,
+    `left`/`right=16`, or `12` on the left when a leading icon is
+    present).
+    - **First implementation attempt (same day, superseded) used a custom
+      `PRIMARY_CONTAINER`→`TERTIARY_CONTAINER` full-background swap on
+      focus** instead — a deliberate design at the time (explicitly
+      requested), but a genuine divergence from M3 once actually checked
+      against the spec, not a bug. Kept here as a pointer in case a
+      similar "let's swap the whole fill on focus" idea comes up again -
+      check the real spec first, since M3 filled fields intentionally
+      don't do that (the *bordered/outlined* variant's active-indicator
+      line is what recolors on focus there, not the fill).
+    - **`ft.TextField`'s own `focused_bgcolor`/focus-state props are
+      unreliable** — confirmed live earlier the same session: a color
+      set only via `focused_bgcolor` painted correctly on an
+      *autofocused* field's very first render, but never repainted again
+      on any later focus/blur. Every field drives its swappable property
+      (now just `label_style`'s color, previously also `bgcolor`/`color`
+      under the superseded design) directly from `on_focus`/`on_blur`
+      handlers instead (reassign the property, then `.update()`,
+      swallowing `RuntimeError` the same way every other
+      `_safe_update()` in this codebase already does for a not-yet-
+      mounted control) — deterministic, the only mechanism confirmed to
+      actually work. **A same-day false alarm worth remembering**: right
+      after switching to the constant-fill design, a screenshot appeared
+      to show the label stuck on the old color and a label/hint overlap
+      on a freshly-focused field - both turned out to be Flutter's own
+      ~200ms label-float transition still mid-animation at the moment of
+      the screenshot, not a real regression; waiting ~1s before
+      re-screenshotting confirmed both were correct. Don't mistake an
+      animation-in-flight frame for a stuck-state bug - re-check after a
+      short settle before concluding the mechanism itself is broken.
+    - **`ft.Dropdown` has no per-state fill of its own at all** — its own
+      `bgcolor` property (`ControlStateValue[ColorValue]`, despite
+      looking exactly like what you'd want here) colors the *popup menu*
+      that opens below the field, not the field's own decoration. Even
+      with a constant fill (no swap needed for the background itself
+      anymore), the Dropdown is still wrapped in a plain `ft.Container`
+      (`SelectForm.container` / a per-cell `wrapper` in `rows.py`) holding
+      the actual `SURFACE_CONTAINER_HIGHEST` color, with the Dropdown
+      itself rendering `fill_color=ft.Colors.TRANSPARENT` so the
+      wrapper's color shows through - only `label_style` still needs a
+      live on_focus/on_blur swap. `Form.load()`/`serialize()` still read
+      `Form.select[name].select` (the raw Dropdown, unaffected by the
+      wrapper) and `TableRows.get_input_values()` still reads
+      `entry["control"].value` off the raw Dropdown `value_holder` (also
+      unaffected) — the wrapper only ever changes what
+      `_build_editable_cell()`/`SelectForm.build()` return as the
+      *display* control, never what holds the actual value.
+    - **`components/form/select.py`'s QR-enabled Row (Dropdown + scan
+      button, issue #52) needed its own right-side padding fix**: the
+      scan button is a sibling control outside the Dropdown's own
+      decoration (see issue #52's entry above for why), so it didn't
+      inherit the Dropdown's own right-side `content_padding` and sat
+      flush against the field's true right edge - `SelectForm.container`
+      gets `padding=ft.Padding.only(right=8)` specifically when `qr=True`
+      to match the inset every other trailing icon in the app has.
+    - **Table's editable cells (`components/table/rows.py`) deliberately
+      keep the earlier `PRIMARY_CONTAINER`/`TERTIARY_CONTAINER`
+      background-swap design, NOT the spec correction above** — a
+      dense table cell has no floating label to turn `PRIMARY`, so
+      removing its background swap would leave zero visual indication of
+      which cell is focused. The M3 spec correction was scoped to the
+      labeled form fields the user was actually referencing when they
+      checked the spec, not table cells generally.
+    - Table search bar (`components/table/search_bar.py`) and the
+      per-column filter row (`components/table/filter.py`) still keep
+      their existing `SURFACE_CONTAINER_HIGH` styling (issue #19/#20,
+      unaffected either way) — a different affordance (search/filter, not
+      data entry) from every field this issue touched.
+    - Verified live in the browser (light theme only this session): every
+      form field shows the constant `SURFACE_CONTAINER_HIGHEST` fill at
+      rest and while focused; focusing correctly turns only that field's
+      label `PRIMARY` (Material dropdown, Qty Received, Price all
+      confirmed); blurring correctly reverts the label color with no
+      stuck/stale state once Flutter's own transition settles.
+      **Dark theme not yet re-verified.**
+    - **Select fields get square corners, text fields keep rounded ones**
+      (same-day follow-up, explicit user request): `SelectForm`'s Dropdown
+      and its wrapping `Container` (`components/form/select.py`), plus the
+      wrapping `Container` for editable `"select"`/`"option"` table cells
+      (`components/table/rows.py`), all changed `border_radius` `10` → `0`.
+      Text-based fields (`input`/`textarea`/`date`/`label` and their table
+      cell equivalents) are unaffected — still `border_radius=10` — so a
+      screen with both field kinds now shows squared dropdowns next to
+      rounded text fields, deliberately.
+    - **M3's "active indicator" bottom border restored, plus two smaller
+      follow-ups** (same day, explicit user request): the fully borderless
+      look from earlier in issue #53 turned out to omit a real part of the
+      M3 filled-field spec - a colored bottom border/indicator line, not
+      just a filled background. Every input type (`input`/`textarea`/
+      `date`/`label`/`select`, both `components/form/` and
+      `components/table/rows.py`'s editable cells) now sets
+      `border=ft.InputBorder.UNDERLINE`, `border_color=ON_SURFACE_VARIANT`
+      at rest, `focused_border_color=PRIMARY`. Unlike the label-color swap
+      elsewhere in this issue, `focused_border_color` is a native Flutter
+      underline-decoration behavior and needed no manual on_focus/on_blur
+      workaround - it just worked. Two smaller same-day requests bundled
+      into this pass: (1) `DateForm`'s field gets
+      `mouse_cursor=ft.MouseCursor.CLICK` so the pointer cursor covers the
+      trailing calendar icon too, consistent with every other trailing
+      icon button in the app (a plain `suffix_icon` string has no
+      click/cursor behavior of its own, unlike a real `IconButton`); (2)
+      plain `input` fields gained the same opt-in `"qr": True` scan-button
+      support `select` fields already had (issue #52) - lives in the
+      `TextField`'s own `suffix_icon` slot (constrained the same way every
+      other scan/clear icon in the app is), and a scanned code is typed
+      straight into the field's value with no option-list resolution,
+      unlike `select.py`'s own scan handler. `InputForm.__init__` now
+      takes `page` as its first positional argument (needed to construct
+      `ScanInput`) - `form.py`'s `is_input` branch updated to
+      `InputForm(self.page, field)`. No screen currently sets `"qr": True`
+      on a plain input, so this is wired but not yet exercised by any real
+      field - verified only via a clean container restart with no import/
+      construction errors, not a live scan.
+    - **Table editable cells deliberately do NOT get the M3 active
+      indicator border above** (same-day follow-up, explicit user
+      request) — a table cell already has the grid's own row/column
+      borders to delineate it, so a second border inside the cell is
+      redundant; `components/table/rows.py::_build_editable_cell()`'s
+      `input`/`textarea`/`select`/`option`/`datepicker` cells all use
+      `border=ft.InputBorder.NONE` and `content_padding=ft.Padding.all(0)`
+      (zero padding, so the fill sits flush against the cell boundary —
+      a Google-Sheets-style seamless grid, not a form-field-looking box
+      floating inside the cell). They still get a constant
+      `bgcolor`/`fill_color=ft.Colors.SURFACE_CONTAINER_HIGHEST` (no
+      focus swap, matching the corrected standalone-field design) so an
+      editable cell reads as visually distinct from a plain read-only
+      text cell, which has no fill at all. The `select`/`option` Dropdown
+      cell no longer needs a wrapping `ft.Container` — that existed only
+      to route the earlier background-swap workaround, which no longer
+      exists now that the fill is constant, so the Dropdown carries
+      `fill_color` directly and `_build_editable_cell()` returns it as-is
+      (the now-unused `_wire_focus_bgcolor`/`_set_dropdown_cell_focus`
+      helpers were deleted, not left as dead code). The `datepicker` cell
+      still builds via the shared `DateForm` (styled for standalone form
+      use, border included) and then overrides `border`/
+      `content_padding`/`bgcolor`/`color` on the built control afterward
+      to match every other cell's flush look — `DateForm` itself is
+      unchanged, since the standalone form usage still wants its border.
+      Verified live: `stock_out/item_new`'s per-location Qty Issue/
+      Remarks columns render border-free and edge-to-edge with a light
+      gray fill, clearly distinct from the plain white read-only columns
+      next to them.
+    - **`content_padding=Padding.all(0)` alone was not actually enough**
+      (same-day follow-up, user-reported): the `"input"`/`"textarea"`
+      cells above still showed a visible top/bottom/left gap - the fill
+      rendered as a shorter, inset pill rather than truly filling the
+      cell. Root cause: Flutter's `InputDecorator` reserves its own
+      intrinsic minimum height/inset for a *filled* decoration regardless
+      of `content_padding` - a `TextField`'s own `filled`/`bgcolor` will
+      never genuinely fill arbitrary tight bounds. Fixed via a new
+      `TableRows._build_flush_textfield()` helper: the `TextField` itself
+      now uses `collapsed=True` (maps to Flutter's
+      `InputDecoration.collapsed` - drops the decoration entirely, no
+      fill, no minimum height, sized tightly to the text), and the actual
+      M3 fill color moved onto a plain wrapping `ft.Container` instead,
+      which - unlike `InputDecorator` - genuinely fills its exact given
+      bounds. Returns `(wrapper, field)`; `wrapper` goes in the
+      `DataCell`, `field` is the raw `ft.TextField`
+      `get_input_values()` reads `.value` from. Applied to the `"input"`/
+      `"textarea"` cell types only (not `select`/`option`/`datepicker` -
+      not reported, and `Dropdown`'s own intrinsic-height behavior may or
+      may not have the identical issue). Verified live: Qty Issue/
+      Remarks cells now render with the fill spanning the complete cell
+      edge-to-edge, text starting right at the top-left corner.
+    - **`collapsed=True` alone still left a visible bordered box**
+      (same-day follow-up, user-reported on `stock_out/item_new/2`):
+      Flet's `collapsed` property does not appear to map to Flutter's
+      dedicated `InputDecoration.collapsed()` factory constructor (which
+      forces `border: InputBorder.none`) - it behaves more like a bare
+      `isCollapsed` flag on an otherwise-regular decoration, so
+      `FormFieldControl.border`'s own default (`OUTLINE`) was still being
+      drawn as a small bordered pill inside the wrapping `Container`.
+      `_build_flush_textfield()` now sets `border=ft.InputBorder.NONE`,
+      `filled=False`, and `content_padding=ft.Padding.all(0)` explicitly
+      alongside `collapsed=True`, rather than relying on `collapsed` to
+      imply them - the lesson being that `collapsed`'s exact Flutter
+      mapping in this Flet version isn't trustworthy enough to lean on
+      alone; pair it with explicit suppression of every decoration
+      property. Verified live in a fresh tab: no border, no padding,
+      fill genuinely flush edge-to-edge.
   - **Select filtering uses Flutter's native `enable_filter`, not a
     server-driven cap** (issue #26, 2026-07-17 — final design, after three
     failed attempts at a hard "cap to 5 + show more" list). Both `SelectForm`

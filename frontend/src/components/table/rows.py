@@ -336,19 +336,14 @@ class TableRows:
         has_value = raw_value not in (None, "")
 
         if field_type == "textarea":
-            control = ft.TextField(
+            return self._build_flush_textfield(
                 value=str(raw_value) if has_value else "",
                 hint_text=field.get("hint_text", ""),
                 multiline=True,
                 min_lines=field.get("min_lines", 2),
                 max_lines=field.get("max_lines", 4),
-                dense=True,
-                content_padding=ft.Padding.symmetric(horizontal=8, vertical=4),
                 width=width,
-                color=ft.Colors.ON_SURFACE,
-                border_color=ft.Colors.OUTLINE_VARIANT,
             )
-            return control, control
 
         if field_type == "checkbox":
             value = (
@@ -384,6 +379,11 @@ class TableRows:
                 else self._get_select_options(field, name)
             )
             enable_filter = field.get("enable_filter", True)
+            # No wrapping Container needed here (unlike the earlier
+            # background-swap design, issue #53) - the fill is now constant,
+            # so `ft.Dropdown` can carry its own `fill_color` directly. No
+            # border and no padding, same "seamless with the table grid"
+            # reasoning as every other editable cell type here.
             control = ft.Dropdown(
                 options=[
                     ft.DropdownOption(
@@ -395,12 +395,15 @@ class TableRows:
                 value=str(raw_value) if has_value else None,
                 hint_text=field.get("hint_text", ""),
                 dense=True,
+                content_padding=ft.Padding.all(0),
                 enable_filter=enable_filter,
                 editable=field.get("editable", True) if enable_filter else False,
                 menu_height=_MENU_VISIBLE_ROWS * _MENU_ROW_HEIGHT,
                 width=width,
                 color=ft.Colors.ON_SURFACE,
-                border_color=ft.Colors.OUTLINE_VARIANT,
+                border=ft.InputBorder.NONE,
+                filled=True,
+                fill_color=ft.Colors.SURFACE_CONTAINER_HIGHEST,
             )
             return control, control
 
@@ -411,22 +414,87 @@ class TableRows:
                 control.width = width
             if has_value:
                 date_form.set_value(str(raw_value))
+            # DateForm.build() applies the standalone-form styling (M3
+            # active indicator border, padding) - override it here for the
+            # same borderless/paddingless/constant-fill table-cell look as
+            # every other editable cell type, since a table cell always has
+            # the grid's own borders to lean on instead.
+            control.border = ft.InputBorder.NONE
+            control.content_padding = ft.Padding.all(0)
+            control.bgcolor = ft.Colors.SURFACE_CONTAINER_HIGHEST
+            control.color = ft.Colors.ON_SURFACE
             # get_input_values() needs get_value() (raw ISO), not the
             # displayed "dd Mon yyyy" text - hand back the DateForm itself.
             return control, date_form
 
         # Default: "input" - a single-line text field.
-        control = ft.TextField(
+        return self._build_flush_textfield(
             value=str(raw_value) if has_value else "",
             hint_text=field.get("hint_text", ""),
             keyboard_type=field.get("keyboard_type"),
-            dense=True,
-            content_padding=ft.Padding.symmetric(horizontal=8, vertical=4),
             width=width,
-            color=ft.Colors.ON_SURFACE,
-            border_color=ft.Colors.OUTLINE_VARIANT,
         )
-        return control, control
+
+    @staticmethod
+    def _build_flush_textfield(
+        value: str,
+        hint_text: str,
+        width,
+        multiline: bool = False,
+        min_lines: int | None = None,
+        max_lines: int | None = None,
+        keyboard_type=None,
+    ):
+        """A single-/multi-line TextField that fills its cell edge-to-edge,
+        with the M3 fill color as the ONLY visible thing (issue #53
+        follow-up: `content_padding=Padding.all(0)` alone still left a
+        visible gap top/bottom/left, because Flutter's `InputDecorator`
+        reserves its own intrinsic minimum height/inset for a *filled*
+        decoration regardless of content_padding - `filled`/`bgcolor` on
+        the TextField itself always renders a shorter, inset pill rather
+        than filling the full cell.
+
+        The fix is the standard Flutter escape hatch for a truly
+        chrome-free field: `collapsed=True` (maps to Flutter's
+        `InputDecoration.collapsed`, which drops the decoration entirely -
+        no fill, no minimum height, sized tightly to the text) with the
+        actual M3 fill color moved onto a plain wrapping `ft.Container`
+        instead, which - unlike the InputDecorator - genuinely does fill
+        its exact given bounds.
+
+        Returns `(wrapper, field)` - `wrapper` is what goes in the
+        `DataCell`; `field` is the raw `ft.TextField` `get_input_values()`
+        reads `.value` from.
+        """
+        field = ft.TextField(
+            value=value,
+            hint_text=hint_text,
+            keyboard_type=keyboard_type,
+            multiline=multiline,
+            min_lines=min_lines,
+            max_lines=max_lines,
+            color=ft.Colors.ON_SURFACE,
+            # `collapsed=True` alone left a visible bordered box - Flet's
+            # `collapsed` doesn't appear to map to Flutter's dedicated
+            # `InputDecoration.collapsed()` factory (which forces
+            # `border: InputBorder.none`), just an `isCollapsed` flag on an
+            # otherwise-regular decoration - so `FormFieldControl.border`'s
+            # own default (OUTLINE) was still being drawn. Every
+            # decoration-suppressing property is now set explicitly rather
+            # than relying on `collapsed` to imply them.
+            collapsed=True,
+            border=ft.InputBorder.NONE,
+            filled=False,
+            content_padding=ft.Padding.all(0),
+            expand=True,
+        )
+        wrapper = ft.Container(
+            content=field,
+            bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
+            padding=0,
+            width=width,
+        )
+        return wrapper, field
 
     def _on_radio_click(self, field_name: str, row_index: int) -> None:
         """Exclusivity handler for a `"radio"`-type cell (issue #45).
