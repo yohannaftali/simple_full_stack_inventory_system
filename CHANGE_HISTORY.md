@@ -1533,3 +1533,33 @@
 - Scope: frontend (components/table/rows.py::_build_flush_textfield())
 - Labels: bug, frontend
 - Follow-up on #53: user reported padding/border still visible in table input cells after the collapsed=True fix, despite a fresh-tab verification showing it flush. Filed as a deprioritized/pending bug rather than continuing to chase live, since the discrepancy between "verified flush" and "still shows padding" needs a clean repro first.
+
+## [2026-07-28] — feat(frontend): bring List to feature parity with Table
+- Issue #55 created on GitHub
+- Scope: frontend (components/list/)
+- Labels: enhancement, frontend
+- Proposal: add a lazy-load/pagination-mode footer toggle (porting #30), per-field search and sortable fields via an expandable filter panel (since List's card layout has no column header row to hang Table's per-column filter/sort icons on), all wired against the existing table_query.py backend contract with zero backend changes.
+
+## [2026-07-28] — feat(frontend): List component reaches feature parity with Table (#55)
+- Issue #55 implemented on GitHub
+- Files: frontend/src/components/list/{list,filter,toolbar}.py (new: filter.py)
+- No backend changes - every wire-format addition reuses the existing table_query.py contract Table already speaks.
+- List gained a pagination-mode toggle footer by directly reusing components/table/footer.py's TableFooter unmodified - it only ever reads parent.total_rows/total_pages/page_number/limit/data and calls three parent._handle_footer_* callbacks, and List already carries the exact same attribute names, so no fork was needed. List.load() now patches the footer's own slot in place after every fetch (tracked via a new self._footer_index recorded at build() time), matching Table's own load() fix for the same staleness issue.
+- List gained per-field search + single-field sort via a new components/list/filter.py::ListFilter - an expandable panel (not a per-column header row, since List's card layout has no columns), toggled from a new ListToolbar.add_filter_button. Opt-in via "filter"/"sort" on a field (the reverse of Table's opt-out-by-default, since List's fields are already a curated positional subset). Wire format matches Table exactly: {field}-filter=value and sort-fields[0][{field}]={ASC|DESC} (single active sort field, a deliberate scope reduction from Table's multi-column sort).
+- List's _handle_scroll_end now guards on footer.mode != MODE_LAZY, same as Table's own guard, so lazy-load infinite-scroll stops firing once toggled to pagination mode. get_data()'s empty-response handling also brought in line with Table's (a genuinely empty result set is valid, not an "unexpected response format").
+- Verified live: temporarily swapped master_location/index.py from Table to List (fields marked filter+sort) to exercise the feature end-to-end against a real granted module/backend endpoint, then reverted it back to Table afterward - master_location itself is unchanged in the final diff. Confirmed via server logs and screenshots: filter panel toggle, per-field search (code-filter=A1 correctly returned 1 of 2 records, footer updated to "Record 1-1 of 1"), sort-fields[0][name]=ASC/DESC both applied correctly with visible reordering, footer "Record X of Y" message updates live on every filter/sort change.
+
+## [2026-07-28] — feat(frontend): stock_in/index adopted as List's first real consumer
+- User-requested: convert stock_in's header list screen from Table to List as a live showcase of issue #55's new List capabilities.
+- Files: frontend/src/pages/modules/stock_in/index.py, frontend/src/components/list/{layout,tiles}.py
+- stock_in/index.py now builds a List instead of a Table: date -> leading slot, description -> title, supplier_name -> subtitle, all three marked sort+filter. Row click still navigates to stock_in/edit/<id> (List's default next_page="edit", same as Table's default edit_screen).
+- Found and fixed a real gap while wiring this up: List/Tiles never applied a field's "format" (e.g. "date") the way Table's rows.py does - a formatted field would have shown a raw ISO string instead of "27 Jul 2026". Layout now carries "format" through to each field_data entry, and Tiles applies the same _FORMATTERS dispatch (format_number/date/time/datetime from utils/formatting.py) Table already uses, before rendering a tile's value text.
+- Verified live in the browser: stock_in/index renders as a card list with correctly formatted dates, lazy-load fetched page 2 automatically on scroll, the filter panel shows Date/Description/Supplier fields plus a working Sort by control, and clicking a record correctly navigates to stock_in/edit/<id> with the full header+items screen loading normally.
+
+## [2026-07-28] — feat(frontend): List filter panel gains Table-style icons + multi-column sort (#55 follow-up)
+- User-requested: ListFilter's per-field TextFields should get the same leading filter icon / trailing clear icon as Table's per-column filter row, and each field should get its own sort-toggle button (none -> ASC -> DESC -> none) beside its filter input, enabling multi-column sort just like Table, replacing the earlier single "Sort by" dropdown + one direction toggle design.
+- Files: frontend/src/components/list/filter.py (rewritten)
+- Each filterable field's TextField now has prefix_icon=FILTER_ALT and a trailing IconButton(CLEAR) that clears just that field, identical to TableFilter._build_field()'s own icon pair (including suffix_icon_size_constraints to avoid Flutter's default oversized tap target).
+- Each sortable field gets its own ft.IconButton beside its filter field, cycling none/UNFOLD_MORE -> ASC/ARROW_UPWARD -> DESC/ARROW_DOWNWARD -> none, same icon set and color pairing (ON_SURFACE_VARIANT unsorted, PRIMARY active) as TableColumns._build_sort_icon(). ListFilter.sort_order is now a real ordered [(field_name, direction)] list, same shape as TableColumns.sort_order, and clicking a different field while one is already active appends it as an additional sort key rather than replacing - true multi-column sort, same as Table, no modifier key.
+- serialize() now emits sort-fields[{index}][{field}]={direction} for every entry in priority order (was hardcoded index 0 for a single field).
+- Verified live: clicking Description's sort button then Date's sort button sent sort-fields[0][description]=ASC&sort-fields[1][date]=ASC in that exact priority order, confirmed via server logs; icons visibly updated (neutral unfold icon -> blue up-arrow) on click.

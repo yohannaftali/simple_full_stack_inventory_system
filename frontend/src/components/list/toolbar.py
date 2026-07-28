@@ -95,3 +95,14 @@ class ListToolbar:
             tooltip=tooltip,
             icon_color=icon_color
         )
+
+    def add_filter_button(self, callback, icon=ft.Icons.FILTER_LIST, tooltip="Toggle Filters", icon_color=None):
+        """Add the per-field search/sort panel toggle button (issue #55),
+        same shape as TableToolbar.add_filter_button (issue #10/#20)."""
+        self.add_button(
+            position="left",
+            callback=callback,
+            icon=icon,
+            tooltip=tooltip,
+            icon_color=icon_color
+        )

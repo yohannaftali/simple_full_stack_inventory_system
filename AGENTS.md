@@ -74,6 +74,7 @@
 | #52 | feat(frontend): scan barcode/QR into Material and Location pickers on stock item screens | ready-for-review | 2026-07-27 |
 | #53 | feat(frontend): borderless filled inputs with focus-color swap (PRIMARY_CONTAINER / TERTIARY_CONTAINER) | done | 2026-07-28 |
 | #54 | fix(frontend): table editable input/textarea cells still not fully flush (padding/border remnant) | open (pending) | 2026-07-28 |
+| #55 | feat(frontend): bring List component to parity with Table (lazy-load pagination toggle, per-field search, sortable) - no backend changes | ready-for-review | 2026-07-28 |
 
 ## Big Picture
 
@@ -3414,6 +3415,94 @@ managed via `pyproject.toml` (uv/Poetry).
     itself (it's a different Flet control type with no `Button`
     equivalent), so these numbers are duplicated by hand here — keep them
     in sync with `Button`'s `size=32, radius=16` if that ever changes.
+
+- **`components/list/` reaches feature parity with `components/table/`**
+  (issue #55, 2026-07-28), reusing the exact same backend contract with
+  **no backend changes** — `List` is a card/tile view (`ft.ListTile` per
+  record, positional `leading`/`title`/`subtitle`/`trailing` fields via
+  `Layout`), unlike `Table`'s columnar `DataTable`, so it needed its own
+  UI affordances rather than a literal port of `Table`'s header-row
+  mechanics:
+  - **Pagination-mode footer**: `List` directly reuses
+    `components/table/footer.py::TableFooter` **unmodified** — it never
+    references anything Table-specific, only duck-types on
+    `parent.total_rows`/`total_pages`/`page_number`/`limit`/`data` plus
+    three `parent._handle_footer_{mode,page,limit}_change` callbacks, and
+    `List` already carried the exact same attribute names before this
+    issue, so importing `TableFooter` straight into `list.py` needed zero
+    forking. `List.load()` now patches the footer's own slot in the
+    control tree after every fetch (`self._footer_index`, recorded once
+    at `build()` time), same fix `Table.load()` already applies for the
+    identical "Record X of Y goes stale after a filter/sort/page change"
+    staleness bug. `_handle_scroll_end` gained the same `footer.mode !=
+    MODE_LAZY` guard `Table`'s own scroll handler has, so lazy-load only
+    fires in lazy mode.
+  - **Per-field search + real multi-column sort**: `components/list/filter.py::ListFilter`
+    is a new expandable panel (not a per-column header row — a card has
+    no columns to hang one on), toggled via a new
+    `ListToolbar.add_filter_button` (mirroring `TableToolbar`'s own).
+    Opt-in via `"filter": True` / `"sort": True` on a field — the
+    **reverse** of `TableFilter`'s opt-out-by-default — because `List`'s
+    `fields` are already a curated subset picked for specific card slots,
+    not a fixed column set the user always sees in full the way `Table`'s
+    are. Each filterable field's `TextField` gets the exact same
+    `prefix_icon=FILTER_ALT` / trailing `IconButton(CLEAR)` pair
+    `TableFilter._build_field()` uses (including
+    `suffix_icon_size_constraints`, same oversized-tap-target fix). Each
+    sortable field gets its **own** `ft.IconButton` beside its filter
+    field (same-day follow-up, superseding this section's original
+    single "Sort by" dropdown + one shared direction-toggle design),
+    cycling none/`UNFOLD_MORE` → ASC/`ARROW_UPWARD` → DESC/`ARROW_DOWNWARD`
+    → none — same icon set, colors (`ON_SURFACE_VARIANT` unsorted,
+    `PRIMARY` active), and cycling logic as
+    `TableColumns._build_sort_icon()`/`_on_header_click()`.
+    `ListFilter.sort_order` is a real ordered `[(field_name, direction)]`
+    list, same shape as `TableColumns.sort_order` — clicking a different
+    field while one is already active appends it as an additional sort
+    key rather than replacing it, **true multi-column sort, same as
+    Table**, no modifier key needed. Wire format matches `Table` exactly
+    so the backend needs no changes: `&{field}-filter=value` (same as
+    `TableFilter.serialize()`) and
+    `&sort-fields[{index}][{field}]={ASC|DESC}` per active sort column in
+    priority order (same as `TableColumns.serialize_sort()`). Hiding the
+    panel clears every filter/sort and re-fetches, same "don't leave
+    something silently applied server-side" rule `TableFilter.toggle()`
+    already follows. Verified live: clicking Description's then Date's
+    sort button on `stock_in/index` sent
+    `sort-fields[0][description]=ASC&sort-fields[1][date]=ASC` in that
+    exact priority order (confirmed via server logs), with each button's
+    icon visibly updating from the neutral unfold icon to a blue
+    up-arrow on click.
+  - Verified live by temporarily swapping `master_location/index.py`
+    from `Table` to `List` (with `code`/`name` marked
+    `filter`+`sort`) to exercise the feature against a real granted
+    module and its already-generic `table_query.py`-backed endpoint —
+    filter panel toggle, per-field search (`code-filter=A1` correctly
+    narrowed 2 records to 1, footer updated to "Record 1-1 of 1"), and
+    both sort directions (`sort-fields[0][name]=ASC`/`DESC`, confirmed
+    via server logs and visible row reordering) all worked correctly.
+    `master_location/index.py` was reverted back to `Table` immediately
+    after — it was purely a verification vehicle, not `List`'s real
+    first consumer (see below).
+  - **`stock_in/index` is `List`'s real first consumer** (same-day
+    follow-up, user-requested): `pages/modules/stock_in/index.py` now
+    builds a `List` instead of a `Table` — `date` in the `leading` slot,
+    `description` as the tile `title`, `supplier_name` as the
+    `subtitle`, all three marked `"sort": True, "filter": True`. Row
+    click still lands on `stock_in/edit/<id>` (`List`'s default
+    `next_page="edit"`, same default `Table` uses for `edit_screen`).
+    Wiring this up surfaced a real, previously-latent gap: `List`/`Tiles`
+    never applied a field's `"format"` (e.g. `"date"`) the way
+    `Table`'s `rows.py` does, so a formatted field rendered as a raw
+    ISO string instead of `"27 Jul 2026"`. Fixed by threading `"format"`
+    through `Layout`'s per-field `field_data` dict and applying the same
+    `_FORMATTERS` dispatch (`format_number`/`date`/`time`/`datetime`
+    from `utils/formatting.py`) `Table`'s own cells already use, in
+    `Tiles.load()` before building each tile's value `ft.Text`. Verified
+    live: dates render formatted, lazy-load fetched page 2 automatically
+    on scroll, the filter panel shows all three fields plus a working
+    sort control, and clicking a record correctly opens the full
+    header+items edit screen.
 
 - **Repositories / state & persistence** (`src/repository/`): each repo
   wraps `page.data` (in-memory cache) plus an optional persistence `store`.

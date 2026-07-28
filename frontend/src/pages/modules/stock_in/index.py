@@ -1,7 +1,7 @@
 import flet as ft
 
 from components.module.view import ModuleView
-from components.table.table import Table
+from components.list.list import List
 
 
 class ModulePage:
@@ -19,25 +19,29 @@ class ModulePage:
             },
             {
                 "name": "date", "label": "Date",
-                "type": "label", "format": "date", "sort": True
+                "type": "label", "format": "date", "sort": True, "filter": True,
+                "position": "leading", "row": 0
             },
             {
                 "name": "description", "label": "Description",
-                "type": "label", "sort": True
+                "type": "label", "sort": True, "filter": True,
+                "position": "title", "row": 0
             },
             {
                 "name": "supplier_name", "label": "Supplier",
-                "type": "label", "sort": True
+                "type": "label", "sort": True, "filter": True,
+                "position": "subtitle", "row": 0
             }
         ]
 
         self.view = ModuleView(page, module, screen)
 
-        self.table = Table(
+        self.table = List(
             page=page,
             parent=self,
             name="detail",
-            fields=self.fields
+            fields=self.fields,
+            leading={"width": 90}
         )
 
         self.table.toolbar.add_new_button(callback=self.callback_add_new)

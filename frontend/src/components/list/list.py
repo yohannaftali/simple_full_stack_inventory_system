@@ -1,10 +1,12 @@
 import flet as ft
 
 from components.list.body import Body
+from components.list.filter import ListFilter
 from components.list.layout import Layout
 from components.list.search_bar import ListSearchBar
 from components.list.tiles import Tiles
 from components.list.toolbar import ListToolbar
+from components.table.footer import MODE_LAZY, TableFooter
 from repository.storage import Storage
 from utils.http_client import HttpClient
 
@@ -79,8 +81,29 @@ class List:
             page=page, parent=self, controls=[self.list_search_bar.build()]
         )
 
+        # Per-field search + single-field sort (issue #55) - opt-in via
+        # "filter"/"sort" on a field, same wire format Table's own
+        # TableFilter/TableColumns produce, so the shared backend needs no
+        # changes. Toggle button only added if at least one field opts in,
+        # same convention as Table's own filter-row button.
+        self.filter_row = ListFilter(
+            page=page, parent=self, fields=fields, on_apply=self._handle_filter_apply
+        )
+        if self.filter_row.has_filters() and self.toolbar is not None:
+            self.toolbar.add_filter_button(callback=self._toggle_filter_row)
+
         self.body: Body | None = None
         self.is_loading_more = False
+
+        # Pagination-mode toggle footer (issue #55, porting #30) - reuses
+        # Table's own TableFooter unmodified: it only ever reads
+        # `parent.total_rows`/`total_pages`/`page_number`/`limit`/`data`
+        # and calls three `parent._handle_footer_*` callbacks, and `List`
+        # already carries the exact same attribute names, so no fork was
+        # needed. Not built for `is_inside_form` lists, same reasoning as
+        # Table's own footer (no real dataset to page through there).
+        self.footer: TableFooter | None = None if is_inside_form else TableFooter(page, parent=self)
+        self._footer_index: int | None = None
 
         self.list_container: ft.Container | None = None
         self.data: list = []
@@ -99,17 +122,30 @@ class List:
             on_scroll_end=self._handle_scroll_end,
         )
 
-        # Build controls list, filtering out None values
+        # Build controls list, filtering out None values. `_footer_index`
+        # is recorded so `load()` can patch the footer's own slot in place
+        # after every fetch (issue #55) - without this the "Record X of Y"
+        # message and page buttons go stale after a filter/sort/page
+        # change, same fix Table's own `load()` already applies to its
+        # footer.
         controls = []
         if self.toolbar:
             toolbar_control = self.toolbar.build()
             if toolbar_control:
                 controls.append(toolbar_control)
 
+        if self.filter_row.has_filters():
+            controls.append(self.filter_row.build())
+
         if self.body:
             body_control = self.body.build()
             if body_control:
                 controls.append(body_control)
+
+        self._footer_index = None
+        if self.footer is not None:
+            self._footer_index = len(controls)
+            controls.append(self.footer.build())
 
         self.list_container = ft.Container(
             content=ft.Column(
@@ -132,42 +168,69 @@ class List:
         return self.list_container
 
     def _handle_scroll_end(self):
-        """Handle scroll to bottom - load next page"""
-        print(
-            f"Scroll end handler called - page: {self.page_number}/{self.total_pages}, loading: {self.is_loading_more}"
-        )
+        """Handle scroll to bottom - load next page.
 
-        if self.is_loading_more or self.page_number >= self.total_pages:
-            print("Skipping load - already loading or last page reached")
+        Only fires in lazy-load mode (issue #55, same guard as Table's own
+        `_handle_scroll_end`) - once toggled to pagination mode, paging
+        happens only via the footer's own buttons.
+        """
+        if self.footer is not None and self.footer.mode != MODE_LAZY:
             return
 
-        print(f"Loading page {self.page_number + 1}...")
+        if self.is_loading_more or self.page_number >= self.total_pages:
+            return
+
         self.is_loading_more = True
         self.page_number += 1
         self.get_data(page_no=self.page_number, append=True)
         self.is_loading_more = False
 
     def get_data(self, page_no: int = 1, offset: int = 0, append: bool = False):
-        self.data = []
+        if not append:
+            self.data = []
         client = HttpClient(self.page)
         param = f"table-keyword-filter={self.filter}" if self.filter else ""
         param = param + f"&limit={self.limit}&page={page_no}&offset={offset}"
+        param = param + self.filter_row.serialize()
         response = client.get(f"{self.endpoint}?{param}" if param else self.endpoint)
         if isinstance(response, dict) and "error" in response:
             print(f"Error fetching data: {response.get('error')}")
             self.parent.view.show_error(f"Failed to load data: {response.get('error')}")
             return
 
-        if isinstance(response, list) and len(response) > 0:
-            # Extract pagination metadata from first row
-            first_row = response[0]
-            self.total_pages = first_row.get("db_total_page", 1)
-            self.total_rows = first_row.get("db_num_rows", len(response))
+        if isinstance(response, list):
+            if response:
+                first_row = response[0]
+                self.total_pages = first_row.get("db_total_page", 1)
+                self.total_rows = first_row.get("db_num_rows", len(response))
+            else:
+                self.total_pages = 1
+                self.total_rows = 0
 
-            self.data = response
+            self.data = self.data + response if append else response
             self.load(response, append=append)
         else:
             print(f"Unexpected response format: {response}")
+
+    def _toggle_filter_row(self, e=None) -> None:
+        self.filter_row.toggle()
+
+    def _handle_filter_apply(self) -> None:
+        self.page_number = 1
+        self.get_data()
+
+    def _handle_footer_mode_change(self, mode) -> None:
+        self.page_number = 1
+        self.get_data(1, 0, False)
+
+    def _handle_footer_page_change(self, page_no: int) -> None:
+        self.page_number = page_no
+        self.get_data(page_no, offset=(page_no - 1) * self.limit, append=False)
+
+    def _handle_footer_limit_change(self, new_limit: int) -> None:
+        self.limit = new_limit
+        self.page_number = 1
+        self.get_data(1, 0, False)
 
     def load(self, data: list, append: bool = False) -> None:
         # Load tiles (append if loading more pages)
@@ -189,6 +252,23 @@ class List:
             if not self.is_inside_form:
                 # Body exists but list_view not ready, just hide loading
                 self.body.hide_loading()
+
+        # Refresh the footer's own slot in place (issue #55) - otherwise
+        # "Record X of Y" and the page buttons go stale after a
+        # filter/sort/page change, same fix Table's own `load()` applies.
+        if (
+            self.footer is not None
+            and self._footer_index is not None
+            and self.list_container is not None
+        ):
+            new_footer = self.footer.build()
+            col = self.list_container.content
+            if isinstance(col, ft.Column) and len(col.controls) > self._footer_index:
+                col.controls[self._footer_index] = new_footer
+                try:
+                    col.update()
+                except RuntimeError:
+                    pass
 
     def on_filter_change(self, search_text):
         """Handle search input change from table search bar"""

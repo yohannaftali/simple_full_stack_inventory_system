@@ -1,6 +1,18 @@
 import flet as ft
 
 from components.list.layout import Layout
+from utils.formatting import format_date, format_datetime, format_number, format_time
+
+# Same "format" dispatch as components/table/rows.py's own _FORMATTERS -
+# a "date"/"time"/"datetime"/"number" field value arrives over the wire as a
+# raw string (e.g. an ISO date), so a List tile needs the same formatting
+# a Table cell already gets, or dates/numbers render unformatted.
+_FORMATTERS = {
+    "number": format_number,
+    "date": format_date,
+    "time": format_time,
+    "datetime": format_datetime,
+}
 
 
 class Tiles:
@@ -61,13 +73,15 @@ class Tiles:
                         col = field_data.get("col")
                         label = field_data.get("label")
                         value = record.get(name, "")
+                        formatter = _FORMATTERS.get(field_data.get("format"))
+                        display_value = formatter(value) if formatter and value not in (None, "") else value
 
                         # Build controls list, filtering out None
                         controls_list = []
                         if label is not None:
                             controls_list.append(label)
                         controls_list.append(
-                            ft.Text(str(value), overflow=ft.TextOverflow.ELLIPSIS)
+                            ft.Text(str(display_value), overflow=ft.TextOverflow.ELLIPSIS)
                         )
 
                         # Wrap text in container with fixed width if available

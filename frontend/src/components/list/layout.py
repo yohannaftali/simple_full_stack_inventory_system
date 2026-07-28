@@ -73,7 +73,8 @@ class Layout:
             field_data = {
                 "name": field_name,
                 "label": field_content,
-                "col": field.get("col")
+                "col": field.get("col"),
+                "format": field.get("format")
             }
             self.layout[field_position][field_row].append(
                 field_data
