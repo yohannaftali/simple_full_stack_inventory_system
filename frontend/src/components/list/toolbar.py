@@ -25,13 +25,20 @@ class ListToolbar:
 
     def build(self):
         """Build and return the toolbar component"""
-        if self.left is None and self.right is None and not self.controls:
+        # Same hook as TableToolbar.build() - a List with an export_menu
+        # (issue #56, suppressed for is_inside_form lists) gets the download
+        # hamburger for free at the far right, no per-screen wiring needed.
+        right = list(self.right) if self.right else []
+        if hasattr(self.parent, "export_menu") and self.parent.export_menu:
+            right.append(self.parent.export_menu.build())
+
+        if self.left is None and not right and not self.controls:
             return ft.Container()
-        
+
         # Filter out None values from controls
         safe_controls = [c for c in self.controls if c is not None]
         safe_left = [c for c in self.left if c is not None] if self.left else None
-        safe_right = [c for c in self.right if c is not None] if self.right else None
+        safe_right = [c for c in right if c is not None] if right else None
 
         return ft.Container(
             content=ft.Row(

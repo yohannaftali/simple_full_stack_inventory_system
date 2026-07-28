@@ -75,7 +75,7 @@
 | #53 | feat(frontend): borderless filled inputs with focus-color swap (PRIMARY_CONTAINER / TERTIARY_CONTAINER) | done | 2026-07-28 |
 | #54 | fix(frontend): table editable input/textarea cells still not fully flush (padding/border remnant) | open (pending) | 2026-07-28 |
 | #55 | feat(frontend): bring List component to parity with Table (lazy-load pagination toggle, per-field search, sortable) - no backend changes | ready-for-review | 2026-07-28 |
-| #56 | feat(frontend): List gains Table download menu, full-width search bar, and Table/List view toggle | open | 2026-07-28 |
+| #56 | feat(frontend): List gains Table download menu, full-width search bar, and Table/List view toggle | ready-for-review | 2026-07-28 |
 | #57 | feat(frontend): replace Table row borders with position-based zebra striping | open | 2026-07-28 |
 | #58 | fix(frontend): TOTP QR generation fails - PyPNG library not installed | closed | 2026-07-28 |
 | #59 | fix(frontend): TOTP copy-secret button fails - Page.set_clipboard removed in Flet 0.85 | closed | 2026-07-28 |
@@ -3507,6 +3507,76 @@ managed via `pyproject.toml` (uv/Poetry).
     on scroll, the filter panel shows all three fields plus a working
     sort control, and clicking a record correctly opens the full
     header+items edit screen.
+  - **Download menu, full-width search bar, Table/List view toggle**
+    (issue #56, 2026-07-28): closed the three remaining gaps between
+    `List` and `Table`.
+    - **Download menu**: `components/list/menu.py::ListMenu` - the same 6
+      formats as `TableMenu`, against the same already-generic
+      `GET C_{module}/export_{name}` endpoint / `/download/{module}/{name}`
+      proxy, no backend changes. Not a literal reuse of `TableMenu` - that
+      class builds its query string from `table.columns.serialize_sort()`/
+      `table.custom_param`, neither of which `List` has; `ListMenu` instead
+      reads `parent.filter`/`parent.filter_row.serialize()` (issue #55's
+      own `ListFilter`, which already emits the same `sort-fields[...]`/
+      `{field}-filter` wire format). Upload is deliberately out of scope -
+      `List`'s tiles are read-only labels, no editable-cell field types
+      the way `Table` rows can have. `List.__init__` builds
+      `self.export_menu` (suppressed for `is_inside_form` lists, same as
+      `TableMenu`); `ListToolbar.build()` gained the same
+      `hasattr(self.parent, "export_menu")` hook `TableToolbar.build()`
+      already has, appending it to the toolbar's right side.
+    - **Full-width search bar**: `components/list/search_bar.py::ListSearchBar`
+      rebuilt on a plain `ft.TextField`, mirroring the exact fix
+      `components/table/search_bar.py::TableSearchBar` already received
+      under issue #19 - Flutter's own `ft.SearchBar` is a rigid ~56dp
+      Material widget that doesn't genuinely expand to fill a toolbar row.
+    - **Table/List view toggle**: new `components/module/view_toggle.py::ViewToggle` -
+      a screen passes it the SAME `fields` list it would pass to either
+      `List` or `Table` directly (each component only reads the keys it
+      understands - `List` reads `"position"`, `Table` ignores it;
+      `Table` reads `"col"`, `List` ignores it - so one field list already
+      works unmodified for both, confirmed by wiring `stock_in/index.py`'s
+      existing List-only fields straight into `Table` with no changes
+      needed). Only the initially active view (`mode=MODE_LIST` by
+      default) is constructed up front - the other is built lazily on
+      first switch, so toggling never causes a doubled initial fetch
+      (both `List`/`Table` call `get_data()` from `__init__` when not
+      `is_inside_form`). The toggle button and any `add_new_button` call
+      are wired onto a view's toolbar only the FIRST time that view is
+      built (a `newly_built` guard in `_build_active()`) - a real bug hit
+      during live verification: without this guard, toggling back to an
+      already-built view re-appended both buttons to that view's own
+      already-live toolbar every time, since only `List`/`Table.build()`
+      runs again on a re-render, never `__init__` - visibly produced two
+      "+" buttons and two toggle icons after one round trip. Fixed by only
+      calling `_apply_toggle_button()`/`_apply_new_button()` when a view
+      was actually just constructed. The toggle button itself uses a
+      constant `SWAP_HORIZ` icon/tooltip rather than "switch to X" -
+      `Table`/`ListToolbar.add_button()` has no way to hand back the built
+      control for a later icon mutation, and a neutral icon reads
+      correctly on both of the (up to two) buttons regardless of which is
+      currently visible, without needing extra bookkeeping.
+      **State carried across a switch**: free-text search only - both
+      components persist it through the same `storage.table_search` key
+      (`module`, `screen`, `name`), and `ViewToggle` always constructs
+      both with the same `name`. **State NOT carried across a switch**
+      (explicit, documented scope limit per the issue's own acceptance
+      criteria): sort order and pagination position - each component's
+      `sort_order`/`page_number` is per-instance state with no shared
+      persistence layer the way search text has; switching views always
+      resets to page 1 with whatever sort the freshly-built component
+      starts with (none). Wired onto `stock_in/index.py` (the same screen
+      that became `List`'s first real consumer under issue #55) via
+      `self.toggle = ViewToggle(...)` replacing the old direct
+      `self.table = List(...)`; `body()` now returns `self.toggle.build()`.
+      Verified live: toggling List -> Table -> List renders the same 30
+      rows in both views with no duplicate toolbar buttons after the fix
+      above; the download menu on the List view produced a real file (confirmed
+      via `podman logs sfsis-frontend` showing
+      `GET /download/stock_in/detail?format=csv&client_id=...` ->
+      `200 OK` and the matching backend `GET /C_stock_in/export_detail?format=csv`
+      -> `200 OK`); the search bar visibly fills its toolbar row width on
+      both List and Table.
 
 - **Repositories / state & persistence** (`src/repository/`): each repo
   wraps `page.data` (in-memory cache) plus an optional persistence `store`.

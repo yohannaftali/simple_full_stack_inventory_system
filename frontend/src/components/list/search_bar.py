@@ -4,7 +4,13 @@ from repository.storage import Storage
 
 
 class ListSearchBar:
-    """List search bar component"""
+    """List search bar component, rebuilt on a plain `ft.TextField` (issue
+    #56) - the same fix `components/table/search_bar.py::TableSearchBar`
+    already received under issue #19, for the same reason: Flutter's own
+    `ft.SearchBar` is a rigid ~56dp Material widget that doesn't genuinely
+    fill/expand to its container's width the way a plain `TextField` does,
+    which is exactly why `Table`'s own search bar was rebuilt away from it
+    and `List`'s never was until now."""
 
     def __init__(self, page: ft.Page, parent, on_filter_change=None, on_submit=None, initial_value: str = ""):
         """
@@ -20,42 +26,52 @@ class ListSearchBar:
         self.on_filter_change = on_filter_change
         self.on_submit = on_submit
 
-        # Search bar
-        # Persisted starting value
-        self.search_bar = ft.SearchBar(
-            view_elevation=4,
-            divider_color=ft.Colors.TERTIARY,
-            bar_hint_text="Search in list...",
-            view_hint_text="Choose an option from filter...",
+        clear_button = ft.IconButton(
+            icon=ft.Icons.CLEAR,
+            icon_color=ft.Colors.ON_SURFACE,
+            icon_size=14,
+            width=24,
+            height=24,
+            padding=0,
+            on_click=self.clear_search,
+            tooltip="Clear text",
+            # Matches TableSearchBar's own fix - without this, Flutter
+            # reserves its default ~48dp tap-target for the icon, pushing it
+            # past the field's true right edge (issue #19).
+            size_constraints=ft.BoxConstraints(
+                min_width=24, max_width=24, min_height=24, max_height=24
+            ),
+        )
+
+        self.search_bar = ft.TextField(
+            value=initial_value,
+            hint_text="Search in list...",
+            hint_style=ft.TextStyle(
+                color=ft.Colors.with_opacity(0.5, ft.Colors.ON_SURFACE), size=13
+            ),
+            height=32,
+            text_size=13,
+            text_vertical_align=ft.VerticalAlignment.CENTER,
             on_change=self.on_search_change,
             on_submit=self.on_submit,
-            value=initial_value,
-            bar_bgcolor=ft.Colors.SECONDARY,
-            bar_text_style=ft.TextStyle(color=ft.Colors.ON_SECONDARY, size=14),
-            bar_overlay_color=ft.Colors.PRIMARY,
-            bar_leading=ft.Icon(
-                ft.Icons.SEARCH, color=ft.Colors.ON_SECONDARY, size=14),
-            view_leading=ft.Icon(
-                ft.Icons.SEARCH, color=ft.Colors.ON_PRIMARY, size=14),
-            bar_trailing=[ft.IconButton(
-                icon=ft.Icons.CLEAR,
-                icon_color=ft.Colors.ON_SECONDARY,
-                icon_size=14,
-                on_click=self.clear_search,
-            )],
-            view_trailing=[ft.IconButton(
-                icon=ft.Icons.CLEAR,
-                icon_color=ft.Colors.ON_PRIMARY,
-                icon_size=14,
-                on_click=self.clear_search,
-            )],
+            bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
+            color=ft.Colors.ON_SURFACE,
+            border_radius=10,
+            border_color=ft.Colors.OUTLINE_VARIANT,
+            focused_border_color=ft.Colors.TERTIARY,
+            content_padding=ft.Padding.symmetric(horizontal=10, vertical=6),
+            prefix_icon=ft.Icon(ft.Icons.SEARCH, color=ft.Colors.ON_SURFACE, size=14),
+            suffix_icon=clear_button,
+            suffix_icon_size_constraints=ft.BoxConstraints(
+                min_width=24, max_width=24, min_height=24, max_height=24
+            ),
+            expand=True,
         )
 
         self.container = ft.Container(
             content=self.search_bar,
             padding=0,
-            alignment=ft.Alignment.CENTER,
-            expand=True
+            expand=True,
         )
 
     def build(self):

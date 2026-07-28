@@ -1,6 +1,16 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-28] — feat(frontend): List gains download menu, full-width search bar, and Table/List view toggle (issue #56)
+- Issue #56 implemented (status: ready-for-review)
+- New `frontend/src/components/list/menu.py::ListMenu` - download-only equivalent of `TableMenu` (6 formats, same `GET C_{module}/export_{name}` backend endpoint / `/download/{module}/{name}` proxy, no backend changes), reading `List`'s own `filter`/`filter_row.serialize()` state instead of `Table`'s `columns.serialize_sort()`/`custom_param`. Upload deliberately out of scope - `List` has no editable-cell field types
+- `List.__init__` builds `self.export_menu` (suppressed for `is_inside_form`); `ListToolbar.build()` gained the same `export_menu` hook `TableToolbar.build()` already has
+- `frontend/src/components/list/search_bar.py::ListSearchBar` rebuilt on a plain `ft.TextField`, the same fix `TableSearchBar` received under issue #19, so it genuinely fills its toolbar row width instead of staying a rigid ~56dp `ft.SearchBar`
+- New `frontend/src/components/module/view_toggle.py::ViewToggle` - lets a screen offer both `List` and `Table` renderings of the same `fields`/`name` via one toolbar button. Lazily builds the non-active view only on first switch; free-text search carries across the switch (shared `storage.table_search` key), sort/pagination position deliberately do not (documented scope limit). Wired onto `frontend/src/pages/modules/stock_in/index.py`, replacing its direct `List` construction
+- Live-verification bug found and fixed: toggling back to an already-built view re-appended the toggle/"Add New" buttons to its toolbar every time (visible as duplicate "+"/toggle icons after one round trip) - fixed with a `newly_built` guard in `ViewToggle._build_active()` so toolbar wiring happens only the first time each view is constructed
+- Verified live: List<->Table toggle renders the same 30 rows in both views with no duplicate buttons; List's download menu produced a real file (`podman logs sfsis-frontend` showed `GET /download/stock_in/detail?format=csv...` -> 200, backend `GET /C_stock_in/export_detail?format=csv` -> 200); search bar visibly fills its row width on both views
+- Files: frontend/src/components/list/{menu.py (new),list.py,toolbar.py,search_bar.py}, frontend/src/components/module/view_toggle.py (new), frontend/src/pages/modules/stock_in/index.py, AGENTS.md
+
 ## [2026-07-28] — fix(frontend): TOTP copy-secret button crashes with Page.set_clipboard error (issue #59)
 - Issue #59 implemented (status: ready-for-review)
 - Root cause: `pages/modals/totp/index.py`'s `on_copy_secret_click` called `self.page.set_clipboard(self._secret)`. Flet 0.85.3 has no such method — `Page.clipboard` is `@deprecated` and returns a `Clipboard()` `Service` instance; the real API is `await ft.Clipboard().set(value)`

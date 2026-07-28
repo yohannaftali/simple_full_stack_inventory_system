@@ -3,6 +3,7 @@ import flet as ft
 from components.list.body import Body
 from components.list.filter import ListFilter
 from components.list.layout import Layout
+from components.list.menu import ListMenu
 from components.list.search_bar import ListSearchBar
 from components.list.tiles import Tiles
 from components.list.toolbar import ListToolbar
@@ -76,6 +77,13 @@ class List:
             on_submit=self.on_submit,
             initial_value=self.filter,
         )
+
+        # Download menu (issue #56) - the List equivalent of Table's
+        # export_menu, read by ListToolbar.build() the same way
+        # TableToolbar.build() reads Table.export_menu. Not built for
+        # is_inside_form lists - no C_{module}/export_{name} endpoint exists
+        # for an entry-mode widget, same reasoning as TableMenu.
+        self.export_menu: ListMenu | None = None if is_inside_form else ListMenu(page, self)
 
         self.toolbar: ListToolbar | None = ListToolbar(
             page=page, parent=self, controls=[self.list_search_bar.build()]

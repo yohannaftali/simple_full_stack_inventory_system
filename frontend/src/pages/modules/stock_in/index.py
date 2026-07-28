@@ -1,7 +1,7 @@
 import flet as ft
 
 from components.module.view import ModuleView
-from components.list.list import List
+from components.module.view_toggle import ViewToggle
 
 
 class ModulePage:
@@ -36,21 +36,25 @@ class ModulePage:
 
         self.view = ModuleView(page, module, screen)
 
-        self.table = List(
+        # Table/List view toggle (issue #56) - the same "detail" endpoint/
+        # fields render as either a List (default) or a Table, switched via
+        # a toolbar button, with the free-text search term carried across
+        # the switch (see components/module/view_toggle.py's docstring for
+        # the full design and its documented sort/pagination scope limit).
+        self.toggle = ViewToggle(
             page=page,
             parent=self,
             name="detail",
             fields=self.fields,
-            leading={"width": 90}
+            list_kwargs={"leading": {"width": 90}},
         )
-
-        self.table.toolbar.add_new_button(callback=self.callback_add_new)
+        self.toggle.add_new_button(callback=self.callback_add_new)
 
     def build(self):
         return self.view.build(self.body(), padding=0)
 
     def body(self):
-        return self.table.build()
+        return self.toggle.build()
 
     def callback_add_new(self, e):
         self.page.run_task(self.page.push_route, f"/modules/{self.module}/new")
