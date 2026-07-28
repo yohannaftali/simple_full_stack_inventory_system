@@ -56,6 +56,46 @@ _MENU_ROW_HEIGHT = 48
 _ROW_COLOR_EVEN = ft.Colors.SURFACE
 _ROW_COLOR_ODD = ft.Colors.SURFACE_CONTAINER_LOW
 
+# Row hover state layer (issue #60, REVISED - see the dated note below).
+# `ft.DataRow.color` accepting a `ControlStateValue` dict was the first
+# attempt: its docstring claims a HOVERED entry paints as a translucent
+# overlay on top of DEFAULT, matching Flutter's own M3 DataTable state
+# layers. Live user testing after that landed showed NO visible change on
+# hover. Root cause: Flutter's actual `DataTable` row-building code only
+# ever resolves `WidgetState.selected` when calling
+# `DataRow.color.resolve(states)` - `hovered`/`focused` are never included
+# in the states set the widget builds, regardless of what the Flet
+# docstring says, so a HOVERED/FOCUSED entry in that dict is silently never
+# looked up. (This app's own resize-handle hover in `columns.py` already
+# sidesteps the same class of problem - it never relies on a `ControlState`
+# dict either, it manually swaps a Container's color on a real hover event
+# and calls `.update()`.)
+#
+# Fixed the same way: each row's DataRow.color is a flat value again, and
+# every read-only cell's wrapping Container gets `on_hover` (a real,
+# always-supported Container property - Container.on_hover's event `.data`
+# is `True` on enter/`False` on exit) that directly mutates that SPECIFIC
+# DataRow's `.color` and calls `.update()` - no dependency on Flutter's
+# uncertain WidgetState resolution for this property at all. The hover
+# color is a solid M3 surface-container tonal step (not a translucent
+# overlay) so it renders correctly regardless of what's "underneath" -
+# translucent compositing only works when Flutter is actually doing the
+# painting, which the dead ControlState path never triggered anyway.
+_ROW_HOVER_COLOR = ft.Colors.SURFACE_CONTAINER_HIGH
+
+# Per-cell hover highlight (issue #60 follow-up, 2026-07-28) - one M3 tonal
+# step brighter than _ROW_HOVER_COLOR (same ladder issue #53 already uses
+# for editable-cell fills: SURFACE < SURFACE_CONTAINER_LOW <
+# SURFACE_CONTAINER < SURFACE_CONTAINER_HIGH < SURFACE_CONTAINER_HIGHEST),
+# so the specific hovered cell reads as more prominent than the row tint
+# surrounding it, not just a flat re-paint of the same color. Applied via
+# the exact same `e.control` (the hovered cell's own Container, standard
+# Flet convention) direct-mutate-and-update() pattern as the row highlight
+# - not a second `ControlState` attempt, since that mechanism is confirmed
+# dead for DataRow.color and DataCell has no `color` property to even try
+# it on in the first place.
+_CELL_HOVER_COLOR = ft.Colors.SURFACE_CONTAINER_HIGHEST
+
 
 class _CheckboxCellValue:
     """`value_holder` for a `"checkbox"`-type editable cell (issue #44) -
@@ -183,6 +223,40 @@ class TableRows:
                 else None
             )
 
+            # Row hover (issue #60) - `row_holder[0]` is filled with the real
+            # `ft.DataRow` right after it's constructed below; every
+            # read-only cell's Container gets `on_hover` wired to this same
+            # closure, so hovering ANY cell in the row highlights the WHOLE
+            # row AND, one tonal step brighter, that SPECIFIC cell (issue
+            # #60 follow-up - `e.control` is the hovered Container itself,
+            # standard Flet convention). `base_color` is this row's own
+            # zebra parity color (computed once, right before the DataRow
+            # is built) - hover swaps to `_ROW_HOVER_COLOR`/
+            # `_CELL_HOVER_COLOR` and back, not a translucent overlay (see
+            # the module-level comment on `_ROW_HOVER_COLOR` for why a
+            # direct Container.on_hover swap replaced the
+            # originally-attempted, silently-inert `ControlState` dict).
+            row_holder: list = [None]
+            base_color = _ROW_COLOR_EVEN if row % 2 == 0 else _ROW_COLOR_ODD
+
+            def _on_row_hover(e, holder=row_holder, base=base_color):
+                data_row = holder[0]
+                if data_row is None:
+                    return
+                hovering = e.data if isinstance(e.data, bool) else str(e.data).lower() == "true"
+                data_row.color = _ROW_HOVER_COLOR if hovering else base
+                try:
+                    data_row.update()
+                except RuntimeError:
+                    pass
+
+                cell_container = e.control
+                cell_container.bgcolor = _CELL_HOVER_COLOR if hovering else None
+                try:
+                    cell_container.update()
+                except RuntimeError:
+                    pass
+
             cells = []
             row_inputs: dict = {}
             for i, name in enumerate(self.columns.index):
@@ -303,6 +377,18 @@ class TableRows:
                             alignment=ft.Alignment.CENTER_RIGHT if is_numeric else None,
                         )
 
+                # Row + cell hover (issue #60) - only wired on read-only
+                # cells (text/icon), each pointing at the same
+                # `_on_row_hover` closure so hovering any one cell
+                # highlights the whole row (dimmer) AND that specific cell
+                # (one tonal step brighter). Editable cells (input/select/
+                # etc.) keep their own constant fill from issue #53
+                # untouched - they already read as visually distinct from a
+                # plain cell, and this matches the issue's own
+                # "editable-cell rows unaffected" acceptance criterion.
+                if isinstance(content, ft.Container):
+                    content.on_hover = _on_row_hover
+
                 # A field-level link override (link_key_field, optionally
                 # paired with link_screen) lets this ONE cell navigate
                 # somewhere different from the row's own default
@@ -329,8 +415,9 @@ class TableRows:
 
                 cells.append(cell)
 
-            row_color = _ROW_COLOR_EVEN if row % 2 == 0 else _ROW_COLOR_ODD
-            self.rows.append(ft.DataRow(cells=cells, color=row_color))
+            data_row = ft.DataRow(cells=cells, color=base_color)
+            row_holder[0] = data_row
+            self.rows.append(data_row)
             self.index.append(row)
             self.input_controls.append(row_inputs)
             row += 1

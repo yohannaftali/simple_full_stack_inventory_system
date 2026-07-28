@@ -1,6 +1,33 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-28] — feat(frontend): per-cell hover highlight on top of row highlight (issue #60 follow-up 2)
+- User asked for the individual hovered cell to highlight too, on top of the now-working row highlight (previously scoped out of #60 as a stretch item)
+- `components/table/rows.py`: new `_CELL_HOVER_COLOR = ft.Colors.SURFACE_CONTAINER_HIGHEST` (one M3 tonal step brighter than `_ROW_HOVER_COLOR`, same ladder issue #53 already uses). `_on_row_hover` now also sets/clears `e.control.bgcolor` (the specific hovered cell's own Container, via the standard Flet `e.control` convention) alongside the existing row-color swap - same direct-mutate-and-`.update()` pattern, no new mechanism introduced
+- Verified live (dark theme, `master_location`): the hovered cell (e.g. "Code") is visibly brighter than the rest of its own row, which is in turn lighter than unhovered zebra-striped rows - three distinguishable tiers confirmed via zoomed screenshot
+- Files: frontend/src/components/table/rows.py, AGENTS.md
+
+## [2026-07-28] — fix(frontend): row hover was dead code, DataTable doesn't resolve HOVERED/FOCUSED (issue #60 follow-up)
+- User reported "still see no difference" after the first #60 landing
+- Root cause: `ft.DataRow.color`'s `ControlStateValue` dict approach (previous commit) relies on Flutter's `DataTable` resolving `WidgetState.hovered`/`.focused` when calling `color.resolve(states)` - it only ever resolves `selected`, so the `HOVERED`/`FOCUSED` entries were silently never looked up, despite Flet's docstring implying otherwise
+- Rewrote using the same proven pattern this codebase's own resize-handle hover (`components/table/columns.py`) already uses: real `Container.on_hover` events (not a `ControlState` dict) directly mutate the specific `DataRow.color` and call `.update()` - no dependency on Flutter's state-resolution behavior at all. Hover color changed from a translucent onSurface overlay to a solid `SURFACE_CONTAINER_HIGH` (M3 tonal surface step), since a direct value swap isn't layered by Flutter the way a resolved state color would be
+- Every read-only cell's Container in a row shares one `_on_row_hover` closure (via a `row_holder` list capturing the `ft.DataRow` right after construction), so hovering any cell highlights the whole row; editable cells are left unwired (their own constant fill from issue #53 is unaffected)
+- Verified live (dark theme, `master_location`): hovering a row now produces an unambiguous, solid highlight distinct from every neighboring row, confirmed via zoomed screenshot; moving the mouse away correctly reverts to the zebra base color
+- Files: frontend/src/components/table/rows.py, AGENTS.md, CHANGE_HISTORY.md
+
+## [2026-07-28] — feat(frontend): M3 row hover/focus state layer on Table (issue #60, implemented)
+- Issue #60 implemented (status: ready-for-review)
+- `components/table/rows.py`: `DataRow.color` changed from a flat per-row zebra color to a `ControlStateValue` dict (`_row_color_states()`) - `ControlState.DEFAULT` keeps the existing zebra parity color from issue #57, `HOVERED`/`FOCUSED` add translucent onSurface tints (`with_opacity(0.08/0.12, ON_SURFACE)`, matching M3's exact spec opacities) that Flutter composites on top automatically, per `DataRow.color`'s own docstring - no manual color blending needed, zebra base never replaced
+- Column-wide and per-cell highlighting deliberately not attempted (scoped out when the issue was filed - `ft.DataTable` has no per-column background property, `ft.DataCell` has no `color` property; both would need materially higher-risk new mechanisms)
+- Verified live (dark theme, `master_location`): hovering a row visibly lightened it relative to unhovered zebra-striped neighbors, confirmed via zoomed screenshot comparison. Light theme not independently re-confirmed this session (no theme toggle reachable from a plain Table screen) - same theme-agnostic compositing mechanism, low-risk gap
+- Files: frontend/src/components/table/rows.py, AGENTS.md
+
+## [2026-07-28] — feat(frontend): M3 row hover/focus state layer on Table, preserving zebra stripe
+- Issue #60 created on GitHub
+- Scope: frontend
+- Labels: enhancement, frontend
+- User requested full M3 hover/focus/selected highlighting for rows, columns, AND cells. Investigated Flet's actual `DataTable`/`DataRow`/`DataCell` API before scoping: `DataRow.color` already supports a `ControlStateValue` dict (`HOVERED`/`FOCUSED` painted as a translucent overlay on top of `DEFAULT`, matching M3's own state-layer model exactly) - a natively-supported, low-risk addition for row-level hover/focus. `DataTable` has no per-column background property at all (a column stripe would need a new scroll-aware overlay, unlike the existing static-header-anchored resize-handle overlay), and `DataCell` has no `color` property (per-cell hover needs per-cell `on_hover` wiring). Recommended and filed with scope narrowed to row hover/focus only; column/cell highlighting explicitly flagged as deferred, higher-risk stretch work rather than bundled in
+
 ## [2026-07-28] — feat(frontend): Table row borders replaced with position-based zebra striping (issue #57)
 - Issue #57 implemented (status: ready-for-review)
 - `components/table/header.py`/`body.py`: `border=None, divider_thickness=0` on both `ft.DataTable`s - the outer-frame `border` alone never controlled the per-row horizontal lines, Flutter's separate `divider_thickness` (default 1.0) does
