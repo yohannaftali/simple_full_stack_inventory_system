@@ -75,7 +75,7 @@
 | #53 | feat(frontend): borderless filled inputs with focus-color swap (PRIMARY_CONTAINER / TERTIARY_CONTAINER) | done | 2026-07-28 |
 | #54 | fix(frontend): table editable input/textarea cells still not fully flush (padding/border remnant) | open (pending) | 2026-07-28 |
 | #55 | feat(frontend): bring List component to parity with Table (lazy-load pagination toggle, per-field search, sortable) - no backend changes | ready-for-review | 2026-07-28 |
-| #56 | feat(frontend): List gains Table download menu, full-width search bar, and Table/List view toggle | ready-for-review | 2026-07-28 |
+| #56 | feat(frontend): List gains Table download menu, full-width search bar, and Table/List view toggle | closed | 2026-07-28 |
 | #57 | feat(frontend): replace Table row borders with position-based zebra striping | open | 2026-07-28 |
 | #58 | fix(frontend): TOTP QR generation fails - PyPNG library not installed | closed | 2026-07-28 |
 | #59 | fix(frontend): TOTP copy-secret button fails - Page.set_clipboard removed in Flet 0.85 | closed | 2026-07-28 |
