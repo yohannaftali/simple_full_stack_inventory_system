@@ -1588,3 +1588,13 @@
 - Root cause: pages/modals/totp/index.py builds its QR via qrcode.image.pure.PyPNGImage, which needs the optional pypng package - not installed. qrcode itself was never declared in pyproject.toml's dependencies at all (only present in uv.lock as an incidental transitive resolution), so this had likely never worked from a container built strictly off the committed lockfile.
 - Fix: added qrcode>=8.2 and pypng>=0.20220715.0 to [project].dependencies, regenerated uv.lock (uv lock - resolved cleanly, added pypng), restarted the frontend container (uv run auto-synced the venv from the updated lockfile, installed 1 package).
 - Verified live end-to-end (not just "no error"): navigated to /modals/totp/index, clicked Generate - QR code rendered correctly, secret read from server logs (call_generate_totp response), computed the correct 6-digit TOTP code locally using the same RFC 6238 algorithm backend/src/core/totp.py implements, entered it, clicked Save - POST C_home/call_change_totp returned {"success": "TOTP enabled successfully"} and the app navigated back to /home, confirming the secret was actually accepted and persisted, not just that the QR rendered.
+
+## [2026-07-28] — #58 closed
+- Title: fix(frontend): TOTP QR generation fails - PyPNG library not installed
+- Platform: GitHub
+
+## [2026-07-28] — fix(frontend): TOTP copy-secret button fails - Page.set_clipboard removed in Flet 0.85
+- Issue #59 created on GitHub
+- Scope: frontend (pages/modals/totp/index.py)
+- Labels: bug, frontend
+- Root cause confirmed by reading the code before filing: on_copy_secret_click() calls self.page.set_clipboard(...), a method that doesn't exist in Flet 0.85.3 (Page.clipboard is itself deprecated and returns a Clipboard() service). Correct API is ft.Clipboard's async set() method, needing the same lazy page.services registration + async-handler pattern components/table/menu.py already established for FilePicker. Confirmed via repo-wide grep this is the only call site.
