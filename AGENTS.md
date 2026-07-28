@@ -78,7 +78,7 @@
 | #56 | feat(frontend): List gains Table download menu, full-width search bar, and Table/List view toggle | open | 2026-07-28 |
 | #57 | feat(frontend): replace Table row borders with position-based zebra striping | open | 2026-07-28 |
 | #58 | fix(frontend): TOTP QR generation fails - PyPNG library not installed | closed | 2026-07-28 |
-| #59 | fix(frontend): TOTP copy-secret button fails - Page.set_clipboard removed in Flet 0.85 | open | 2026-07-28 |
+| #59 | fix(frontend): TOTP copy-secret button fails - Page.set_clipboard removed in Flet 0.85 | ready-for-review | 2026-07-28 |
 
 ## Big Picture
 

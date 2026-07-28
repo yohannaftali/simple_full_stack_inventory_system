@@ -28,6 +28,7 @@ class ModalPage:
         self.screen = screen
         self.title = "Setup TOTP"
         self._secret = ""
+        self._clipboard: ft.Clipboard | None = None
 
         self.view = ModalView(page, modal, screen, title=self.title)
 
@@ -188,11 +189,25 @@ class ModalPage:
 
         threading.Thread(target=_do_generate, daemon=True).start()
 
-    def on_copy_secret_click(self, e):
-        if self._secret:
-
-            self.page.set_clipboard(self._secret)
-            self.view.show_success("Secret copied to clipboard")
+    async def on_copy_secret_click(self, e):
+        # `page.set_clipboard(...)` doesn't exist in Flet 0.85 - clipboard
+        # access is `ft.Clipboard`, a `Service` (not a plain page method),
+        # same "lazy page.services registration inside an async handler"
+        # pattern components/table/menu.py already established for
+        # FilePicker: `page.services` resolves through the root view and
+        # raises RuntimeError while `page.views` is empty (true during
+        # __init__), and only an `async def` handler gets awaited by
+        # Flet's dispatcher, so both the registration and the `set()` call
+        # have to happen here, not in the constructor or a sync handler.
+        if not self._secret:
+            return
+        if self._clipboard is None:
+            self._clipboard = ft.Clipboard()
+        if self._clipboard not in self.page.services:
+            self.page.services.append(self._clipboard)
+            self.page.update()
+        await self._clipboard.set(self._secret)
+        self.view.show_success("Secret copied to clipboard")
 
     def on_save_click(self, e):
         self.view.dismiss_banner()

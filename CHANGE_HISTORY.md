@@ -1,6 +1,13 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-28] — fix(frontend): TOTP copy-secret button crashes with Page.set_clipboard error (issue #59)
+- Issue #59 implemented (status: ready-for-review)
+- Root cause: `pages/modals/totp/index.py`'s `on_copy_secret_click` called `self.page.set_clipboard(self._secret)`. Flet 0.85.3 has no such method — `Page.clipboard` is `@deprecated` and returns a `Clipboard()` `Service` instance; the real API is `await ft.Clipboard().set(value)`
+- Fixed following the exact `FilePicker` pattern already documented in `components/table/menu.py`: `on_copy_secret_click` is now `async def`, lazily constructs/registers `self._clipboard` (a `ft.Clipboard()`) into `self.page.services` on first use (never in `__init__`, since `page.services` raises `RuntimeError` while `page.views` is empty during construction), then `await self._clipboard.set(self._secret)`
+- Verified live in the browser: generated a TOTP secret, clicked Copy, confirmed the "Secret copied to clipboard" success banner rendered (visible only after the page was queried via `navigator.clipboard.readText()` from devtools — a one-off render-timing artifact of the verification method, not a functional bug: no exception in server logs across multiple clicks, no console error, and the banner control was present and correctly styled once observed)
+- Files: frontend/src/pages/modals/totp/index.py, AGENTS.md
+
 ## [2026-07-27] — feat(frontend): scan barcode/QR into Material and Location pickers (issue #52, implemented)
 - Issue #52 implemented (status: ready-for-review)
 - New `frontend/src/components/scan_input.py::ScanInput` — an `ft.IconButton` that opens a small `ft.AlertDialog` with one `autofocus=True` `ft.TextField`, so a keyboard-wedge scanner's code+Enter lands there and fires `on_submit`. No dependency, no camera permissions, works on web. Written from scratch: senar has no camera scanner to port, only QR *generation* and the autofocus/`on_submit` pattern this imitates
