@@ -81,6 +81,9 @@
 | #59 | fix(frontend): TOTP copy-secret button fails - Page.set_clipboard removed in Flet 0.85 | closed | 2026-07-28 |
 | #60 | feat(frontend): M3 row hover/focus state layer on Table (preserve zebra stripe) | closed | 2026-07-28 |
 | #61 | feat(table): match date-formatted columns by displayed text in per-column filter | open | 2026-07-28 |
+| #62 | fix(frontend): ListToolbar styling doesn't match TableToolbar (bg/icon color/padding) | open | 2026-07-28 |
+| #63 | chore(frontend): extract shared SearchBar component (dedupe Table/List search bars) | open | 2026-07-28 |
+| #64 | feat(frontend): camera-based barcode/QR scan option alongside manual entry | open | 2026-07-28 |
 
 ## Big Picture
 

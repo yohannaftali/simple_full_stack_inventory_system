@@ -1,6 +1,29 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-28] — feat(frontend): camera-based barcode/QR scan option alongside manual entry
+- Issue #64 created on GitHub
+- Scope: frontend
+- Labels: enhancement, frontend
+- User asked for a real camera scan modal (issue #52's ScanInput is keyboard-wedge/manual-entry only), pointing at `cbulogistics` as reference and suggesting `pyzbar`/`opencv-python` with a live OpenCV video feed
+- Premise correction #1: `cbulogistics` has zero Python code - its barcode scanning is native Android/Kotlin/CameraX/ML Kit, nothing portable
+- Premise correction #2 (real constraint, not just missing precedent): this app's primary deployment is the containerized Flet **web** app - the Flet Python process runs server-side in the container (per AGENTS.md's "Container networking gotcha"), so a live `cv2` video loop would capture the *server's* camera, not the end user's browser camera. Flet 0.85.3 also has no built-in Camera control at all (checked the installed package)
+- Scoped instead around `ft.FilePicker(file_type=IMAGE, with_data=True)` - already a proven pattern in this codebase (`components/table/menu.py`'s upload flow) that opens the device camera for a single photo on supporting platforms/browsers, works identically in both web and native deployments since it always hands Python real bytes rather than a live local device stream - then decodes with `pyzbar`. True live-frame-by-frame scanning flagged as a much larger, separate follow-up (would need client-side JS/`getUserMedia`/`BarcodeDetector`, no existing precedent here)
+
+## [2026-07-28] — chore(frontend): extract shared SearchBar component (dedupe Table/List search bars)
+- Issue #63 created on GitHub
+- Scope: frontend
+- Labels: chore, frontend
+- User asked (while discussing #62's toolbar-parity issue) whether shared root-level components like `components/button.py` (issue #21) make sense for other duplicated pieces, naming search_bar.py as a candidate
+- Diffed `components/table/search_bar.py::TableSearchBar` vs `components/list/search_bar.py::ListSearchBar` directly: near-identical since issue #56 rebuilt List's on `ft.TextField` to match - only real differences are the hint text and Table's opt-in QR-scan support (issue #52), which List never received, a real feature gap this duplication already caused
+- Scoped to the search bar specifically (not toolbars themselves - #62's subject - since their layout logic differs more; noted as a possible future follow-up once #62 lands)
+
+## [2026-07-28] — fix(frontend): ListToolbar styling doesn't match TableToolbar
+- Issue #62 created on GitHub
+- Scope: frontend
+- Labels: bug, frontend
+- User requested List's toolbar match Table's toolbar for bg color, icon color, search bar, and padding. Checked both files directly: `TableToolbar.build()` uses `height=48`, `padding=Padding.symmetric(horizontal=16, vertical=8)`, `bgcolor=SURFACE_CONTAINER_LOW`, a bottom hairline border, and `add_button()` defaults `icon_color=ON_SURFACE_VARIANT` (standard M3 icon button) - `ListToolbar.build()` still uses the pre-#21 design (`padding=Padding.all(10)`, `bgcolor=PRIMARY`, no fixed height, `add_button()` defaulting `icon_color=ON_PRIMARY`). The search bar itself inside ListToolbar was already fixed to match under issue #56 - this issue is scoped to the surrounding toolbar container only
+
 ## [2026-07-28] — feat(table): match date-formatted columns by displayed text in per-column filter
 - Issue #61 created on GitHub
 - Scope: backend + frontend
