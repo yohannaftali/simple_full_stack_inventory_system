@@ -21,6 +21,14 @@ dependencies = [
   "requests>=2.31.0",
   "websockets>=15.0",
   "openpyxl>=3.1.2",
+  # pages/modals/totp/index.py renders the 2FA enrollment QR via
+  # qrcode.image.pure.PyPNGImage (deliberately Pillow-free, matching this
+  # list's own lean-mobile-footprint philosophy above) - that image
+  # backend needs the optional `pypng` package, and `qrcode` itself was
+  # never actually declared here (issue #58) even though it ended up in
+  # uv.lock anyway as an incidental transitive resolution.
+  "qrcode>=8.2",
+  "pypng>=0.20220715.0",
 ]
 
 [tool.flet]

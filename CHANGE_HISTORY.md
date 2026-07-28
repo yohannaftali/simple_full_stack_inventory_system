@@ -1563,3 +1563,28 @@
 - Each sortable field gets its own ft.IconButton beside its filter field, cycling none/UNFOLD_MORE -> ASC/ARROW_UPWARD -> DESC/ARROW_DOWNWARD -> none, same icon set and color pairing (ON_SURFACE_VARIANT unsorted, PRIMARY active) as TableColumns._build_sort_icon(). ListFilter.sort_order is now a real ordered [(field_name, direction)] list, same shape as TableColumns.sort_order, and clicking a different field while one is already active appends it as an additional sort key rather than replacing - true multi-column sort, same as Table, no modifier key.
 - serialize() now emits sort-fields[{index}][{field}]={direction} for every entry in priority order (was hardcoded index 0 for a single field).
 - Verified live: clicking Description's sort button then Date's sort button sent sort-fields[0][description]=ASC&sort-fields[1][date]=ASC in that exact priority order, confirmed via server logs; icons visibly updated (neutral unfold icon -> blue up-arrow) on click.
+
+## [2026-07-28] — feat(frontend): List download menu, search bar width, Table/List toggle
+- Issue #56 created on GitHub
+- Scope: frontend (components/list/)
+- Labels: enhancement, frontend
+- Proposal: port Table's download menu to List (own ListMenu, since TableMenu depends on columns.serialize_sort()/custom_param List doesn't have), rebuild ListSearchBar off a plain TextField instead of the rigid ft.SearchBar (same fix Table's own search bar got under issue #19), and design a Table/List view-toggle button.
+
+## [2026-07-28] — feat(frontend): Table row zebra-striping instead of border colors
+- Issue #57 created on GitHub
+- Scope: frontend (components/table/)
+- Labels: enhancement, frontend
+- Proposal: remove Table's row border/divider lines, replace with an alternating row background computed from each row's position at every render (not stored per-record) - same nth-child(even/odd) semantics as CSS, so it stays consistent across sort/filter/remove/lazy-load-append with no separate bookkeeping.
+
+## [2026-07-28] — fix(frontend): TOTP QR generation fails - PyPNG library not installed
+- Issue #58 created on GitHub
+- Scope: frontend (pages/modals/totp/index.py, pyproject.toml/uv.lock)
+- Labels: bug, frontend
+- Root cause confirmed by reading the code before filing: totp/index.py's qr.make_image(image_factory=qrcode.image.pure.PyPNGImage) needs the optional pypng package, which isn't installed - and qrcode itself isn't even declared in pyproject.toml's dependencies (present in uv.lock only as an incidental transitive resolution), so this has likely never worked from a container built strictly off the committed lockfile.
+
+## [2026-07-28] — fix(frontend): TOTP QR generation - declare qrcode/pypng as real dependencies (#58)
+- Issue #58 addressed on GitHub
+- Files: frontend/pyproject.toml, frontend/uv.lock
+- Root cause: pages/modals/totp/index.py builds its QR via qrcode.image.pure.PyPNGImage, which needs the optional pypng package - not installed. qrcode itself was never declared in pyproject.toml's dependencies at all (only present in uv.lock as an incidental transitive resolution), so this had likely never worked from a container built strictly off the committed lockfile.
+- Fix: added qrcode>=8.2 and pypng>=0.20220715.0 to [project].dependencies, regenerated uv.lock (uv lock - resolved cleanly, added pypng), restarted the frontend container (uv run auto-synced the venv from the updated lockfile, installed 1 package).
+- Verified live end-to-end (not just "no error"): navigated to /modals/totp/index, clicked Generate - QR code rendered correctly, secret read from server logs (call_generate_totp response), computed the correct 6-digit TOTP code locally using the same RFC 6238 algorithm backend/src/core/totp.py implements, entered it, clicked Save - POST C_home/call_change_totp returned {"success": "TOTP enabled successfully"} and the app navigated back to /home, confirming the secret was actually accepted and persisted, not just that the QR rendered.
