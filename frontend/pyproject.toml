@@ -13,11 +13,22 @@ dependencies = [
   # flet-web/flet-desktop, none of which belong on a mobile device. This is
   # what `flet build apk`/`ipa` actually bundles onto the target (read via
   # [project.dependencies], see flet_cli/commands/build_base.py). The full
-  # `flet[all]==0.85.3` toolchain for local dev (flet run, flet build, etc.)
+  # `flet[all]==0.86.4` toolchain for local dev (flet run, flet build, etc.)
   # is already declared separately below in [dependency-groups].dev - do not
   # duplicate it here.
-  "flet==0.85.3",
-  "flet-datatable2>=0.1.0",
+  "flet==0.86.4",
+  # flet-datatable2 tracks flet's own version lockstep (same pattern as
+  # flet-camera, see issue #64) - must match the pin above exactly.
+  "flet-datatable2==0.86.4",
+  # Live in-browser camera scan (issue #64 v1.5) - a genuine Flutter
+  # `camera` plugin wrapper (Web/iOS/Android support), unblocked by the
+  # flet==0.86.4 upgrade (its stable releases only ever matched 0.86.4,
+  # never 0.85.3 - see components/scan_input.py). Runtime camera
+  # permission on native Android/iOS goes through flet-permission-handler;
+  # a browser's own getUserMedia permission prompt covers the web
+  # deployment without it, but it's cheap to include for the native path.
+  "flet-camera==0.86.4",
+  "flet-permission-handler==0.86.4",
   "requests>=2.31.0",
   "websockets>=15.0",
   "openpyxl>=3.1.2",
@@ -64,14 +75,14 @@ min_sdk_version = 33
 
 [dependency-groups]
 dev = [
-    "flet[all]==0.85.3",
+    "flet[all]==0.86.4",
 ]
 
 [tool.poetry]
 package-mode = false
 
 [tool.poetry.group.dev.dependencies]
-flet = {extras = ["all"], version = "0.85.3"}
+flet = {extras = ["all"], version = "0.86.4"}
 
 [tool.ruff]
 # Target your exact Python version

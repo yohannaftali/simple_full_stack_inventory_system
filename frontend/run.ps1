@@ -10,7 +10,7 @@
 # .venv activation flow that never existed in this project.)
 #
 # `flet build`/`flet run`/`flet serve` (flet-cli, pinned via this
-# project's [dependency-groups].dev = ["flet[all]==0.85.3"]) always
+# project's [dependency-groups].dev = ["flet[all]==0.86.4"]) always
 # produce a Flutter RELEASE build for `build` - there is no debug-mode
 # flag in that command (a debug build instead comes from `flet run` on a
 # connected device - see the Dev mode section below), so there is no
@@ -163,7 +163,14 @@ function Invoke-BuildTarget([string]$Slug, [string]$Label, [string[]]$ExtraArgs)
     Stop-StaleGradleDaemon
     & uv sync
     Write-Host "Building $Label..." -ForegroundColor Green
-    & uv run flet build $Slug @ExtraArgs
+    # flet-cli 0.86 manages its own pinned Flutter/Android SDK version and
+    # prompts "It will be installed now. Proceed? [y/n]" the first time the
+    # machine's own toolchain doesn't match (confirmed live: a system
+    # Flutter 3.16.4 vs flet-cli's required 3.44.8) - with no TTY attached,
+    # that prompt EOFs and crashes the build instead of hanging. --yes is
+    # flet-cli's own documented bypass ("Re-run with --yes to install
+    # automatically"), required for this script's non-interactive build path.
+    & uv run flet build $Slug --yes @ExtraArgs
     $script:ExitCode = $LASTEXITCODE
 }
 
