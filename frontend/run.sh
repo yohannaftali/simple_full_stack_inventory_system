@@ -48,24 +48,25 @@ EXIT_CODE=0
 # category:number:slug:label
 TARGETS=(
     "Build:1:apk:APK (Release)"
-    "Build:2:apk-split:APK (Release, split per ABI)"
-    "Build:3:aab:AAB (Android App Bundle)"
-    "Build:4:ios:iOS (IPA)"
-    "Build:5:ios-simulator:iOS Simulator (.app)"
-    "Build:6:windows:Windows desktop"
-    "Build:7:macos:macOS desktop"
-    "Build:8:linux:Linux desktop"
-    "Build:9:web:Web"
-    "Preview:10:preview-web:Web (serve build/web locally)"
-    "Preview:11:preview-desktop:Desktop, current host (launch built app)"
-    "Preview:12:preview-apk:APK (install + launch on a connected device via adb)"
-    "Preview:13:preview-aab:AAB (not directly previewable)"
-    "Preview:14:preview-ios:iOS / IPA (not directly previewable)"
-    "Preview:15:preview-ios-simulator:iOS Simulator (macOS/Xcode only)"
-    "Dev mode:16:dev-desktop:Desktop (flet run, hot reload)"
-    "Dev mode:17:dev-web:Web (flet run --web, hot reload)"
-    "Dev mode:18:dev-android:Android (scan QR with Flet app - no SDK needed)"
-    "Dev mode:19:dev-ios:iOS (scan QR with Flet app - no Xcode needed)"
+    "Build:2:apk-debug:APK (Debug)"
+    "Build:3:apk-split:APK (Release, split per ABI)"
+    "Build:4:aab:AAB (Android App Bundle)"
+    "Build:5:ios:iOS (IPA)"
+    "Build:6:ios-simulator:iOS Simulator (.app)"
+    "Build:7:windows:Windows desktop"
+    "Build:8:macos:macOS desktop"
+    "Build:9:linux:Linux desktop"
+    "Build:10:web:Web"
+    "Preview:11:preview-web:Web (serve build/web locally)"
+    "Preview:12:preview-desktop:Desktop, current host (launch built app)"
+    "Preview:13:preview-apk:APK (install + launch on a connected device via adb)"
+    "Preview:14:preview-aab:AAB (not directly previewable)"
+    "Preview:15:preview-ios:iOS / IPA (not directly previewable)"
+    "Preview:16:preview-ios-simulator:iOS Simulator (macOS/Xcode only)"
+    "Dev mode:17:dev-desktop:Desktop (flet run, hot reload)"
+    "Dev mode:18:dev-web:Web (flet run --web, hot reload)"
+    "Dev mode:19:dev-android:Android (scan QR with Flet app - no SDK needed)"
+    "Dev mode:20:dev-ios:iOS (scan QR with Flet app - no Xcode needed)"
 )
 
 show_menu() {
@@ -140,10 +141,29 @@ detect_host_os() {
     esac
 }
 
+stop_stale_gradle_daemon() {
+    # Real, recurring failure found live: a Gradle daemon left running by
+    # ANY earlier build attempt keeps a lock on files under
+    # build/flutter/build/... (confirmed: `FileSystemException` on a
+    # file_picker lint-cache jar, "the process cannot access the file
+    # because it is being used by another process"), which then fails the
+    # NEXT build too - happened twice in the same dev session. Gradle
+    # daemons are designed to be stoppable/restartable freely, so a
+    # defensive `gradlew --stop` against the *previous* build's generated
+    # project (if one still exists) before starting a new one is safe and
+    # directly prevents this recurring - deliberately not a blind `pkill
+    # java`, which could kill an unrelated Java process the user has open.
+    local gradlew="${BUILD_DIR}/flutter/android/gradlew"
+    if [ -x "$gradlew" ]; then
+        "$gradlew" --stop >/dev/null 2>&1 || true
+    fi
+}
+
 run_build_target() {
     local flet_target="$1" label="$2"
     shift 2
     require_uv || return
+    stop_stale_gradle_daemon
     cd "$FRONTEND_DIR"
     uv sync
     echo "Building ${label}..."
@@ -154,7 +174,7 @@ run_build_target() {
 run_preview_web() {
     local web_dir="${BUILD_DIR}/web"
     if [ ! -d "$web_dir" ]; then
-        echo "No web build found at ${web_dir} - build it first (option 9)." >&2
+        echo "No web build found at ${web_dir} - build it first (option 10)." >&2
         EXIT_CODE=1
         return
     fi
@@ -171,14 +191,14 @@ run_preview_desktop() {
         macos)
             local app_dir="${BUILD_DIR}/macos"
             if [ ! -d "$app_dir" ]; then
-                echo "No macOS build found at ${app_dir} - build it first (option 7)." >&2
+                echo "No macOS build found at ${app_dir} - build it first (option 8)." >&2
                 EXIT_CODE=1
                 return
             fi
             local app
             app=$(find "$app_dir" -maxdepth 1 -name "*.app" | head -1)
             if [ -z "$app" ]; then
-                echo "No .app bundle found under ${app_dir} - the build may be incomplete; try rebuilding (option 7)." >&2
+                echo "No .app bundle found under ${app_dir} - the build may be incomplete; try rebuilding (option 8)." >&2
                 EXIT_CODE=1
                 return
             fi
@@ -192,14 +212,14 @@ run_preview_desktop() {
         linux)
             local bundle_dir="${BUILD_DIR}/linux"
             if [ ! -d "$bundle_dir" ]; then
-                echo "No Linux build found at ${bundle_dir} - build it first (option 8)." >&2
+                echo "No Linux build found at ${bundle_dir} - build it first (option 9)." >&2
                 EXIT_CODE=1
                 return
             fi
             local exe
             exe=$(find "$bundle_dir" -maxdepth 1 -type f -executable | head -1)
             if [ -z "$exe" ]; then
-                echo "No executable found under ${bundle_dir} - the build may be incomplete; try rebuilding (option 8)." >&2
+                echo "No executable found under ${bundle_dir} - the build may be incomplete; try rebuilding (option 9)." >&2
                 EXIT_CODE=1
                 return
             fi
@@ -232,7 +252,7 @@ run_preview_apk() {
         while IFS= read -r -d '' f; do apks+=("$f"); done < <(find "$flutter_apk_dir" -maxdepth 1 -name "*.apk" -print0)
     fi
     if [ "${#apks[@]}" -eq 0 ]; then
-        echo "No .apk found under ${apk_dir} or ${flutter_apk_dir} - build one first (option 1 or 2)." >&2
+        echo "No .apk found under ${apk_dir} or ${flutter_apk_dir} - build one first (option 1, 2, or 3)." >&2
         EXIT_CODE=1
         return
     fi
@@ -303,14 +323,14 @@ run_preview_ios_simulator() {
     fi
     local app_dir="${BUILD_DIR}/ios-simulator"
     if [ ! -d "$app_dir" ]; then
-        echo "No iOS Simulator build found at ${app_dir} - build it first (option 5)." >&2
+        echo "No iOS Simulator build found at ${app_dir} - build it first (option 6)." >&2
         EXIT_CODE=1
         return
     fi
     local app
     app=$(find "$app_dir" -maxdepth 1 -name "*.app" | head -1)
     if [ -z "$app" ]; then
-        echo "No .app bundle found under ${app_dir} - the build may be incomplete; try rebuilding (option 5)." >&2
+        echo "No .app bundle found under ${app_dir} - the build may be incomplete; try rebuilding (option 6)." >&2
         EXIT_CODE=1
         return
     fi
@@ -346,24 +366,37 @@ dispatch_choice() {
     local choice="$1"
     case "$choice" in
         1|apk) run_build_target apk "APK (Release)" ;;
-        2|apk-split) run_build_target apk "APK (Release, split per ABI)" --split-per-abi ;;
-        3|aab) run_build_target aab "AAB (Android App Bundle)" ;;
-        4|ios) run_build_target ipa "iOS (IPA)" ;;
-        5|ios-simulator) run_build_target ios-simulator "iOS Simulator (.app)" ;;
-        6|windows) run_build_target windows "Windows desktop" ;;
-        7|macos) run_build_target macos "macOS desktop" ;;
-        8|linux) run_build_target linux "Linux desktop" ;;
-        9|web) run_build_target web "Web" ;;
-        10|preview-web) run_preview_web ;;
-        11|preview-desktop) run_preview_desktop ;;
-        12|preview-apk) run_preview_apk ;;
-        13|preview-aab) not_applicable "AAB" "Android App Bundles aren't directly installable. Upload to Play Console (internal testing track), or use Google's 'bundletool' to generate installable APKs from it. Use the APK preview option instead for local testing." ;;
-        14|preview-ios) not_applicable "iOS / IPA" "IPA files need a provisioning profile, a registered device, or TestFlight to install - not something this script can automate. On macOS, use Xcode's Devices and Simulators window, or 'xcrun devicectl'." ;;
-        15|preview-ios-simulator) run_preview_ios_simulator ;;
-        16|dev-desktop) run_dev ;;
-        17|dev-web) run_dev --web ;;
-        18|dev-android) run_dev --android ;;
-        19|dev-ios) run_dev --ios ;;
+        # `flet build` (flet-cli) has no dedicated --debug flag - confirmed
+        # by reading its actual build_base.py source, only the always-
+        # release `flutter build apk` gets invoked. `--flutter-build-args`
+        # is a real, generic passthrough to the underlying `flutter build`
+        # command (also confirmed in that source), so `--debug` there
+        # switches Flutter's own build mode - a genuine debug APK, not a
+        # flet-cli feature that doesn't exist. Must be the `=` form
+        # (`--flutter-build-args=--debug`), not two separate args -
+        # argparse's `nargs="*"` otherwise treats a bare `--debug` token
+        # as its own (unrecognized) top-level flag rather than this
+        # option's value, confirmed live (`flet: error: unrecognized
+        # arguments: --debug` with the two-arg form).
+        2|apk-debug) run_build_target apk "APK (Debug)" --flutter-build-args=--debug ;;
+        3|apk-split) run_build_target apk "APK (Release, split per ABI)" --split-per-abi ;;
+        4|aab) run_build_target aab "AAB (Android App Bundle)" ;;
+        5|ios) run_build_target ipa "iOS (IPA)" ;;
+        6|ios-simulator) run_build_target ios-simulator "iOS Simulator (.app)" ;;
+        7|windows) run_build_target windows "Windows desktop" ;;
+        8|macos) run_build_target macos "macOS desktop" ;;
+        9|linux) run_build_target linux "Linux desktop" ;;
+        10|web) run_build_target web "Web" ;;
+        11|preview-web) run_preview_web ;;
+        12|preview-desktop) run_preview_desktop ;;
+        13|preview-apk) run_preview_apk ;;
+        14|preview-aab) not_applicable "AAB" "Android App Bundles aren't directly installable. Upload to Play Console (internal testing track), or use Google's 'bundletool' to generate installable APKs from it. Use the APK preview option instead for local testing." ;;
+        15|preview-ios) not_applicable "iOS / IPA" "IPA files need a provisioning profile, a registered device, or TestFlight to install - not something this script can automate. On macOS, use Xcode's Devices and Simulators window, or 'xcrun devicectl'." ;;
+        16|preview-ios-simulator) run_preview_ios_simulator ;;
+        17|dev-desktop) run_dev ;;
+        18|dev-web) run_dev --web ;;
+        19|dev-android) run_dev --android ;;
+        20|dev-ios) run_dev --ios ;;
         *)
             echo "Unknown option: $choice" >&2
             EXIT_CODE=1
@@ -389,7 +422,17 @@ while true; do
         echo "Goodbye!"
         exit 0
     fi
+    # Reset before each selection so a failure doesn't wrongly report as
+    # failed on the NEXT (possibly successful) action too - a real gap
+    # found live: a build/preview failure previously left no visible
+    # trace at all in the interactive loop (just silently looped back to
+    # the menu), because $EXIT_CODE was set but never checked here.
+    EXIT_CODE=0
     dispatch_choice "$choice"
+    if [ "$EXIT_CODE" -ne 0 ]; then
+        echo ""
+        echo "Action failed (exit code ${EXIT_CODE}) - see the output above for details." >&2
+    fi
     echo ""
     read -r -p "Press Enter to continue..." _
 done

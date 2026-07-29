@@ -154,17 +154,26 @@ file's own comment) — `uv sync` runs automatically before every build/
 dev-run.
 
 Three sections in one numbered menu:
-- **Build** (1-9): `uv run flet build <target>` — APK (Release), APK
-  (Release, split per ABI), AAB, iOS (IPA), iOS Simulator, Windows/macOS/
-  Linux desktop, Web. Host-OS/target compatibility (e.g. iOS/macOS builds
-  need a Mac) is validated by `flet build` itself, which prints its own
-  build-matrix table — this script doesn't duplicate that check. No
-  separate "APK (Debug)" option — `flet build` always produces a Flutter
-  *release* build, there's no debug flag in the CLI (a debug build comes
-  from Dev mode below instead). Output lands in `build/<target>/`
-  (`flet build`'s own default, relative to `frontend/`), already excluded
-  from git by the repo's bare `build/` `.gitignore` rule.
-- **Preview** (10-15): runs/serves an already-built artifact, doesn't
+- **Build** (1-10): `uv run flet build <target>` — APK (Release), APK
+  (Debug), APK (Release, split per ABI), AAB, iOS (IPA), iOS Simulator,
+  Windows/macOS/Linux desktop, Web. Host-OS/target compatibility (e.g.
+  iOS/macOS builds need a Mac) is validated by `flet build` itself, which
+  prints its own build-matrix table — this script doesn't duplicate that
+  check. Output lands in `build/<target>/` (`flet build`'s own default,
+  relative to `frontend/`), already excluded from git by the repo's bare
+  `build/` `.gitignore` rule.
+  **APK (Debug)**: `flet build` itself has no dedicated `--debug` flag
+  (confirmed by reading `build_base.py` — it always invokes Flutter's
+  `assembleRelease` Gradle task) — but `--flutter-build-args` is a real,
+  generic passthrough to the underlying `flutter build` command (also
+  confirmed in that source), so `--flutter-build-args=--debug` switches
+  *Flutter's own* build mode to debug — a genuine debug APK, not a
+  feature that doesn't exist. **Must be the `=` form** — passing
+  `--flutter-build-args --debug` as two separate arguments fails with
+  `flet: error: unrecognized arguments: --debug`, because argparse's
+  `nargs="*"` won't consume a token that itself looks like a flag as
+  this option's value; confirmed live, both forms tried.
+- **Preview** (11-16): runs/serves an already-built artifact, doesn't
   build anything itself. Web via `uv run flet serve build/web`; desktop
   launches the built exe/`.app`/binary for the *current* host only; APK
   installs to a connected device via `adb install -r` (searching both
@@ -183,7 +192,7 @@ Three sections in one numbered menu:
   attempt `xcrun simctl install/launch booted` on an actual macOS host).
   A target with no matching build output yet prints exactly which build
   option to run first.
-- **Dev mode** (16-19): `uv run flet run -r [--web|--android|--ios]` —
+- **Dev mode** (17-20): `uv run flet run -r [--web|--android|--ios]` —
   runs the app directly from source with hot reload, no build step.
   `--android`/`--ios` print a terminal QR code (`flet-cli`'s own
   `print_qr_code`, a `flet://`/`https://android.flet.dev/...` URL) that,
@@ -218,6 +227,35 @@ touched again — full narrative history in `CHANGE_HISTORY.md`):
   `Install-Android-WithAdb`) matters because a build interrupted after
   Flutter compiles but before flet-cli's final copy-to-`build/apk` step
   leaves a usable APK there that the single-location search would miss.
+- **A stray Gradle daemon recurring across separate build attempts fails
+  the NEXT Android build too** — hit twice live in the same dev session,
+  reproducible on demand: `flet build apk` failed with a Gradle
+  `FileSystemException` on a `file_picker` lint-cache jar ("the process
+  cannot access the file because it is being used by another process"),
+  traced to a `java.exe` Gradle daemon process left running from an
+  *earlier* build attempt still holding that file open. Since Gradle
+  daemons are explicitly designed to be stopped/restarted freely, both
+  scripts now call `build/flutter/android/gradlew[.bat] --stop` against
+  whatever *previous* build's generated project still exists,
+  immediately before starting any new build — cheap, safe, and a no-op
+  if no daemon/project exists yet. Deliberately **not** a blind
+  `taskkill java.exe`/`pkill java`, which could kill an unrelated Java
+  process the user has open (Android Studio, another IDE, ...). Verified
+  live: after manually killing the stray daemons once, a clean rebuild
+  succeeded with a real ~86 MB `sfsis.apk` produced; the automatic
+  `gradlew --stop` call itself is a defensive addition based on that
+  confirmed root cause, not separately re-verified to prevent a *third*
+  recurrence in this session (the underlying mechanism — `gradlew --stop`
+  cleanly terminating a Gradle daemon — is standard, well-documented
+  Gradle behavior, not something this project invented).
+  **Confirmed this was purely environmental, not a "release builds don't
+  work" problem**: checked senar directly (same-day user question) —
+  their own scaffold `README.md` documents plain `flet build apk -v`
+  (release, no debug flag) as the standard build command, and a real,
+  successfully-built `senar.apk` sits in their `build/apk/` output.
+  Release builds are the normal, expected path; the Gradle daemon lock
+  above was this dev session's own recurring artifact, not a reason to
+  prefer debug builds by default.
 
 Verified live end-to-end across all of the above (real `flet build web`/
 `flet serve`/`flet run --web` runs, not mocked): the merged menu's
@@ -230,6 +268,44 @@ dev-mode QR-connect flow (no Android device/emulator, no macOS machine,
 no phone with the Flet companion app available) — the dispatch/guard
 logic around all of these was verified, not the underlying `adb`/`xcrun`/
 phone-side interaction itself.
+**A real Android APK build was exercised end-to-end after the merge**
+(same-day follow-up, user ran `.\run.ps1` interactively and hit a build
+that silently produced no output): reproducing it directly found two
+separate real issues, neither a bug in this project's own code:
+1. A genuine `flet build apk` failure — `Gradle task assembleRelease
+   failed`, `FileSystemException` on
+   `build/flutter/build/file_picker/intermediates/lint-cache/...
+   LiveDataCoreIssueRegistry-....jar` ("the process cannot access the
+   file because it is being used by another process"). Root cause: 3
+   stray `java.exe` Gradle daemon processes left running from earlier
+   build attempts in the same dev session, holding that file locked (the
+   same file that had resisted `rm -rf`/`Remove-Item` cleanup attempts
+   several times earlier). Killed the stray daemons
+   (`taskkill /F /PID ...`), removed the stuck `build/` directory, and a
+   retry succeeded cleanly — a real, standalone `sfsis.apk` (~86 MB) was
+   produced and installed-preview-tested through `run.ps1`
+   `preview-apk`, correctly reaching adb device discovery and the "no
+   device connected" message (no device attached in this environment).
+2. **A real, separate script bug**: the interactive menu loop never
+   surfaced a failed action at all — `$script:ExitCode`/`$EXIT_CODE` was
+   set on failure but never checked in the `while` loop before "Press
+   Enter to continue...", so a failed build (or any other failed action)
+   looked identical to a successful one from the user's perspective, no
+   matter how loud the underlying error was. Fixed by resetting the
+   exit-code tracker before each selection and printing an explicit
+   "Action failed (exit code N) - see the output above for details."
+   line when it's non-zero, in both scripts' loops. Verified live via
+   piped stdin (a guaranteed-failing selection correctly showed the new
+   message before "Press Enter to continue...").
+3. **A real slug-naming inconsistency between the two scripts**, caught
+   by this same testing pass: `run.ps1` used the preview-desktop option's
+   slug `preview-windows` while `run.sh` used `preview-desktop` — a
+   command that worked on one script's CLI-arg form silently failed as
+   "Unknown option" on the other's. Standardized on `preview-desktop` in
+   both (the underlying behavior already differs correctly per platform
+   — `run.ps1` only targets Windows, `run.sh` detects the running OS —
+   only the *name* needed to match for cross-script muscle memory,
+   the entire stated point of giving both scripts the same slug set).
 
 **`expose-lan.ps1`/`expose-lan.sh`** (repo root, same-day follow-up to a
 direct user question, not tied to a filed issue): exposes SFSIS's podman-

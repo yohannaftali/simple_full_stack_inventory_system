@@ -11,21 +11,67 @@ Using powershell
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-## Test and Deploy using script
-Run using powershell script
+## Build, Preview, and Dev-Run using the script
+
+Run with no arguments for an interactive menu (loops back after every
+action - `0` to exit), or pass an option directly for one-shot/scripting
+use (e.g. `.\run.ps1 apk-debug`, `./run.sh dev-web`).
+
+Windows:
 ```
 .\run.ps1
 ```
 
-Available Acitons:
+macOS/Linux:
 ```
-  1: 🚀 Testing Desktop
-  2: 📊 Testing Web Port 8811
-  3: 📊 Testing Android
-  4: 📊 Testing iOS
-  5: 📊 Build Android
-  q: ❌ Exit
+./run.sh
 ```
+
+Available options:
+```
+Build:
+  1) APK (Release)
+  2) APK (Debug)
+  3) APK (Release, split per ABI)
+  4) AAB (Android App Bundle)
+  5) iOS (IPA)
+  6) iOS Simulator (.app)
+  7) Windows desktop
+  8) macOS desktop
+  9) Linux desktop
+  10) Web
+
+Preview:
+  11) Web (serve build/web locally)
+  12) Desktop, current host (launch built app)
+  13) APK (install + launch on a connected device via adb)
+  14) AAB (not directly previewable)
+  15) iOS / IPA (not directly previewable)
+  16) iOS Simulator (macOS/Xcode only)
+
+Dev mode:
+  17) Desktop (flet run, hot reload)
+  18) Web (flet run --web, hot reload)
+  19) Android (scan QR with Flet app - no SDK needed)
+  20) iOS (scan QR with Flet app - no Xcode needed)
+
+  0) Exit
+```
+
+Requires [uv](https://docs.astral.sh/uv/) on `PATH` - the script runs
+`uv sync` automatically before every build/dev-run.
+
+**APK (Release) vs APK (Debug)**: `flet build apk` (option 1) always
+builds a signed release APK - this is the normal way to build, and is
+what you want for anything you intend to actually distribute or install
+long-term. **If a release build fails with a Gradle error mentioning a
+locked file** (`FileSystemException`, "the process cannot access the
+file because it is being used by another process"), it's almost always
+a leftover Gradle daemon from an earlier build attempt - the script
+already tries to stop it automatically before each build, but if it
+still happens, close any other terminal/IDE that might be running a
+Flutter/Gradle build and try again. Option 2 (APK Debug) is useful for a
+quick local test build without needing to fully debug that.
 
 
 ## Run the app

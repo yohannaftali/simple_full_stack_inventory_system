@@ -50,24 +50,25 @@ $script:ExitCode = 0
 
 $Targets = @(
     [PSCustomObject]@{ Category = "Build";   Number = "1";  Slug = "apk";                  Label = "APK (Release)" }
-    [PSCustomObject]@{ Category = "Build";   Number = "2";  Slug = "apk-split";            Label = "APK (Release, split per ABI)" }
-    [PSCustomObject]@{ Category = "Build";   Number = "3";  Slug = "aab";                  Label = "AAB (Android App Bundle)" }
-    [PSCustomObject]@{ Category = "Build";   Number = "4";  Slug = "ios";                  Label = "iOS (IPA)" }
-    [PSCustomObject]@{ Category = "Build";   Number = "5";  Slug = "ios-simulator";        Label = "iOS Simulator (.app)" }
-    [PSCustomObject]@{ Category = "Build";   Number = "6";  Slug = "windows";              Label = "Windows desktop" }
-    [PSCustomObject]@{ Category = "Build";   Number = "7";  Slug = "macos";                Label = "macOS desktop" }
-    [PSCustomObject]@{ Category = "Build";   Number = "8";  Slug = "linux";                Label = "Linux desktop" }
-    [PSCustomObject]@{ Category = "Build";   Number = "9";  Slug = "web";                  Label = "Web" }
-    [PSCustomObject]@{ Category = "Preview"; Number = "10"; Slug = "preview-web";          Label = "Web (serve build/web locally)" }
-    [PSCustomObject]@{ Category = "Preview"; Number = "11"; Slug = "preview-windows";      Label = "Windows desktop (launch built .exe)" }
-    [PSCustomObject]@{ Category = "Preview"; Number = "12"; Slug = "preview-apk";          Label = "APK (install + launch on a connected device via adb)" }
-    [PSCustomObject]@{ Category = "Preview"; Number = "13"; Slug = "preview-aab";          Label = "AAB (not directly previewable)" }
-    [PSCustomObject]@{ Category = "Preview"; Number = "14"; Slug = "preview-ios";          Label = "iOS / IPA (not directly previewable)" }
-    [PSCustomObject]@{ Category = "Preview"; Number = "15"; Slug = "preview-ios-simulator"; Label = "iOS Simulator (macOS/Xcode only)" }
-    [PSCustomObject]@{ Category = "Dev mode"; Number = "16"; Slug = "dev-desktop";         Label = "Desktop (flet run, hot reload)" }
-    [PSCustomObject]@{ Category = "Dev mode"; Number = "17"; Slug = "dev-web";             Label = "Web (flet run --web, hot reload)" }
-    [PSCustomObject]@{ Category = "Dev mode"; Number = "18"; Slug = "dev-android";         Label = "Android (scan QR with Flet app - no SDK needed)" }
-    [PSCustomObject]@{ Category = "Dev mode"; Number = "19"; Slug = "dev-ios";             Label = "iOS (scan QR with Flet app - no Xcode needed)" }
+    [PSCustomObject]@{ Category = "Build";   Number = "2";  Slug = "apk-debug";            Label = "APK (Debug)" }
+    [PSCustomObject]@{ Category = "Build";   Number = "3";  Slug = "apk-split";            Label = "APK (Release, split per ABI)" }
+    [PSCustomObject]@{ Category = "Build";   Number = "4";  Slug = "aab";                  Label = "AAB (Android App Bundle)" }
+    [PSCustomObject]@{ Category = "Build";   Number = "5";  Slug = "ios";                  Label = "iOS (IPA)" }
+    [PSCustomObject]@{ Category = "Build";   Number = "6";  Slug = "ios-simulator";        Label = "iOS Simulator (.app)" }
+    [PSCustomObject]@{ Category = "Build";   Number = "7";  Slug = "windows";              Label = "Windows desktop" }
+    [PSCustomObject]@{ Category = "Build";   Number = "8";  Slug = "macos";                Label = "macOS desktop" }
+    [PSCustomObject]@{ Category = "Build";   Number = "9";  Slug = "linux";                Label = "Linux desktop" }
+    [PSCustomObject]@{ Category = "Build";   Number = "10"; Slug = "web";                  Label = "Web" }
+    [PSCustomObject]@{ Category = "Preview"; Number = "11"; Slug = "preview-web";          Label = "Web (serve build/web locally)" }
+    [PSCustomObject]@{ Category = "Preview"; Number = "12"; Slug = "preview-desktop";      Label = "Windows desktop (launch built .exe)" }
+    [PSCustomObject]@{ Category = "Preview"; Number = "13"; Slug = "preview-apk";          Label = "APK (install + launch on a connected device via adb)" }
+    [PSCustomObject]@{ Category = "Preview"; Number = "14"; Slug = "preview-aab";          Label = "AAB (not directly previewable)" }
+    [PSCustomObject]@{ Category = "Preview"; Number = "15"; Slug = "preview-ios";          Label = "iOS / IPA (not directly previewable)" }
+    [PSCustomObject]@{ Category = "Preview"; Number = "16"; Slug = "preview-ios-simulator"; Label = "iOS Simulator (macOS/Xcode only)" }
+    [PSCustomObject]@{ Category = "Dev mode"; Number = "17"; Slug = "dev-desktop";         Label = "Desktop (flet run, hot reload)" }
+    [PSCustomObject]@{ Category = "Dev mode"; Number = "18"; Slug = "dev-web";             Label = "Web (flet run --web, hot reload)" }
+    [PSCustomObject]@{ Category = "Dev mode"; Number = "19"; Slug = "dev-android";         Label = "Android (scan QR with Flet app - no SDK needed)" }
+    [PSCustomObject]@{ Category = "Dev mode"; Number = "20"; Slug = "dev-ios";             Label = "iOS (scan QR with Flet app - no Xcode needed)" }
 )
 
 function Show-Menu {
@@ -138,8 +139,28 @@ function Get-AndroidPackageId {
     return "$org.$name"
 }
 
+function Stop-StaleGradleDaemon {
+    # Real, recurring failure found live: a Gradle daemon left running by
+    # ANY earlier build attempt keeps a lock on files under
+    # build/flutter/build/... (confirmed: `FileSystemException` on a
+    # file_picker lint-cache jar, "the process cannot access the file
+    # because it is being used by another process"), which then fails the
+    # NEXT build too - happened twice in the same dev session. Gradle
+    # daemons are designed to be stoppable/restartable freely, so a
+    # defensive `gradlew --stop` against the *previous* build's generated
+    # project (if one still exists) before starting a new one is safe and
+    # directly prevents this recurring - deliberately not a blind
+    # `taskkill java.exe`, which could kill an unrelated Java process the
+    # user has open (Android Studio, another IDE, ...).
+    $gradlew = Join-Path $BuildDir "flutter\android\gradlew.bat"
+    if (Test-Path $gradlew) {
+        & $gradlew --stop 2>&1 | Out-Null
+    }
+}
+
 function Invoke-BuildTarget([string]$Slug, [string]$Label, [string[]]$ExtraArgs) {
     if (-not (Test-Uv)) { return }
+    Stop-StaleGradleDaemon
     & uv sync
     Write-Host "Building $Label..." -ForegroundColor Green
     & uv run flet build $Slug @ExtraArgs
@@ -149,7 +170,7 @@ function Invoke-BuildTarget([string]$Slug, [string]$Label, [string[]]$ExtraArgs)
 function Invoke-PreviewWeb {
     $webDir = Join-Path $BuildDir "web"
     if (-not (Test-Path $webDir)) {
-        Write-Host "No web build found at $webDir - build it first (option 9)." -ForegroundColor Red
+        Write-Host "No web build found at $webDir - build it first (option 10)." -ForegroundColor Red
         $script:ExitCode = 1
         return
     }
@@ -161,13 +182,13 @@ function Invoke-PreviewWeb {
 function Invoke-PreviewDesktop {
     $winDir = Join-Path $BuildDir "windows"
     if (-not (Test-Path $winDir)) {
-        Write-Host "No Windows build found at $winDir - build it first (option 6)." -ForegroundColor Red
+        Write-Host "No Windows build found at $winDir - build it first (option 7)." -ForegroundColor Red
         $script:ExitCode = 1
         return
     }
     $exe = Get-ChildItem -Path $winDir -Filter "*.exe" -File | Select-Object -First 1
     if (-not $exe) {
-        Write-Host "No .exe found under $winDir - the build may be incomplete; try rebuilding (option 6)." -ForegroundColor Red
+        Write-Host "No .exe found under $winDir - the build may be incomplete; try rebuilding (option 7)." -ForegroundColor Red
         $script:ExitCode = 1
         return
     }
@@ -194,7 +215,7 @@ function Invoke-PreviewApk {
         $apks += Get-ChildItem -Path $flutterApkDir -Filter "*.apk" -File -ErrorAction SilentlyContinue
     }
     if ($apks.Count -eq 0) {
-        Write-Host "No .apk found under $apkDir or $flutterApkDir - build one first (option 1 or 2)." -ForegroundColor Red
+        Write-Host "No .apk found under $apkDir or $flutterApkDir - build one first (option 1, 2, or 3)." -ForegroundColor Red
         $script:ExitCode = 1
         return
     }
@@ -280,6 +301,19 @@ function Invoke-Selection([string]$Choice) {
 
     switch ($selected.Slug) {
         "apk" { Invoke-BuildTarget "apk" $selected.Label @() }
+        # `flet build` (flet-cli) has no dedicated --debug flag - confirmed
+        # by reading its actual build_base.py source, only the always-
+        # release `flutter build apk` gets invoked. `--flutter-build-args`
+        # is a real, generic passthrough to the underlying `flutter build`
+        # command (also confirmed in that source), so `--debug` there
+        # switches Flutter's own build mode - a genuine debug APK, not a
+        # flet-cli feature that doesn't exist. Must be the `=` form
+        # (`--flutter-build-args=--debug`), not two separate array
+        # elements - argparse's `nargs="*"` otherwise treats a bare
+        # `--debug` token as its own (unrecognized) top-level flag rather
+        # than this option's value, confirmed live (`flet: error:
+        # unrecognized arguments: --debug` with the two-token form).
+        "apk-debug" { Invoke-BuildTarget "apk" $selected.Label @("--flutter-build-args=--debug") }
         "apk-split" { Invoke-BuildTarget "apk" $selected.Label @("--split-per-abi") }
         "aab" { Invoke-BuildTarget "aab" $selected.Label @() }
         "ios" { Invoke-BuildTarget "ipa" $selected.Label @() }
@@ -289,7 +323,7 @@ function Invoke-Selection([string]$Choice) {
         "linux" { Invoke-BuildTarget "linux" $selected.Label @() }
         "web" { Invoke-BuildTarget "web" $selected.Label @() }
         "preview-web" { Invoke-PreviewWeb }
-        "preview-windows" { Invoke-PreviewDesktop }
+        "preview-desktop" { Invoke-PreviewDesktop }
         "preview-apk" { Invoke-PreviewApk }
         "preview-aab" { Invoke-NotApplicable "AAB" "Android App Bundles aren't directly installable. Upload to Play Console (internal testing track), or use Google's 'bundletool' to generate installable APKs from it. Use the APK preview option instead for local testing." }
         "preview-ios" { Invoke-NotApplicable "iOS / IPA" "IPA files need a provisioning profile, a registered device, or TestFlight to install - not something this script can automate. On macOS, use Xcode's Devices and Simulators window, or 'xcrun devicectl'." }
@@ -318,9 +352,19 @@ while ($true) {
     Show-Menu
     $choice = Read-Host "Select an option (number or name, 0 to exit)"
     Write-Host ""
+    # Reset before each selection so a failure doesn't wrongly report as
+    # failed on the NEXT (possibly successful) action too - a real gap
+    # found live: a build/preview failure previously left no visible
+    # trace at all in the interactive loop (just silently looped back to
+    # the menu), because $script:ExitCode was set but never checked here.
+    $script:ExitCode = 0
     if (-not (Invoke-Selection $choice)) {
         Write-Host "Goodbye!"
         exit 0
+    }
+    if ($script:ExitCode -ne 0) {
+        Write-Host ""
+        Write-Host "Action failed (exit code $($script:ExitCode)) - see the output above for details." -ForegroundColor Red
     }
     Write-Host ""
     Read-Host "Press Enter to continue..." | Out-Null
