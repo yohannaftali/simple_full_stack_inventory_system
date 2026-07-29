@@ -4,7 +4,7 @@ from components.list.body import Body
 from components.list.filter import ListFilter
 from components.list.layout import Layout
 from components.list.menu import ListMenu
-from components.list.search_bar import ListSearchBar
+from components.search_bar import SearchBar
 from components.list.tiles import Tiles
 from components.list.toolbar import ListToolbar
 from components.table.columns import TABLE_OUTER_HORIZONTAL_PADDING
@@ -28,6 +28,7 @@ class List:
         leading=None,
         trailing=None,
         next_page="edit",
+        qr: bool = True,
     ):
         """
         Initialize List
@@ -71,12 +72,14 @@ class List:
             module=self.module, screen=self.screen, name=self.name
         )
 
-        self.list_search_bar = ListSearchBar(
+        self.list_search_bar = SearchBar(
             page=page,
             parent=self,
+            hint_text="Search in list...",
             on_filter_change=self.on_filter_change,
             on_submit=self.on_submit,
             initial_value=self.filter,
+            qr=qr,
         )
 
         # Download menu (issue #56) - the List equivalent of Table's

@@ -4,35 +4,43 @@ from components.scan_input import ScanInput
 from repository.storage import Storage
 
 
-class TableSearchBar:
-    """Table search bar component built for compact 32dp layout bars"""
+class SearchBar:
+    """Shared search bar component (issue #63), extracted from the
+    near-identical `components/table/search_bar.py::TableSearchBar` and
+    `components/list/search_bar.py::ListSearchBar` - same precedent as
+    `components/button.py::Button` (issue #21). `Table`/`List` each pass
+    their own `hint_text`. QR scan (issue #52) defaults to ON for every
+    search bar (both `Table`/`List` default their own `qr` param to
+    `True` too) - pass `qr=False` explicitly to opt a screen out.
+    """
 
     def __init__(
         self,
         page: ft.Page,
         parent,
+        hint_text: str = "Search...",
         on_filter_change=None,
         on_submit=None,
         initial_value: str = "",
-        qr: bool = False,
+        qr: bool = True,
     ):
         """
-        Initialize table search bar
+        Initialize the shared search bar
 
         Args:
             page: The Flet page
             parent: The calling module parent reference
+            hint_text: Placeholder text shown when the field is empty
             on_filter_change: Callback function when search value changes
             on_submit: Callback function when Enter key is pressed
             initial_value: Initial seed text string
+            qr: Whether to show a barcode/QR scan button (issue #52)
         """
         self.page = page
         self.storage: Storage = page.data["storage"]
         self.parent = parent
         self.on_filter_change = on_filter_change
         self.on_submit = on_submit
-        # Opt-in barcode/QR scan button (issue #52) - off by default, so
-        # every other table's search bar is unchanged.
         self.qr = qr
         self.scan_input: ScanInput | None = None
 
@@ -84,7 +92,7 @@ class TableSearchBar:
         # Compact Text Field Configuration replacing the rigid 56dp ft.SearchBar
         self.search_bar = ft.TextField(
             value=initial_value,
-            hint_text="Search in table...",
+            hint_text=hint_text,
             # Lighter than the entered-text color (`color` below) so the
             # placeholder is visibly distinguishable from real input, not a
             # near-identical shade of the same on-surface color (issue #19).
@@ -124,6 +132,7 @@ class TableSearchBar:
                 min_height=24,
                 max_height=24,
             ),
+            expand=True,
         )
 
         self.container = ft.Container(
@@ -152,12 +161,12 @@ class TableSearchBar:
             self.on_filter_change(search_text)
 
     def _apply_scanned_code(self, code: str) -> None:
-        """Put a scanned code into the search box and filter the table (#52).
+        """Put a scanned code into the search box and filter the results (#52).
 
         Deliberately a plain search rather than an option lookup: this bar
         filters rows server-side via `table-keyword-filter`, so a scanned
-        location code narrows the table exactly as typing it would - no
-        option list exists here to resolve against.
+        code narrows the results exactly as typing it would - no option
+        list exists here to resolve against.
         """
         self.search_bar.value = code
         self._safe_update()

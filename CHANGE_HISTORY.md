@@ -1,6 +1,21 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-29] — feat(frontend): QR scan button on by default for every search bar
+- Direct user request: "i want all search bar by default has qr button"
+- `components/search_bar.py::SearchBar`'s `qr` param default changed `False` -> `True`; `Table.__init__`'s existing `qr` param default changed the same way; `List.__init__` gained a `qr: bool = True` param threaded through to its own `SearchBar` construction (it previously had no `qr` param at all, always defaulting off)
+- No screen needed any changes - every existing Table/List picks this up automatically; `qr=False` is now the opt-out, not `qr=True` the opt-in
+- Verified live after `podman compose restart frontend`: `master_location` (Table) and `stock_in/index` (List) both show the QR icon with zero `qr=` argument passed by either screen, and clicking it opens the "Scan to Search" dialog on both
+- Files: frontend/src/components/search_bar.py, frontend/src/components/table/table.py, frontend/src/components/list/list.py, AGENTS.md
+
+## [2026-07-29] — chore(frontend): extract shared SearchBar component (issue #63)
+- Deduped `components/table/search_bar.py::TableSearchBar` and `components/list/search_bar.py::ListSearchBar` (~90% identical `ft.TextField` construction) into one new `components/search_bar.py::SearchBar`, same root-level extraction precedent as `components/button.py::Button` (#21)
+- New `hint_text` constructor parameter replaces each component's previously-hardcoded placeholder string (`Table` passes "Search in table...", `List` passes "Search in list...")
+- `List` gains QR/barcode scan support (issue #52) for free via the shared `qr=True` opt-in - previously Table-only
+- `Table.__init__`/`List.__init__` updated to construct `SearchBar` instead of their own module-local classes; both old files deleted (no dead re-export shims left behind)
+- Verified live in the browser after a `podman compose restart frontend`: `master_location` (Table) and `stock_in/index` (List) both filter/clear correctly through the shared component, no import errors in container logs
+- Files: frontend/src/components/search_bar.py (new), frontend/src/components/table/table.py, frontend/src/components/list/list.py, frontend/src/components/table/search_bar.py (deleted), frontend/src/components/list/search_bar.py (deleted), AGENTS.md
+
 ## [2026-07-28] — fix(frontend): Table icon-only header bled into the first data row (issue #65 follow-up)
 - User reported the new calendar icon (added for the "date" field's Table column header) also visibly appeared overlapping the first data row
 - Root cause: the same documented bug class already fixed for sort icons/remove/checkbox headers - `TableBody`'s hidden structural header row (`interactive=False`, `heading_row_height=0`, exists purely for column-width alignment) isn't fully clipped by Flutter when its content includes a real icon, so the icon rendered there bled visibly into the row underneath. The icon-wrapping fix added earlier in issue #65 never gated on `interactive`, unlike every other icon-bearing header element in this file

@@ -82,7 +82,7 @@
 | #60 | feat(frontend): M3 row hover/focus state layer on Table (preserve zebra stripe) | closed | 2026-07-28 |
 | #61 | feat(table): match date-formatted columns by displayed text in per-column filter | closed | 2026-07-28 |
 | #62 | fix(frontend): ListToolbar styling doesn't match TableToolbar (bg/icon color/padding) | closed | 2026-07-28 |
-| #63 | chore(frontend): extract shared SearchBar component (dedupe Table/List search bars) | open | 2026-07-28 |
+| #63 | chore(frontend): extract shared SearchBar component (dedupe Table/List search bars) | ready-for-review | 2026-07-29 |
 | #64 | feat(frontend): camera-based barcode/QR scan option alongside manual entry | open | 2026-07-28 |
 | #65 | feat(frontend): zebra-striped List tiles + demonstrate label/icon-only fields | closed | 2026-07-28 |
 
@@ -3511,6 +3511,37 @@ managed via `pyproject.toml` (uv/Poetry).
     without touching `options` while the field has focus and text is being
     typed — e.g. only re-capping on blur/selection, never on
     `on_text_change` — or it will very likely reintroduce this exact bug.
+  - `components/search_bar.py::SearchBar` (issue #63) — a shared search
+    box, same root-level `components/` extraction precedent as
+    `components/button.py::Button` (#21, immediately below). Replaces the
+    two near-identical `components/table/search_bar.py::TableSearchBar`/
+    `components/list/search_bar.py::ListSearchBar` (both deleted), which
+    had drifted to ~90% duplicate `ft.TextField` construction except that
+    only `TableSearchBar` had opt-in QR/barcode scan support (issue #52).
+    `SearchBar(page, parent, hint_text="Search...", on_filter_change=None,
+    on_submit=None, initial_value="", qr=True)` takes `hint_text` as a
+    constructor parameter instead of a hardcoded string (`Table.__init__`
+    passes `"Search in table..."`, `List.__init__` passes `"Search in
+    list..."`, preserving each component's exact prior wording) — every
+    other behavior (styling, `storage.table_search` persistence, QR scan
+    via `components/scan_input.py::ScanInput`) is unchanged from
+    `TableSearchBar`'s implementation, which was the more complete of the
+    two. Verified live in the browser: `master_location` (Table) and
+    `stock_in/index` (List) both filter/clear correctly through the
+    shared component.
+    **QR scan is ON by default for every search bar** (same-day
+    follow-up, direct user request) — `SearchBar`'s own `qr` param
+    defaults to `True` (was `False`), and both `Table.__init__`/
+    `List.__init__` gained/kept their own `qr: bool = True` parameter
+    threaded straight through, so every existing Table/List screen picked
+    this up automatically with no per-screen changes needed (the one
+    prior explicit `qr=True` call site, `stock_out/item_new.py`, is now
+    redundant but harmless). Pass `qr=False` explicitly on a `Table`/
+    `List` construction to opt a specific screen out. Verified live: both
+    `master_location` (Table) and `stock_in/index` (List) now show the QR
+    icon next to the clear icon with no `qr=True` argument passed by
+    either screen, and clicking it opens the same "Scan to Search" dialog
+    on both.
   - `components/button.py::Button` (issue #21) — a shared Material 3
     button builder factoring out what used to be three near-identical
     inline `ft.IconButton(...)` constructions in `components/list/toolbar.py`,

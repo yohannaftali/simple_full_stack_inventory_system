@@ -8,7 +8,7 @@ from components.table.header import TableHeader
 from components.table.menu import TableMenu
 from components.table.remove import TableRemove
 from components.table.rows import TableRows
-from components.table.search_bar import TableSearchBar
+from components.search_bar import SearchBar
 from components.table.toolbar import TableToolbar
 from repository.storage import Storage
 from utils.http_client import HttpClient
@@ -44,7 +44,7 @@ class Table:
         fill_available_space: bool = True,
         on_remove_row=None,
         on_remove_rows=None,
-        qr: bool = False,
+        qr: bool = True,
     ):
         """
         Initialize Table
@@ -152,9 +152,10 @@ class Table:
 
         self.filter = ""
         self.filter = self.storage.table_search.get(self.module, self.screen, self.name)
-        self.table_search_bar = TableSearchBar(
+        self.table_search_bar = SearchBar(
             page=page,
             parent=self,
+            hint_text="Search in table...",
             on_filter_change=self.on_filter_change,
             on_submit=self.on_submit,
             initial_value=self.filter,
