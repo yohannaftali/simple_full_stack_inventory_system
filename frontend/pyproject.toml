@@ -29,6 +29,16 @@ dependencies = [
   # uv.lock anyway as an incidental transitive resolution.
   "qrcode>=8.2",
   "pypng>=0.20220715.0",
+  # Camera/photo-based barcode/QR decode (issue #64) - components/scan_input.py's
+  # "Scan with Photo" fallback path. pyzbar wraps the native libzbar shared
+  # library (installed separately in frontend/Dockerfile, see the comment
+  # there) via ctypes - it decodes raw image bytes handed to Python by
+  # ft.FilePicker(file_type=IMAGE, with_data=True), it does not touch a
+  # camera device itself (this app's containerized web deployment runs the
+  # Flet process server-side - only bytes already delivered to Python are
+  # ever usable here, see AGENTS.md's "Container networking gotcha").
+  "pyzbar>=0.1.9",
+  "pillow>=10.0.0",
 ]
 
 [tool.flet]

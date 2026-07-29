@@ -1,7 +1,10 @@
 FROM python:3.13-slim
 
+# libzbar0 - native shared library pyzbar (issue #64) loads via ctypes to
+# decode barcode/QR photos picked through ft.FilePicker; without it, pyzbar
+# raises ImportError("Unable to find zbar shared library") at first use.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends openssl socat zenity \
+    && apt-get install -y --no-install-recommends openssl socat zenity libzbar0 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/src/app

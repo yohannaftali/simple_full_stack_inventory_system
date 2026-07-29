@@ -83,7 +83,7 @@
 | #61 | feat(table): match date-formatted columns by displayed text in per-column filter | closed | 2026-07-28 |
 | #62 | fix(frontend): ListToolbar styling doesn't match TableToolbar (bg/icon color/padding) | closed | 2026-07-28 |
 | #63 | chore(frontend): extract shared SearchBar component (dedupe Table/List search bars) | ready-for-review | 2026-07-29 |
-| #64 | feat(frontend): camera-based barcode/QR scan option alongside manual entry | open | 2026-07-28 |
+| #64 | feat(frontend): camera-based barcode/QR scan option alongside manual entry | ready-for-review | 2026-07-29 |
 | #65 | feat(frontend): zebra-striped List tiles + demonstrate label/icon-only fields | closed | 2026-07-28 |
 
 ## Big Picture
@@ -3111,6 +3111,63 @@ managed via `pyproject.toml` (uv/Poetry).
     `expand=True` on their control so they fill their `ResponsiveRow`
     column on web — a fix applied after `input`/`label` were initially
     missing it while `select` already had it.
+  - **Camera/photo scan option added alongside manual entry** (issue #64,
+    2026-07-29). The `ScanInput` dialog (see #52 below) now offers a
+    second path next to the autofocused text field: a "Scan with Photo"
+    button that opens `ft.FilePicker(file_type=IMAGE, with_data=True)` —
+    the device camera for one photo on platforms that support it, or a
+    plain file browser otherwise — and decodes the picked bytes
+    server-side with `pyzbar` (native `libzbar0`, added to
+    `frontend/Dockerfile`; `pillow>=10.0.0`/`pyzbar>=0.1.9` added to
+    `frontend/pyproject.toml`). `decode_image_bytes(data: bytes) -> str |
+    None` is the standalone decode function (`PIL.Image.open` +
+    `pyzbar.pyzbar.decode`, first result's `.data` UTF-8-decoded) — kept
+    separate from the dialog-building code so it has no `ft` dependency
+    and is directly unit-testable.
+    **A genuine live in-browser camera scan (matching senar's own
+    `html5-qrcode`-based `handleScanCamera()` in
+    `code/public/js/framework/y.form.js`, including front/rear camera
+    switching) was investigated and intentionally NOT built**: Flet
+    0.85.3 has no WebView/JS-eval control to embed a third-party JS
+    library the way senar's own HTML page does (confirmed via a full
+    search of the installed `flet/controls/` package). The one real
+    PyPI candidate found, `flet-camera` (official flet-dev package,
+    wraps Flutter's `camera` plugin — preview/photo capture only, no
+    barcode decoding of its own), only ships stable releases pinned to
+    `flet==0.86.4`; its `0.85.3` releases are `.dev0`/`.dev1`
+    prereleases, too risky to pin against this app's locked
+    `flet==0.85.3`. Left as a documented, larger future follow-up (a
+    custom Flet extension wrapping a live-scan Flutter plugin), not
+    attempted here — the photo-capture + server-side-decode path above
+    is deployment-safe either way (web or native), since it only needs
+    bytes already delivered to Python (this app's primary deployment
+    runs the Flet process server-side in a container — see "Container
+    networking gotcha" below — so a live in-Python camera read, e.g.
+    `cv2.VideoCapture`, would read the *server container's* camera, not
+    the end user's).
+    **Never a silent failure** (explicit acceptance criterion): a photo
+    with no decodable barcode/QR, or a cancelled/unreadable file pick,
+    reopens the same manual-entry dialog — with a visible red error
+    message for the no-decode/unreadable cases, silently for a plain
+    cancel (same as clicking Cancel directly) — so the user can retry the
+    photo or fall back to typing/scanning with the hardware gun.
+    Verified: `decode_image_bytes()` tested directly inside the
+    containerized frontend (`uv run python3`, real `libzbar0`) against a
+    generated QR image (correct round-trip) and a blank image (correctly
+    returns `None`); full container rebuild picked up `pyzbar`/`pillow`/
+    `libzbar0` with a clean `uv sync` and no import errors across all 65
+    preloaded screens. Verified live in the browser (`master_location`):
+    clicking the search bar's scan button shows the manual-entry field
+    plus a "Scan with Photo" button; clicking it opens the OS/browser
+    native file picker; cancelling that picker correctly reopens the
+    manual-entry dialog with no error (the same code path a real
+    no-decode result also reopens through) — an actual photo containing a
+    barcode was not decoded through this exact click path in-browser this
+    session (no camera/photo available to the automated browser), but the
+    identical decode function was already confirmed correct against a
+    real image via the container test above, and every consumer receives
+    the result through the same unmodified `on_scan(code)` callback
+    issue #52's existing consumers already use.
   - **Barcode/QR scan affordance** (`components/scan_input.py::ScanInput`,
     issue #52, 2026-07-27). The scanner is a **hardware gun acting as a
     keyboard wedge** — it types the scanned code plus Enter into whatever

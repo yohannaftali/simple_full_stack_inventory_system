@@ -1,6 +1,15 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-29] — feat(frontend): camera/photo-based barcode/QR scan option (issue #64)
+- Added a "Scan with Photo" button to the existing `ScanInput` dialog, alongside the manual-entry text field (issue #52) - opens `ft.FilePicker(file_type=IMAGE, with_data=True)` (device camera on supporting platforms, file browser otherwise), decodes the picked photo's bytes server-side with `pyzbar` + Pillow
+- New `decode_image_bytes(data: bytes) -> str | None` in `components/scan_input.py`, no `ft` dependency, directly testable
+- Investigated a genuine live in-browser camera scan (matching senar's `html5-qrcode`-based `handleScanCamera()`) - not built: Flet 0.85.3 has no WebView/JS-eval control, and the one real PyPI candidate (`flet-camera`) only ships stable releases pinned to `flet==0.86.4` (its 0.85.3 releases are `.dev0`/`.dev1` prereleases) - documented as a larger future follow-up, not attempted
+- A photo with no decodable code, an unreadable file, or a cancelled pick all reopen the manual-entry dialog (with a visible error for the first two, silently for cancel) - never a silent failure
+- New deps: `pyzbar>=0.1.9`, `pillow>=10.0.0` (frontend/pyproject.toml, uv.lock regenerated); `libzbar0` added to frontend/Dockerfile's apt install (pyzbar's native shared library dependency)
+- Verified: `decode_image_bytes()` tested inside the rebuilt container against a real generated QR (correct decode) and a blank image (correctly returns None); full container rebuild succeeded with clean `uv sync` and no import errors across all 65 preloaded screens; live in the browser on `master_location` - dialog shows both options, "Scan with Photo" opens the native file picker, and cancelling it correctly reopens the manual-entry dialog with no error
+- Files: frontend/src/components/scan_input.py, frontend/pyproject.toml, frontend/uv.lock, frontend/Dockerfile, AGENTS.md
+
 ## [2026-07-29] — feat(frontend): QR scan button on by default for every search bar
 - Direct user request: "i want all search bar by default has qr button"
 - `components/search_bar.py::SearchBar`'s `qr` param default changed `False` -> `True`; `Table.__init__`'s existing `qr` param default changed the same way; `List.__init__` gained a `qr: bool = True` param threaded through to its own `SearchBar` construction (it previously had no `qr` param at all, always defaulting off)
