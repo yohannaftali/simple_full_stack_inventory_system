@@ -42,6 +42,22 @@ _EDITABLE_TYPES = {
 _MENU_VISIBLE_ROWS = 5
 _MENU_ROW_HEIGHT = 48
 
+
+def _sync_dropdown_text(dropdown: ft.Dropdown) -> None:
+    """Explicitly resolve and set a Dropdown's displayed `text` from its
+    selected `value` on every `on_select` - see the call site's own comment
+    for why (a real, user-reported bug where the display doesn't update on
+    the first pick when the menu is opened via its text region).
+    """
+    matched = next((opt for opt in dropdown.options if opt.key == dropdown.value), None)
+    if matched is None:
+        return
+    dropdown.text = matched.text
+    try:
+        dropdown.update()
+    except RuntimeError:
+        pass
+
 # Position-based zebra stripe colors (issue #57, replacing the table's old
 # border/divider lines) - CSS :nth-child(even/odd)-style: derived fresh from
 # a row's index in the CURRENT render pass every time (the `row` counter
@@ -507,6 +523,16 @@ class TableRows:
                 filled=True,
                 fill_color=ft.Colors.SURFACE_CONTAINER_HIGHEST,
             )
+            # Real, user-reported bug: opening this cell's dropdown by
+            # tapping its text region (vs. the trailing arrow) and picking
+            # the first option leaves the displayed text empty until a
+            # second pick - see components/form/select.py::SelectForm's
+            # own `_on_select` for the full explanation (Flutter's
+            # `DropdownMenu` keeps its selected `value` and displayed
+            # `text` as two separate properties that don't reliably stay
+            # in sync on every interaction path). Same fix here: don't
+            # trust the client widget's own sync, drive it explicitly.
+            control.on_select = lambda e, ctrl=control: _sync_dropdown_text(ctrl)
             return control, control
 
         if field_type == "datepicker":

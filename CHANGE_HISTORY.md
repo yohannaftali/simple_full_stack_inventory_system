@@ -1,6 +1,21 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-29] — fix(frontend): select dropdown first-click-via-text-region bug (#71)
+- Issue #71 created on GitHub (`fix(frontend): select dropdown first click via text region doesn't populate value`) - user-reported: opening a select field by tapping its text-input region (not the trailing arrow) and picking the first option doesn't populate the field; a second click on an option does. Opening via the arrow has no such problem
+- Retried closing #68 via the API while here - still `403 Resource not accessible by personal access token`, same as before, even though creating #71 (`POST`) succeeded moments earlier - a genuinely confusing, reproducible split between create and update permissions on this token that wasn't resolved; still needs the user to close #68 manually or fix the token
+- Root-cause hypothesis (from reading the installed `flet==0.86.4` package's own `Dropdown` control source, not guesswork): `ft.Dropdown` exposes `value` (selected key) and `text` ("the text entered in the text field") as two independent properties - Flutter's `DropdownMenu` widget apparently doesn't reliably sync its internal text-field controller to the newly-selected option's label when the menu was opened by focusing the text field directly (vs. the trailing icon), a known rough-edge class for this relatively new Material 3 widget
+- Fix: added an explicit `on_select` handler to the `ft.Dropdown` in both `components/form/select.py::SelectForm.build()` and `components/table/rows.py`'s editable `"select"`/`"option"` cell branch - on every selection, explicitly resolves the matching option's label from `.value`/`.options` and sets `.text` + calls `.update()`, rather than trusting the client widget's own internal sync (the same "drive it explicitly from Python" pattern already used for other flaky Flet/Flutter behaviors like `DataRow.color`/`ListTile.bgcolor`)
+- **Not verified live** - no browser automation tool or way to click through the actual reported repro in this session; this is a well-reasoned but unverified fix, flagged as such
+- Files: frontend/src/components/form/select.py, frontend/src/components/table/rows.py, AGENTS.md, CHANGE_HISTORY.md
+
+## [2026-07-29] — Tracked issue review: #64, #67, #68
+- Reviewed all three against their own acceptance criteria and current GitHub state (all still `open`, no external changes since last check)
+- #64 (camera scan) and #67 (test/preview script): both have genuine, explicitly-documented hardware-dependent verification gaps (no browser/camera for #64's live scan, no physical device/emulator for #67's real APK install) - user chose to keep both open pending that manual testing
+- #68 (Flet 0.86.4 upgrade): user approved closing - the containerized web deployment (this app's primary path) is fully verified and already merged to `main`; the still-blocked APK build (Windows Developer Mode setting) is accepted as a separate, already-documented follow-up, not a reason to keep this upgrade issue open
+- **Attempted to close #68 via the GitHub API - blocked**: `PATCH /issues/68` returned `403 Resource not accessible by personal access token` (the token authenticates fine and can read issues, but lacks write/update permission - a fine-grained PAT missing the "Issues: write" permission, or a classic PAT missing the `repo` scope). Not fixed here (can't modify the user's own token) - #68 needs to be closed manually via the GitHub UI, or the API retried once the token's permissions are widened
+- Files: AGENTS.md
+
 ## [2026-07-29] — feat(frontend): live in-browser camera scan (issue #64 follow-up)
 - Issue #64 addressed on GitHub (`chore(frontend): upgrade Flet 0.85.3 -> 0.86.4` unblocked this - the live-scan path was previously ruled out only because `flet-camera`'s stable releases never matched `flet==0.85.3`)
 - User asked for a real live camera scanning UX (green scan-line animation, corner-bracket viewfinder, camera-switch cycling, no-camera/gallery fallbacks, auto-populate + strip CR/tab-to-next), referencing senar's `html5-qrcode` implementation and pasting an OpenCV (`cv2.VideoCapture`) example

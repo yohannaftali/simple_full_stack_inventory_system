@@ -87,7 +87,8 @@
 | #65 | feat(frontend): zebra-striped List tiles + demonstrate label/icon-only fields | closed | 2026-07-28 |
 | #66 | feat(infra): interactive frontend build script (apk/aab/ios/desktop/web) | closed | 2026-07-29 |
 | #67 | feat(infra): test/preview script for build.ps1/build.sh output | ready-for-review | 2026-07-29 |
-| #68 | chore(frontend): upgrade Flet 0.85.3 -> 0.86.4 | ready-for-review (web deployment verified; APK build hits a real "Failed to update packages" error under investigation) | 2026-07-29 |
+| #68 | chore(frontend): upgrade Flet 0.85.3 -> 0.86.4 | approved-to-close (web deployment merged to main and fully verified; user accepted the APK/Developer-Mode gap as a separate follow-up - GitHub close blocked, see note below) | 2026-07-29 |
+| #71 | fix(frontend): select dropdown first click via text region doesn't populate value | ready-for-review (fix applied, unverified in a real browser) | 2026-07-29 |
 
 ## Big Picture
 
@@ -4004,6 +4005,41 @@ managed via `pyproject.toml` (uv/Poetry).
     without touching `options` while the field has focus and text is being
     typed — e.g. only re-capping on blur/selection, never on
     `on_text_change` — or it will very likely reintroduce this exact bug.
+  - **First-pick-via-text-region doesn't populate the display** (issue #71,
+    2026-07-29, user-reported): opening a select field by tapping its
+    text-input region (the field is clickable there, not just via the
+    trailing arrow, since `editable=True` makes it typable — see the
+    `enable_filter` entry above) and picking the very first option left the
+    displayed text empty; a second pick (same or different option) then
+    populated it correctly. Opening the same field via the trailing arrow
+    never showed the problem. Root cause (from reading `flet==0.86.4`'s own
+    `Dropdown` control source, not guesswork): `ft.Dropdown` exposes `value`
+    (the selected option's key) and `text` ("the text entered in the text
+    field") as two independent properties — Flutter's `DropdownMenu` widget
+    keeps its own internal text-field controller separate from the selected
+    value, and that internal sync isn't reliable on every interaction path
+    (a known rough-edge class for this relatively new Material 3 widget,
+    consistent with every other `DropdownMenu` quirk already documented in
+    this section). Fixed the same way this codebase has already fixed other
+    flaky Flet/Flutter client-side sync issues (`DataRow.color`,
+    `ListTile.bgcolor`) — don't trust the widget's own internal sync, drive
+    it explicitly from Python: both `SelectForm.build()`
+    (`components/form/select.py`) and `TableRows._build_editable_cell()`'s
+    `"select"`/`"option"` branch (`components/table/rows.py`, via a shared
+    module-level `_sync_dropdown_text()` helper) now wire an `on_select`
+    handler that resolves the matching `DropdownOption.text` from the
+    Dropdown's own `.value`/`.options` and explicitly sets `.text` +
+    `.update()` on every selection, regardless of how the menu was opened.
+    Verified: both files import cleanly, a full container rebuild succeeds,
+    all 65 screens preload with zero errors. **Not verified live** — no
+    browser automation tool was available to actually click through the
+    original repro (open via text region, pick an option, confirm the text
+    populates on the first try) this session; also unconfirmed whether the
+    underlying `.value` itself was ever wrong (a real data bug) or only the
+    *displayed* text was stale (cosmetic) — the fix addresses the display
+    side either way, but if `.value` itself was also affected on that first
+    click, this fix alone doesn't prove it's now captured correctly at
+    submit time. Next manual pass should confirm both.
   - `components/search_bar.py::SearchBar` (issue #63) — a shared search
     box, same root-level `components/` extraction precedent as
     `components/button.py::Button` (#21, immediately below). Replaces the
