@@ -1,6 +1,19 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-29] — feat(infra): implement interactive frontend build script (issue #66)
+- New `build.ps1`/`build.sh` at repo root - interactive menu (or direct CLI arg for non-interactive use) wrapping `uv run flet build <target>` from `frontend/`: APK (Release), APK (Release, split per ABI), AAB, iOS (IPA), iOS Simulator, Windows/macOS/Linux desktop, Web
+- Corrected the issue's own assumption of an "APK (Debug)" option - `flet build` (flet-cli) always produces a Flutter release build, no debug flag exists in this CLI; omitted that menu entry and documented why
+- Confirmed live: `flet build`'s default output (`frontend/build/<target>/`) is already excluded by the repo's existing bare `build/` `.gitignore` rule - no new `.gitignore` entry needed, verified via a real `flet build web` run showing no new files in `git status`
+- Two real bugs found and fixed while verifying: (1) `flet build`'s `rich` progress output raises `UnicodeEncodeError` under a legacy cp1252 Windows console - fixed by setting `PYTHONUTF8=1`/`PYTHONIOENCODING=utf-8` in both scripts before invoking `flet build`; (2) `build.ps1`'s original `-not $choice` check wrongly treated a CLI-arg `"0"` (Cancel) as "no argument given" due to PowerShell's string-to-bool coercion (`-not "0"` is `$true`) - fixed by checking `$null -eq $choice` instead; `build.sh`'s bash equivalent didn't have this bug
+- Verified end-to-end: interactive menu, direct CLI-arg dispatch, Cancel, unknown-target rejection, and a missing-`uv` guard all behave correctly in both scripts; a real `flet build web` completed successfully through both `build.ps1` and `build.sh`. Full Android/iOS/desktop builds themselves weren't run (no Android SDK/Xcode toolchain in this environment) - dispatch/argument-handling was verified for those targets, not the underlying `flet build`/Flutter toolchain itself
+- Files: build.ps1 (new), build.sh (new), AGENTS.md
+
+## [2026-07-29] — feat(infra): interactive frontend build script (apk/aab/ios/desktop/web)
+- Issue #66 created on GitHub
+- Scope: infra/frontend build tooling - a new `build.ps1`/`build.sh` menu wrapping `uv run flet build <target>` from `frontend/`, covering APK (debug/release/split-per-abi), AAB, iOS, Windows, macOS, Linux, Web - same cross-platform script-pair precedent as `start.ps1`/`start.sh` (#12)
+- Labels: enhancement, frontend
+
 ## [2026-07-29] — feat(frontend): camera/photo-based barcode/QR scan option (issue #64)
 - Added a "Scan with Photo" button to the existing `ScanInput` dialog, alongside the manual-entry text field (issue #52) - opens `ft.FilePicker(file_type=IMAGE, with_data=True)` (device camera on supporting platforms, file browser otherwise), decodes the picked photo's bytes server-side with `pyzbar` + Pillow
 - New `decode_image_bytes(data: bytes) -> str | None` in `components/scan_input.py`, no `ft` dependency, directly testable

@@ -85,6 +85,7 @@
 | #63 | chore(frontend): extract shared SearchBar component (dedupe Table/List search bars) | ready-for-review | 2026-07-29 |
 | #64 | feat(frontend): camera-based barcode/QR scan option alongside manual entry | ready-for-review | 2026-07-29 |
 | #65 | feat(frontend): zebra-striped List tiles + demonstrate label/icon-only fields | closed | 2026-07-28 |
+| #66 | feat(infra): interactive frontend build script (apk/aab/ios/desktop/web) | ready-for-review | 2026-07-29 |
 
 ## Big Picture
 
@@ -122,6 +123,65 @@ Environment variables (`MARIADB_ROOT_PASSWORD`, `MARIADB_DATABASE`,
 `JWT_SECRET`, `UVICORN_HOST`, `UVICORN_PORT`, `UVICORN_PORT_SSL`,
 `FRONTEND_PORT`, `FRONTEND_PORT_SSL`, `GITHUB_TOKEN`) are read from `.env`
 (see `example.env` for the template; `.env` itself must never be committed).
+
+`start.ps1`/`start.sh` (repo root, issue #12) wrap the compose command
+above with podman/docker auto-detect (prefers podman, falls back to
+docker) — the actual day-to-day way this stack gets started, rather than
+typing the raw `podman compose` command by hand.
+
+**`build.ps1`/`build.sh`** (repo root, issue #66) are a separate,
+non-Docker path: an interactive menu wrapping `uv run flet build <target>`
+from `frontend/`, producing a real installable/distributable frontend
+build — APK (Release), APK (Release, split per ABI), AAB, iOS (IPA), iOS
+Simulator, Windows/macOS/Linux desktop, or Web — alongside the
+containerized web deployment above (which remains the primary supported
+way to run this app; these scripts are for distributing a native
+mobile/desktop build, or a plain static web build, when that's actually
+needed). Usage: run with no args for the menu, or pass a target directly
+(`./build.sh apk-split`, `.\build.ps1 aab`) for non-interactive/CI use.
+Requires `uv` on `PATH` and the `frontend/pyproject.toml` dev dependency
+group (`flet[all]==0.85.3`, which is where `flet-cli`'s `flet build`
+command actually lives — the bare `flet` in `[project.dependencies]`
+deliberately excludes it, see that file's own comment). Each `flet build`
+target's host-OS compatibility (e.g. an iOS/macOS build needs a Mac) is
+validated by `flet build` itself, which prints its own build-matrix table
+and a clear error — the scripts don't duplicate that check.
+**No separate "APK (Debug)" option** — `flet build` (this pinned flet-cli
+version) always produces a Flutter *release* build; there is no
+debug-mode flag in the CLI, a debug build instead comes from `flet run`
+against a connected device, which is a different, already-existing
+workflow outside this script's scope.
+Build output lands in `frontend/build/<target>/` (`flet build`'s own
+default), already excluded from git by the repo's existing bare `build/`
+`.gitignore` rule (matches any directory named `build` anywhere in the
+tree) — confirmed live with a real `flet build web` run through both
+scripts (`git status` showed nothing new), so no additional `.gitignore`
+entry was needed.
+**A real, reproducible Windows-console bug was found and fixed while
+verifying this**: `flet build`'s `rich`-based progress output writes
+Unicode glyphs (e.g. `●`) that raise `UnicodeEncodeError` under a legacy
+cp1252 Windows console (confirmed live, both in Git Bash and in
+PowerShell's own non-UTF8 console) — both scripts now set
+`PYTHONUTF8=1`/`PYTHONIOENCODING=utf-8` before invoking `flet build`,
+which fixed it with no system codepage change required; harmless on
+Linux/macOS, which already default to UTF-8.
+**A second real bug, PowerShell-specific, was found and fixed**:
+`build.ps1`'s original `if (-not $choice)` "no CLI arg given, show the
+menu" check used PowerShell's string-to-bool coercion, under which the
+*string* `"0"` itself evaluates falsy (confirmed live: `-not "0"` is
+`$true`) — passing `0` (Cancel) as a direct CLI arg was wrongly treated
+as "no argument" and fell through to the interactive `Read-Host` prompt
+instead of cancelling immediately. Fixed by checking `$null -eq $choice`
+instead. `build.sh`'s equivalent `[ -z "$choice" ]` check doesn't have
+this bug (bash's `-z` only tests for a truly empty string), so only the
+PowerShell side needed the fix.
+Verified live end-to-end (both scripts, real `uv run flet build web`, not
+mocked): interactive menu display, direct CLI-arg dispatch (`web`,
+`apk-split` parsing, though full Android/iOS/desktop builds themselves
+weren't run — no Android SDK/Xcode toolchain in this environment), Cancel
+(`0`), an unknown-target error, and a missing-`uv`-on-PATH guard all
+behave correctly; the real web build completed successfully through both
+scripts with output correctly excluded from git.
 
 ## Backend Architecture (FastAPI — `backend/src`)
 
