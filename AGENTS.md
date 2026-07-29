@@ -83,10 +83,11 @@
 | #61 | feat(table): match date-formatted columns by displayed text in per-column filter | closed | 2026-07-28 |
 | #62 | fix(frontend): ListToolbar styling doesn't match TableToolbar (bg/icon color/padding) | closed | 2026-07-28 |
 | #63 | chore(frontend): extract shared SearchBar component (dedupe Table/List search bars) | ready-for-review | 2026-07-29 |
-| #64 | feat(frontend): camera-based barcode/QR scan option alongside manual entry | ready-for-review | 2026-07-29 |
+| #64 | feat(frontend): camera-based barcode/QR scan option alongside manual entry | ready-for-review (live camera scan added, unverified in a real browser) | 2026-07-29 |
 | #65 | feat(frontend): zebra-striped List tiles + demonstrate label/icon-only fields | closed | 2026-07-28 |
 | #66 | feat(infra): interactive frontend build script (apk/aab/ios/desktop/web) | closed | 2026-07-29 |
 | #67 | feat(infra): test/preview script for build.ps1/build.sh output | ready-for-review | 2026-07-29 |
+| #68 | chore(frontend): upgrade Flet 0.85.3 -> 0.86.4 | ready-for-review (web deployment verified; APK build hits a real "Failed to update packages" error under investigation) | 2026-07-29 |
 
 ## Big Picture
 
@@ -147,7 +148,7 @@ menu (loops back after every action, `0`/Enter-on-blank to exit — every
 selection returns to the menu, including a blocking dev-run once
 Ctrl+C'd), or pass a target directly (`./run.sh apk-split`,
 `.\run.ps1 web`) for one-shot/CI use. Requires `uv` on `PATH` and this
-project's dev dependency group (`flet[all]==0.85.3`, where `flet-cli`'s
+project's dev dependency group (`flet[all]==0.86.4`, where `flet-cli`'s
 `flet build`/`flet run`/`flet serve` commands actually live — the bare
 `flet` in `[project.dependencies]` deliberately excludes it, see that
 file's own comment) — `uv sync` runs automatically before every build/
@@ -306,6 +307,89 @@ separate real issues, neither a bug in this project's own code:
    — `run.ps1` only targets Windows, `run.sh` detects the running OS —
    only the *name* needed to match for cross-script muscle memory,
    the entire stated point of giving both scripts the same slug set).
+
+**Flet upgrade 0.85.3 -> 0.86.4** (issue #68, 2026-07-29): bumped
+`flet`/`flet[all]`/`flet-datatable2` to `0.86.4` in `frontend/pyproject.toml`
+(both the bare runtime dependency and the dev group), regenerated
+`frontend/uv.lock`. A real, pre-existing bug found and fixed along the way:
+`frontend/.gitignore` had a blanket `*.lock` rule (uncommented boilerplate
+left over from the generic Python `.gitignore` template) that had been
+silently keeping `frontend/uv.lock` out of git since this project's very
+first commit - `backend/.gitignore` has no such rule and `backend/uv.lock`
+has always been tracked, so this was a real asymmetry, not intentional.
+Commented out; `frontend/uv.lock` is now tracked for the first time.
+- **Verified, containerized web deployment (this app's primary supported
+  path)**: `uv lock`/`uv sync` resolved cleanly with no conflicts; a full,
+  clean `podman compose build --no-cache frontend` succeeded; all three
+  containers (`mariadb`/`backend`/`frontend`) reached healthy; frontend
+  container logs show all 65 module/modal screens preloading with zero
+  import errors; the ASGI `ClientIdMiddleware` still sets the
+  `sfsis_client_id` cookie correctly on both the plain-HTTP and the
+  `socat`-relayed HTTPS port; backend is unaffected (still correctly 401s
+  when unauthenticated). Every Python-level API this app's own documented
+  0.85.3-era workarounds depend on was confirmed unchanged by reading the
+  installed 0.86.4 package source directly (not assumed): `Page.on_resize`/
+  `PageResizeEvent`, `DataRow.color: Optional[ControlStateValue[ColorValue]]`,
+  `DataColumn.on_sort` (this app already routes header clicks through
+  `Container.on_click` instead, so its presence/absence doesn't matter
+  either way), `Container.on_click`/`on_hover`, `ListTile.bgcolor`,
+  `FormFieldControl.collapsed`, `FilePicker` still a `Service` (still
+  resolves via `page.services`), `GestureDetector.drag_interval`. The
+  `--flutter-build-args` argparse shape (`action="append", nargs="*"`) is
+  unchanged in `flet-cli` 0.86.4's own `build_base.py` - the documented
+  `=`-form requirement for `--flutter-build-args=--debug` still holds.
+  APK/AAB/IPA/desktop/web output-path globs (`build/app/outputs/
+  flutter-apk/*`, etc.) and the `build/`/`build/flutter/` directory
+  structure `run.ps1`/`run.sh`'s preview functions search are unchanged in
+  `flet-cli`'s own platform table - the "redesigned Android packaging"
+  release note turned out to refer to internal native-lib bundling inside
+  the APK, not `flet-cli`'s own output directory layout. Dev-mode QR-scan
+  (`flet run --android`/`--ios`, `print_qr_code`) is unchanged at the CLI
+  level - the remaining risk (whether the separately-versioned "Flet"
+  companion phone app has caught up to 0.86's wire protocol) still can't
+  be verified without a real phone in this environment, same gap as before.
+- **New, real finding: `flet-cli` 0.86 now manages its own pinned Flutter/
+  Android SDK version** (confirmed via `flutter_base.py` source and live
+  reproduction) independently of whatever `flutter`/`adb` is on `PATH` -
+  the first build on a machine whose Flutter doesn't match (this dev
+  machine's system Flutter was `3.16.4`; `flet-cli` 0.86.4 requires
+  `3.44.8`) prints `"Flutter SDK X is required. It will be installed now.
+  Proceed? [y/n]"` and, with no TTY attached (this script's own
+  non-interactive build path), that prompt `EOFError`s and crashes instead
+  of hanging. `flutter_base.py` documents its own bypass
+  ("Re-run with --yes to install automatically") - both `run.ps1`'s
+  `Invoke-BuildTarget` and `run.sh`'s `run_build_target` now pass
+  `--yes` to every `flet build` invocation. Confirmed this resolves the
+  crash: a retry with `--yes` correctly auto-downloaded and used Flutter
+  `3.44.8` without any further prompt.
+- **A second, separate, genuinely NOT-a-flet-bug failure found on this
+  same machine**: even with `--yes` fixing the SDK-bootstrap crash, a real
+  `apk` build still fails with `Building with plugins requires symlink
+  support. Please enable Developer Mode in your system settings.` -
+  Windows' own long-standing requirement for Flutter to create symlinks
+  when a build includes native plugins, unrelated to anything in this
+  repo or to the flet version bump itself (this is a Windows OS setting -
+  Settings > For Developers > Developer Mode - not a project file).
+  `flutter doctor` on this same machine also separately reported an
+  Android SDK version mismatch (SDK 37 installed, Flutter wants SDK 36 +
+  BuildTools 28.0.3) and an incomplete Visual Studio C++ desktop workload
+  - both pre-existing gaps on this dev machine, not caused by this
+  upgrade. **Not fixed here** - enabling Windows Developer Mode is a
+  system-level setting change outside this repo's own files, left for the
+  user to enable directly (`start ms-settings:developers`) rather than
+  scripted; a follow-up build attempt should be re-tried once that's on.
+  This session's own containerized web verification above (clean
+  `podman compose build`, all screens preloading, ASGI cookie/relay
+  behavior intact) went through a completely different code path (the
+  ASGI app on top of `flet-web`, not `flet-cli`'s Flutter/Gradle/APK
+  toolchain at all), so it was never at risk from this Windows-specific
+  plugin/symlink gate either way - this is a machine-environment blocker
+  for the native APK build path specifically, not a regression in the
+  containerized web app this project actually ships.
+- **Not verified this session**: a real `flet build apk`/desktop build
+  completing end-to-end (blocked by the Developer Mode gap above, not
+  re-attempted after finding the root cause), and the dev-mode Android/iOS
+  QR-scan companion-app connect flow (no phone available).
 
 **`expose-lan.ps1`/`expose-lan.sh`** (repo root, same-day follow-up to a
 direct user question, not tied to a filed issue): exposes SFSIS's podman-
@@ -2968,7 +3052,7 @@ itself grew two small hooks so a sub-table *can* reuse it:
 
 ## Frontend Architecture (Flet — `frontend/src`)
 
-Stack: Python ≥3.10, Flet 0.85.3, `requests` for HTTP, `flet-datatable2`;
+Stack: Python ≥3.10, Flet 0.86.4, `requests` for HTTP, `flet-datatable2`;
 managed via `pyproject.toml` (uv/Poetry).
 
 - **Entry & routing** (`src/main.py`): `ft.run(main)` bootstraps an async
@@ -3375,9 +3459,16 @@ managed via `pyproject.toml` (uv/Poetry).
     PyPI candidate found, `flet-camera` (official flet-dev package,
     wraps Flutter's `camera` plugin — preview/photo capture only, no
     barcode decoding of its own), only ships stable releases pinned to
-    `flet==0.86.4`; its `0.85.3` releases are `.dev0`/`.dev1`
-    prereleases, too risky to pin against this app's locked
-    `flet==0.85.3`. Left as a documented, larger future follow-up (a
+    `flet==0.86.4`; at the time this was written the app was still on
+    `flet==0.85.3`, whose only matching `flet-camera` releases were
+    `.dev0`/`.dev1` prereleases, too risky to pin against.
+    **Superseded by issue #68** (2026-07-29 upgrade to `flet==0.86.4`) —
+    `flet-camera`'s own stable release now matches this app's pin
+    exactly, so this specific blocker no longer applies; a genuine
+    in-app camera-preview scan via `flet-camera` is a viable follow-up
+    now, still not attempted in this pass (issue #68 was scoped to the
+    version bump + regression pass, not new features). Left as a
+    documented, larger future follow-up (a
     custom Flet extension wrapping a live-scan Flutter plugin), not
     attempted here — the photo-capture + server-side-decode path above
     is deployment-safe either way (web or native), since it only needs
@@ -3517,6 +3608,110 @@ managed via `pyproject.toml` (uv/Poetry).
     still nested inside one `TextField.suffix_icon` slot, unlike the select
     fix above - not yet reported as an issue there, so left as-is rather
     than restructured speculatively).
+    **Live in-browser camera scan added** (issue #64 follow-up,
+    2026-07-29, unblocked by the `flet==0.86.4` upgrade - issue #68): the
+    scan button's click target (`ScanInput._open`, now `async`) tries a
+    real live camera scan first via `flet_camera.Camera` (added to
+    `frontend/pyproject.toml` as `flet-camera==0.86.4` - its stable
+    releases only ever matched `flet==0.86.4`, never this app's previous
+    `0.85.3` pin, exactly the blocker this file previously documented
+    under issue #64's original v1 note), falling back to the existing
+    manual-entry dialog (`ScanInput._open_manual`, the pre-existing `_open`
+    renamed) on any failure. `flet-camera` wraps Flutter's own `camera`
+    plugin (confirmed Web/iOS/Android support via its PyPI platform-support
+    table - Windows/macOS/Linux desktop unsupported, matching this app's
+    real deployment target). **Not the same thing as reading a camera from
+    Python** (e.g. `cv2.VideoCapture`) - on the web deployment the
+    *browser* captures frames client-side via `getUserMedia` under the
+    hood; a server-side OpenCV read would see the *container's* camera
+    (none exists) rather than the end user's, per this file's own
+    "Container networking gotcha" - a real point of confusion raised
+    directly by the user citing a plain-OpenCV example, corrected here.
+    - **UX**: `_open_camera()` builds one dialog with a 300×300 preview
+      area (`fc.Camera(expand=True, preview_enabled=True)`) overlaid
+      (via the Camera control's own `content=` param, the same slot
+      flet's own docs use for a placeholder icon) with a 220×220
+      viewfinder: four corner-bracket `ft.Container`s (only two
+      `ft.BorderSide`s each, a camera-reticle look, not a full square
+      border) plus a green `ft.Container` scan-line bounced top↔bottom
+      by an `asyncio.sleep` loop (`_animate_scan_line`, started via
+      `page.run_task` - Flet has no built-in repeating-animation
+      primitive, so the repetition is just a loop toggling `top` with
+      `animate_position` set once to interpolate each jump). Below the
+      preview, a low-opacity bar (`ft.Colors.with_opacity(0.06,
+      ON_SURFACE)`) holds a camera-switch `IconButton` (only added when
+      `len(cameras) > 1`, cycling via `Camera.set_description`... no,
+      via a fresh `initialize()` call per switch, matching flet-camera's
+      own dropdown-switch example) plus two always-present fallbacks -
+      "Enter Manually" and "Gallery" - satisfying the issue's explicit
+      "both exist or not exist, there's a gallery button" requirement.
+      `get_available_cameras()` returning empty swaps the preview area to
+      a "No camera detected" placeholder and skips straight to the same
+      two fallback buttons - the one gap senar's own reference
+      implementation (`handleScanCamera()`) never handles.
+    - **Decode path reuses issue #64 v1's own `decode_image_bytes()`
+      unchanged**: `CameraImageEvent.bytes` is already-encoded image
+      bytes (JPEG, since `initialize(..., image_format_group=
+      fc.ImageFormatGroup.JPEG)`), not raw YUV/BGRA pixel planes - so the
+      exact same `pyzbar`-based decode function the gallery-photo path
+      already used works against a live frame with zero new image-format
+      handling. `on_stream_image` (a sync handler, matching flet-camera's
+      own documented pattern) throttles decode attempts to once per
+      `_STREAM_DECODE_INTERVAL_S` (0.4s) rather than every streamed frame
+      (~15-30fps) - `pyzbar` is a blocking call, and a barcode held in
+      frame for even one attempt per few hundred ms is plenty responsive.
+      A successful decode hands off to `_handle_scanned_code` via
+      `page.run_task` (the sync handler itself can't `await` the async
+      teardown), which stops the stream, closes the dialog, and calls
+      `on_scan(code)` - every existing `on_scan` consumer (issue #52's
+      item pickers, table search bars) is unaffected, unmodified.
+    - **CR/LF stripping** (explicit user request): `decode_image_bytes()`
+      now `.rstrip("\r\n")`s the decoded payload - some barcode
+      symbologies embed a trailing CR/LF as an end-of-data marker, the
+      same character a hardware wedge's terminating Enter represents,
+      and it should never end up inside the value a form field receives.
+      `_submit()` (the manual-entry path) does the same defensively,
+      though a wedge's Enter shouldn't reach `.value` at all since
+      `on_submit` fires on that keypress.
+    - **Opt-in "tab to next field" hook, not a blanket auto-focus-advance
+      mechanism**: `ScanInput(..., focus_next: ft.Control | None = None)`
+      - after a successful scan via any path (manual submit, live camera,
+      gallery photo), if `focus_next` was given, `.focus()` is called on
+      it. `ScanInput` has no visibility into a form's own field order (and
+      Flet has no DOM-tab-order concept to hook into instead), so this
+      stays an explicit per-instance opt-in rather than a guessed "next"
+      control - not yet wired into any existing screen's field list in
+      this pass, intentionally scoped to the component itself.
+    - **Camera permission**: `flet-permission-handler==0.86.4` (same
+      version-lockstep pin as `flet-camera`) is requested best-effort
+      before `initialize()`, skipped entirely on `page.web` (a browser's
+      own `getUserMedia` permission prompt already covers this app's
+      primary deployment) and wrapped so any failure just surfaces later
+      as a normal camera-init error (falls through to the existing
+      fallback buttons), never a crash.
+    - **Verified**: the new dependencies resolve cleanly (`uv lock`/
+      `uv sync`, no conflicts), `flet_camera`/`flet_permission_handler`
+      import correctly and their real method signatures (`initialize`,
+      `get_available_cameras`, `start_image_stream`/`on_stream_image`,
+      `CameraImageEvent.bytes` as ready-to-decode encoded bytes) were
+      confirmed directly against the installed 0.86.4 packages before
+      writing this component (not assumed from memory) - matches Flet's
+      own documented example exactly. A full, clean, non-cached
+      `podman compose build`+`up` of the frontend image succeeded, all
+      three containers reached healthy, and all 65 module/modal screens
+      preloaded with zero import errors in the real container logs
+      (this file is imported transitively by nearly every form/table
+      screen). **Not verified**: any actual live rendering or interaction
+      - no browser automation tool and no physical/virtual camera were
+      available in this session, so the viewfinder overlay, scan-line
+      animation, camera-switch cycling, and a real barcode/QR decode off
+      a live stream were never exercised end-to-end in a real browser.
+      Next manual pass should open any `"qr": True` field or the table
+      search bar's scan button on a phone (or a desktop browser with a
+      webcam) and confirm: the live preview actually appears, the
+      viewfinder/scan-line render as expected, switching cameras (if more
+      than one) works, and scanning a real barcode/QR populates the
+      target field.
   - **`icon_picker`** (`components/form/icon_picker.py::IconPickerForm`,
     2026-07-27 — a sample consumer of issue #45's `"radio"`/by-column
     column type, not itself a filed issue): same read-only-tap-to-open
