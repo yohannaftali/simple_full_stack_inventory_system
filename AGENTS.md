@@ -88,7 +88,7 @@
 | #66 | feat(infra): interactive frontend build script (apk/aab/ios/desktop/web) | closed | 2026-07-29 |
 | #67 | feat(infra): test/preview script for build.ps1/build.sh output | ready-for-review | 2026-07-29 |
 | #68 | chore(frontend): upgrade Flet 0.85.3 -> 0.86.4 | approved-to-close (web deployment merged to main and fully verified; user accepted the APK/Developer-Mode gap as a separate follow-up - GitHub close blocked, see note below) | 2026-07-29 |
-| #71 | fix(frontend): select dropdown first click via text region doesn't populate value | ready-for-review (fix applied, unverified in a real browser) | 2026-07-29 |
+| #71 | fix(frontend): select dropdown first click via text region doesn't populate value | open (first fix attempt confirmed NOT working live - see AGENTS.md's `on_select`-fix note) | 2026-07-29 |
 
 ## Big Picture
 
@@ -4030,16 +4030,27 @@ managed via `pyproject.toml` (uv/Poetry).
     handler that resolves the matching `DropdownOption.text` from the
     Dropdown's own `.value`/`.options` and explicitly sets `.text` +
     `.update()` on every selection, regardless of how the menu was opened.
-    Verified: both files import cleanly, a full container rebuild succeeds,
-    all 65 screens preload with zero errors. **Not verified live** — no
-    browser automation tool was available to actually click through the
-    original repro (open via text region, pick an option, confirm the text
-    populates on the first try) this session; also unconfirmed whether the
-    underlying `.value` itself was ever wrong (a real data bug) or only the
-    *displayed* text was stale (cosmetic) — the fix addresses the display
-    side either way, but if `.value` itself was also affected on that first
-    click, this fix alone doesn't prove it's now captured correctly at
-    submit time. Next manual pass should confirm both.
+    Verified only that both files import cleanly and a full container
+    rebuild succeeds with zero screen-preload errors — **not verified
+    live before shipping** (no browser automation tool was available that
+    session). **User confirmed live the same day that this fix does NOT
+    resolve the bug** — the symptom is unchanged: opening via the text
+    region still needs a second click, opening via the arrow is still
+    unaffected. This means at least one assumption behind the fix above
+    was wrong — most likely `on_select` either doesn't fire at all on that
+    first click when the menu was opened via the text region, or fires
+    with `.value` still holding the *previous* selection at that point
+    (a value-propagation race, not just a stale-display one) — in either
+    case, `_sync_dropdown_text()`'s `next((opt for opt in
+    dropdown.options if opt.key == dropdown.value), None)` lookup would
+    silently find no match (or the wrong one) and do nothing, which
+    matches the observed continuing failure. **Not re-attempted
+    speculatively** — one blind, unverified guess already failed; the
+    next attempt should either get real browser access to instrument
+    which handler actually fires and when, or research Flet's/Flutter's
+    own issue trackers for this exact `DropdownMenu` symptom before
+    writing more code. Issue #71 stays open, not closed, per explicit
+    user instruction.
   - `components/search_bar.py::SearchBar` (issue #63) — a shared search
     box, same root-level `components/` extraction precedent as
     `components/button.py::Button` (#21, immediately below). Replaces the

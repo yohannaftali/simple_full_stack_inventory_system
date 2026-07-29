@@ -1,6 +1,13 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-29] — Issue #71 fix confirmed NOT working (info only, not closed)
+- User tested live and confirmed the `on_select`-based fix from the same day (`SelectForm._on_select` / `TableRows._sync_dropdown_text`) does not resolve the bug - opening a select's dropdown by clicking its text-input region (not the trailing arrow button) still needs a second click before the picked value populates the field; opening via the arrow button is still unaffected
+- Explicit user instruction: do not close #71, this message is informational only
+- Attempted to add a comment to #71 documenting this - blocked by the same `403 Resource not accessible by personal access token` seen when closing #68, even though creating a brand-new issue (#71 itself) succeeded with the same token. A consistent, reproducible split: issue *creation* works, comments/updates on existing issues don't - worth the user checking the token's actual GitHub permissions rather than assuming it's a scope-name mismatch
+- Root-cause reassessment: the shipped fix assumed the display (`.text`) was stale while the underlying `.value` updated correctly and `on_select` fired on the first click - since the symptom is unchanged, at least one of those assumptions is wrong (most likely: `on_select` doesn't fire at all on that first click when opened via the text region, or fires with a still-stale `.value` at that point) - not re-attempted blindly this session; asked the user how they'd like to proceed (further guesswork without a browser to verify against didn't work once already)
+- Files: CHANGE_HISTORY.md (this entry only - no code changed this pass)
+
 ## [2026-07-29] — fix(frontend): select dropdown first-click-via-text-region bug (#71)
 - Issue #71 created on GitHub (`fix(frontend): select dropdown first click via text region doesn't populate value`) - user-reported: opening a select field by tapping its text-input region (not the trailing arrow) and picking the first option doesn't populate the field; a second click on an option does. Opening via the arrow has no such problem
 - Retried closing #68 via the API while here - still `403 Resource not accessible by personal access token`, same as before, even though creating #71 (`POST`) succeeded moments earlier - a genuinely confusing, reproducible split between create and update permissions on this token that wasn't resolved; still needs the user to close #68 manually or fix the token
