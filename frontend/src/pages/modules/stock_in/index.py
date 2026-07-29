@@ -28,6 +28,7 @@ class ModulePage:
                 # ViewToggle) - the Date column header becomes a calendar
                 # icon instead of the text "Date".
                 "name": "date",
+                "label": "Date",
                 "icon": ft.Icons.CALENDAR_TODAY,
                 "type": "label",
                 "format": "date",

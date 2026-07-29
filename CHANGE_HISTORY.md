@@ -1,6 +1,32 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-29] — chore(frontend): Flet 0.86 browser regression pass completed (issue #68, ready-for-review)
+- Full browser click-through completed on branch `chore/upgrade-flet-0.86`: login -> home -> deep-link direct load -> table sort/filter/row-hover/footer -> module edit screen (M3 field styling, QR-scan icon) -> "Scan to Search" dialog -> TOTP setup QR generation -> Dark Mode toggle. No regressions found under 0.86.4, verified in both light and dark theme
+- Along the way, hit and root-caused a separate real issue (not a 0.86 regression): after this session's earlier host-networking troubleshooting (many container/Podman-machine/Windows restarts), the browser got stuck on Flet 0.86's new boot screen indefinitely with no error anywhere - traced via `flet_web/fastapi/flet_app.py` to Flet's own session-recovery mechanism reusing a stale server-side session (found via a browser-held `session_id`, separate from this app's own `sfsis_client_id` cookie) instead of creating a fresh one, which skips `before_main()` entirely. Fix: clear browser site storage / use a fresh browser context, not a container restart. Documented in AGENTS.md's Frontend Architecture section so it's recognized immediately if it recurs
+- Still open (deferred, lower priority - the primary containerized web deployment is now fully verified): `frontend/run.ps1`/`run.sh` re-verification against a real 0.86 build, dev-mode QR-scan companion-app compatibility check
+- Status: `ready-for-review`
+
+## [2026-07-29] — feat(infra): add nginx reverse proxy in front of backend/frontend
+- Issue #69 created on GitHub, following up on a real live incident this session: leftover `netsh interface portproxy` rules from `expose-lan.ps1` collided with Podman's own port forwarding across all 4 published ports after a machine restart, breaking `localhost:8000` until manually removed
+- Checked senar's own nginx setup directly before filing (`C:\Users\IT\Git\senar\nginx\nginx.conf`) - confirmed it is NOT a direct precedent to port 1:1: senar needs nginx because PHP-FPM has no built-in HTTP server; this project's backend/frontend are already complete, self-serving ASGI (Uvicorn) servers. The real justification here is port-consolidation (4 published ports -> 1) and centralized TLS termination (removing the duplicated self-signed-cert generation in both entrypoint.sh scripts and frontend's socat TLS relay), not filling a gap senar has and we don't
+- Scope: infra (compose.yml, new nginx/ service) - explicitly does not fix the Windows/WSL host-networking layer bug that triggered this conversation, only reduces the surface area for that class of conflict to recur
+- Labels: enhancement, infra
+
+## [2026-07-29] — chore(frontend): upgrade Flet 0.85.3 -> 0.86.4 (issue #68, in progress)
+- Implemented on branch `chore/upgrade-flet-0.86` (not merged to main - per the issue's own "all-or-nothing" branch-first acceptance criterion, protocol framing is incompatible between pre-0.86 and 0.86 clients/servers)
+- frontend/pyproject.toml + frontend/uv.lock: flet/flet[all] 0.85.3 -> 0.86.4, flet-datatable2 pinned to the matching 0.86.4 - uv lock resolved cleanly, no conflicts
+- Verified: `uv run flet --version` reports 0.86.4 (Flutter 3.44.8); `main.py` imports cleanly; `podman compose build frontend` succeeds; the rebuilt container starts and reports healthy; a direct in-container request to /login returns 200 with real page content
+- Browser-based click-through regression pass could NOT be completed this session - blocked by an unrelated host-networking issue (a large TIME_WAIT backlog specifically on ports 8000/5000 from this session's own heavy testing, confirmed unrelated to Flet 0.86 by testing a fresh port, which connected instantly, and by the previously-solid backend port failing the same way at the same time)
+- Still open before this can be merged: full browser regression pass, frontend/run.ps1|run.sh re-verification against a real 0.86 build (Android packaging was redesigned), dev-mode QR-scan companion-app compatibility check
+- Files: frontend/pyproject.toml, frontend/uv.lock, AGENTS.md
+
+## [2026-07-29] — chore(frontend): upgrade Flet 0.85.3 -> 0.86.4
+- Issue #68 created on GitHub
+- Scope: frontend - version bump for Flet's "anniversary" 0.86.0 release (redesigned Android packaging, dart-bridge transport, multi-version Python, testing framework), with careful regression validation given this app's many documented low-level Flet-version-specific workarounds and the protocol's stated pre-0.86/0.86 incompatibility
+- Checked PyPI directly before filing: flet-datatable2 (this project's other pinned Flet dependency) already has a matching 0.86.4 release requiring flet==0.86.4 exactly - derisks the biggest unknown up front
+- Labels: chore, frontend
+
 ## [2026-07-29] — docs(frontend): fix stale README.md, confirm senar uses release builds successfully
 - User asked whether senar uses debug or release builds, and whether a README already exists documenting mobile release prep
 - Checked senar directly: their scaffold README documents plain `flet build apk -v` (release, no debug) as the standard command, and a real successfully-built `senar.apk` exists in their build output - confirms release builds are the normal, expected path and the recurring Gradle daemon lock (fixed same day) was this dev session's own environmental artifact, not evidence release builds are broken
