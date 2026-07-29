@@ -130,168 +130,106 @@ above with podman/docker auto-detect (prefers podman, falls back to
 docker) — the actual day-to-day way this stack gets started, rather than
 typing the raw `podman compose` command by hand.
 
-**`build.ps1`/`build.sh`** (repo root, issue #66) are a separate,
-non-Docker path: an interactive menu wrapping `uv run flet build <target>`
-from `frontend/`, producing a real installable/distributable frontend
-build — APK (Release), APK (Release, split per ABI), AAB, iOS (IPA), iOS
-Simulator, Windows/macOS/Linux desktop, or Web — alongside the
-containerized web deployment above (which remains the primary supported
-way to run this app; these scripts are for distributing a native
-mobile/desktop build, or a plain static web build, when that's actually
-needed). Usage: run with no args for the menu, or pass a target directly
-(`./build.sh apk-split`, `.\build.ps1 aab`) for non-interactive/CI use.
-Requires `uv` on `PATH` and the `frontend/pyproject.toml` dev dependency
-group (`flet[all]==0.85.3`, which is where `flet-cli`'s `flet build`
-command actually lives — the bare `flet` in `[project.dependencies]`
-deliberately excludes it, see that file's own comment). Each `flet build`
-target's host-OS compatibility (e.g. an iOS/macOS build needs a Mac) is
-validated by `flet build` itself, which prints its own build-matrix table
-and a clear error — the scripts don't duplicate that check.
-**No separate "APK (Debug)" option** — `flet build` (this pinned flet-cli
-version) always produces a Flutter *release* build; there is no
-debug-mode flag in the CLI, a debug build instead comes from `flet run`
-against a connected device, which is a different, already-existing
-workflow outside this script's scope.
-Build output lands in `frontend/build/<target>/` (`flet build`'s own
-default), already excluded from git by the repo's existing bare `build/`
-`.gitignore` rule (matches any directory named `build` anywhere in the
-tree) — confirmed live with a real `flet build web` run through both
-scripts (`git status` showed nothing new), so no additional `.gitignore`
-entry was needed.
-**A real, reproducible Windows-console bug was found and fixed while
-verifying this**: `flet build`'s `rich`-based progress output writes
-Unicode glyphs (e.g. `●`) that raise `UnicodeEncodeError` under a legacy
-cp1252 Windows console (confirmed live, both in Git Bash and in
-PowerShell's own non-UTF8 console) — both scripts now set
-`PYTHONUTF8=1`/`PYTHONIOENCODING=utf-8` before invoking `flet build`,
-which fixed it with no system codepage change required; harmless on
-Linux/macOS, which already default to UTF-8.
-**A second real bug, PowerShell-specific, was found and fixed**:
-`build.ps1`'s original `if (-not $choice)` "no CLI arg given, show the
-menu" check used PowerShell's string-to-bool coercion, under which the
-*string* `"0"` itself evaluates falsy (confirmed live: `-not "0"` is
-`$true`) — passing `0` (Cancel) as a direct CLI arg was wrongly treated
-as "no argument" and fell through to the interactive `Read-Host` prompt
-instead of cancelling immediately. Fixed by checking `$null -eq $choice`
-instead. `build.sh`'s equivalent `[ -z "$choice" ]` check doesn't have
-this bug (bash's `-z` only tests for a truly empty string), so only the
-PowerShell side needed the fix.
-Verified live end-to-end (both scripts, real `uv run flet build web`, not
-mocked): interactive menu display, direct CLI-arg dispatch (`web`,
-`apk-split` parsing, though full Android/iOS/desktop builds themselves
-weren't run — no Android SDK/Xcode toolchain in this environment), Cancel
-(`0`), an unknown-target error, and a missing-`uv`-on-PATH guard all
-behave correctly; the real web build completed successfully through both
-scripts with output correctly excluded from git.
+**`frontend/run.ps1`/`frontend/run.sh`** are a separate, non-Docker path
+living inside `frontend/` (next to `pyproject.toml`, where frontend
+tooling belongs) — one merged interactive menu covering build, preview,
+and dev-mode-run, alongside the containerized web deployment above
+(which remains the primary supported way to run this app; these scripts
+are for distributing a native mobile/desktop build, previewing one, or
+running the app live from source, when that's actually needed). Named to
+match the sister senar project's own `frontend/run.ps1` convention, so a
+dev who knows that project recognizes this immediately — this file
+replaces a stale, never-wired copy of senar's own script that had been
+accidentally committed here at the very first commit (referenced
+`setup_env.ps1`/`dev_reset.ps1`/a `.venv` activation flow that never
+existed in this project). Usage: run with no args for the interactive
+menu (loops back after every action, `0`/Enter-on-blank to exit — every
+selection returns to the menu, including a blocking dev-run once
+Ctrl+C'd), or pass a target directly (`./run.sh apk-split`,
+`.\run.ps1 web`) for one-shot/CI use. Requires `uv` on `PATH` and this
+project's dev dependency group (`flet[all]==0.85.3`, where `flet-cli`'s
+`flet build`/`flet run`/`flet serve` commands actually live — the bare
+`flet` in `[project.dependencies]` deliberately excludes it, see that
+file's own comment) — `uv sync` runs automatically before every build/
+dev-run.
 
-**`test.ps1`/`test.sh`** (repo root, issue #67) are the companion to
-`build.ps1`/`build.sh` above — they run/preview a build that's already
-been produced, they don't build anything themselves. Same menu shape
-(interactive with no args, or a direct CLI arg for non-interactive use):
-- **Web** — `uv run flet serve build/web` (flet-cli's own `flet serve`
-  command, confirmed by reading the installed `flet_cli/commands/serve.py`
-  source — a small static-file server defaulting to `./build/web` on port
-  8000, matching `flet build web`'s own on-success hint to run it) against
-  the `frontend/build/web` output from `build.ps1/.sh web`.
-- **Desktop, current host only** — `test.ps1` only offers Windows (glob
-  `frontend/build/windows/*.exe`, `Start-Process` it); `test.sh` detects
-  the running OS (`uname -s`) and either launches the `.app` bundle via
-  `open` on macOS or the executable bit found under
-  `frontend/build/linux/` directly — no attempt to launch a
-  host-incompatible target, matching `flet build` itself refusing to
-  build one.
-- **APK** — installs to a connected device/emulator via `adb install -r`
-  (globs `frontend/build/apk/*.apk`; a split-per-abi build's multiple APKs
-  installs just the first one, noting the others), then best-effort
-  launches it via `adb shell monkey -p <package> -c
-  android.intent.category.LAUNCHER 1` — a standard package-agnostic launch
-  trick that doesn't require knowing the app's main activity name. The
-  Android package id (`org.name`, e.g. `com.ptsenopati.sfsis`) is parsed
-  live from `frontend/pyproject.toml`'s own `[tool.flet]` `org` +
-  `[project]` `name` fields rather than hardcoded, so it can't silently
-  drift out of sync if either value changes. **When `adb` isn't on PATH**
-  (confirmed this is the actual state of the dev machine used to build
-  this), prints the exact manual `adb install -r "<path>"` command(s) for
-  every found APK instead of failing — verified live with a real (empty
-  placeholder) APK file in both scripts.
-- **AAB / iOS (IPA) / iOS Simulator** — none of these can be "just
-  launched" the way an APK or desktop exe can (an AAB isn't directly
-  installable at all; IPA needs a provisioning profile/TestFlight; the
-  Simulator needs Xcode) — each prints a clear, specific explanation of
-  why and what to use instead (`bundletool`/Play Console for AAB, Xcode's
-  Devices window/`xcrun devicectl` for IPA), rather than attempting
-  something fragile or failing silently. `test.sh`'s iOS Simulator branch
-  does attempt `xcrun simctl install booted <app>` +
-  `xcrun simctl launch booted <package>` when run on an actual macOS host
-  (falls through to the same "not available on this host" message
-  otherwise) — **not verified on a real macOS machine in this session**
-  (none available), flagged directly in the script's own comment for a
-  first real run there.
-- A target with no matching `build.ps1/.sh` output yet prints a clear
-  "run build.ps1/.sh `<target>` first" message with the exact expected
-  path, rather than a raw file-not-found error — verified for web/
-  windows/apk in both scripts.
-Verified live end-to-end: a real `flet build web` (via `build.ps1`/
-`build.sh`) followed by `test.ps1 web`/`test.sh web` actually served that
-build and returned `HTTP 200` from `http://localhost:8000/` in both
-cases; every missing-build-output guard, the AAB/iOS/iOS-Simulator
-not-applicable messages, Cancel, an unknown-target error, and the
-adb-not-found manual-instructions fallback (with a real placeholder APK
-file) were all confirmed in both scripts. Real APK install+launch via a
-connected device/emulator and any actual desktop/iOS-Simulator preview
-were **not** exercised (no Android device/emulator, no macOS machine
-available in this environment) — the dispatch/guard logic around them was
-verified, not the underlying `adb`/`xcrun` interaction itself.
+Three sections in one numbered menu:
+- **Build** (1-9): `uv run flet build <target>` — APK (Release), APK
+  (Release, split per ABI), AAB, iOS (IPA), iOS Simulator, Windows/macOS/
+  Linux desktop, Web. Host-OS/target compatibility (e.g. iOS/macOS builds
+  need a Mac) is validated by `flet build` itself, which prints its own
+  build-matrix table — this script doesn't duplicate that check. No
+  separate "APK (Debug)" option — `flet build` always produces a Flutter
+  *release* build, there's no debug flag in the CLI (a debug build comes
+  from Dev mode below instead). Output lands in `build/<target>/`
+  (`flet build`'s own default, relative to `frontend/`), already excluded
+  from git by the repo's bare `build/` `.gitignore` rule.
+- **Preview** (10-15): runs/serves an already-built artifact, doesn't
+  build anything itself. Web via `uv run flet serve build/web`; desktop
+  launches the built exe/`.app`/binary for the *current* host only; APK
+  installs to a connected device via `adb install -r` (searching both
+  `build/apk` and flet-cli's raw Flutter scaffold output at
+  `build/flutter/build/app/outputs/flutter-apk` — confirmed real by
+  reading flet-cli's own `build_base.py` — installing the newest by
+  mtime), then best-effort launches it via `adb shell monkey -p
+  <package> -c android.intent.category.LAUNCHER 1` (package id parsed
+  live from `pyproject.toml`'s `[tool.flet]` `org` + `[project]` `name`).
+  `adb` discovery falls back through `$env:ANDROID_HOME`/
+  `$env:ANDROID_SDK_ROOT`/the default Android Studio SDK path (not PATH
+  only — confirmed live that `adb.exe` can genuinely exist there without
+  ever being on PATH). AAB/IPA/iOS Simulator can't be "just launched" the
+  way an APK/desktop exe can, so each prints a clear explanation and
+  alternative instead of attempting something fragile (iOS Simulator does
+  attempt `xcrun simctl install/launch booted` on an actual macOS host).
+  A target with no matching build output yet prints exactly which build
+  option to run first.
+- **Dev mode** (16-19): `uv run flet run -r [--web|--android|--ios]` —
+  runs the app directly from source with hot reload, no build step.
+  `--android`/`--ios` print a terminal QR code (`flet-cli`'s own
+  `print_qr_code`, a `flet://`/`https://android.flet.dev/...` URL) that,
+  scanned with the phone's Camera app, opens the free "Flet" companion
+  app (App Store/Play Store) which connects back over the LAN — **no
+  Xcode, no macOS, no Android SDK, no build step at all**, a genuinely
+  different mechanism from previewing a compiled build above (where the
+  Xcode/macOS requirement for iOS is real).
 
-**Dev-mode run options added, resolving "why can't I test iOS?"** (same
-day, direct user follow-up referencing senar's own `run.ps1`
-`Test-Desktop`/`Test-Web`/`Test-Android`/`Test-Ios` functions): the six
-options above only preview a *compiled* `flet build` artifact, where the
-Xcode/macOS requirement for iOS is real. `flet run --ios`/`--android`
-(flet-cli's dev-mode runner, confirmed by reading its actual `run.py`
-source) is a completely different, much lighter mechanism — it runs the
-app directly from source with hot reload and prints a terminal QR code
-(`print_qr_code`, using a `flet://`/`https://android.flet.dev/...` URL
-scheme) that, when scanned with the phone's Camera app, opens the free
-"Flet" companion app (App Store/Play Store) which connects back over the
-LAN and renders the live UI — **no Xcode, no macOS, no Android SDK, no
-build step at all**. `test.ps1`/`test.sh` gained 4 new menu options
-(7-10, same numbering both scripts): Dev mode Desktop/Web/Android/iOS,
-each running `uv sync` (matching senar's own `run.ps1` convention of
-syncing before every dev-mode run) then `uv run flet run -r
-[--web|--android|--ios]` from `frontend/`.
-**A real, more serious bug was found and fixed while verifying this**:
-`components/scan_input.py`'s top-level `from pyzbar.pyzbar import decode`
-(issue #64) crashes immediately if the native `libzbar` shared library
-isn't present — which is only guaranteed true in the containerized
-deployment (`libzbar0`, added to `frontend/Dockerfile`), **not** on a
-bare `flet run` outside Docker, nor necessarily on an end user's native
-`flet build windows/macos/linux` desktop install. Since `scan_input.py`
-is imported by `components/form/input.py`, which nearly every form/table
-screen imports transitively, this crashed screen-preloading for the
-*entire app*, not just the scan feature — confirmed live: `test.sh
-dev-web` on this bare Windows dev machine (no libzbar) failed dozens of
-screens with a raw `FileNotFoundError: Could not find module
-'libzbar-64.dll'` traceback dump before the fix. Fixed by moving the
-`pyzbar` import inside `decode_image_bytes()` (lazy, only when a photo
-scan is actually attempted) and adding a new `ScanUnavailableError`
-raised when the import/load fails, caught explicitly in `_pick_photo()`
-to show a clear "Photo scanning is unavailable on this system..." dialog
-error instead of crashing — distinct from the existing "no barcode found
-in that photo" message, so a user isn't told to "try again" for a
-problem retrying can't fix. Verified live: `uv run python -c
-"import components.form.input; import components.scan_input"` succeeds
-cleanly post-fix (previously crashed), calling `decode_image_bytes()`
-directly now raises the expected `ScanUnavailableError` instead of
-crashing at import time, and a full `test.sh dev-web` run (real `flet run
---web`, ~50s to first boot on this machine) completed successfully -
-printed its own URL, preloaded every screen with no traceback, and
-returned `HTTP 200` when curled directly. Dev-mode Android/iOS (the QR
-code + companion-app connection) were **not** verified end-to-end (no
-phone with the Flet companion app available in this environment) - the
-`flet run --android`/`--ios` dispatch itself was verified (same code path
-as the confirmed-working `--web` case, only the trailing CLI flag
-differs), not the phone-side QR scan/connect step.
+**Real bugs found and fixed while building/verifying this tooling**
+(kept here since they'd resurface if the underlying mechanism were ever
+touched again — full narrative history in `CHANGE_HISTORY.md`):
+- `flet build`/`flet run`/`flet serve`'s `rich`-based progress output
+  writes Unicode glyphs (e.g. `●`) that raise `UnicodeEncodeError` under
+  a legacy cp1252 Windows console — both scripts set
+  `PYTHONUTF8=1`/`PYTHONIOENCODING=utf-8` before invoking any of them.
+- PowerShell's string-to-bool coercion treats the *string* `"0"` as
+  falsy (`-not "0"` is `$true`) — a CLI-arg check written as `if (-not
+  $choice)` wrongly treats a literal `"0"` (Exit) the same as "no
+  argument given". Must check `$null -eq $choice`/`$null -ne $choice`
+  instead; bash's `[ -z "$choice" ]` doesn't have this bug.
+- `components/scan_input.py`'s top-level `from pyzbar.pyzbar import
+  decode` (issue #64) crashes immediately if the native `libzbar`
+  library isn't present — only guaranteed true in the Docker image, not
+  under a bare `flet run`. Since that file is imported by nearly every
+  form screen transitively, this broke dev-mode entirely outside Docker.
+  Fixed by making the `pyzbar` import lazy (inside
+  `decode_image_bytes()`) with a distinct `ScanUnavailableError`, caught
+  in `_pick_photo()` for a clear dialog message instead of a crash.
+- flet-cli's Android APK naming/search path (`build/flutter/build/app/
+  outputs/flutter-apk`, ported from senar's own
+  `Install-Android-WithAdb`) matters because a build interrupted after
+  Flutter compiles but before flet-cli's final copy-to-`build/apk` step
+  leaves a usable APK there that the single-location search would miss.
+
+Verified live end-to-end across all of the above (real `flet build web`/
+`flet serve`/`flet run --web` runs, not mocked): the merged menu's
+build/preview/web-dev-mode paths all confirmed working on this Windows
+dev machine, including the interactive retry-loop (piped stdin) and the
+`adb` SDK-path fallback (a real `adb.exe` present but not on PATH).
+**Not exercised in this environment**: real APK install+launch via a
+connected device/emulator, and any actual desktop/iOS-Simulator/Android
+dev-mode QR-connect flow (no Android device/emulator, no macOS machine,
+no phone with the Flet companion app available) — the dispatch/guard
+logic around all of these was verified, not the underlying `adb`/`xcrun`/
+phone-side interaction itself.
 
 **`expose-lan.ps1`/`expose-lan.sh`** (repo root, same-day follow-up to a
 direct user question, not tied to a filed issue): exposes SFSIS's podman-
