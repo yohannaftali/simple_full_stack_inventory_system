@@ -45,14 +45,44 @@ import io
 
 import flet as ft
 from PIL import Image, UnidentifiedImageError
-from pyzbar.pyzbar import decode as zbar_decode
+
+
+class ScanUnavailableError(RuntimeError):
+    """Raised when `pyzbar` can't load the native `libzbar` shared library.
+
+    `libzbar0` is only guaranteed present in the containerized deployment
+    (installed explicitly in `frontend/Dockerfile`, issue #64) - a plain
+    `flet run` outside Docker (e.g. issue #67's dev-mode test.ps1/test.sh
+    options, or a native `flet build windows/macos/linux` desktop install)
+    has no such guarantee. `pyzbar.pyzbar`'s import raises immediately if
+    the shared library isn't found, so importing it at module level here
+    would crash on load of THIS FILE - and this file is imported by nearly
+    every form/table screen (via `components/form/input.py`), so that
+    would break the entire app outside the container, not just the scan
+    feature. Confirmed live: `flet run --web` on a bare Windows dev
+    machine (no libzbar) failed to preload dozens of screens with a raw
+    `FileNotFoundError: Could not find module 'libzbar-64.dll'` traceback
+    before this fix. Importing lazily, only when a photo scan is actually
+    attempted, contains the failure to just that one feature.
+    """
 
 
 def decode_image_bytes(data: bytes) -> str | None:
     """Decode the first barcode/QR found in raw image bytes, or `None` if
     none is found / the bytes aren't a decodable image. A thin wrapper
     around `pyzbar` so the dialog-building code below and any future
-    non-UI caller (e.g. a test) share one decode path."""
+    non-UI caller (e.g. a test) share one decode path.
+
+    Raises `ScanUnavailableError` if `pyzbar`/`libzbar` itself can't be
+    loaded on this platform - see that class's docstring.
+    """
+    try:
+        from pyzbar.pyzbar import decode as zbar_decode
+    except (ImportError, OSError) as exc:
+        raise ScanUnavailableError(
+            f"Photo scanning is unavailable on this system (libzbar could "
+            f"not be loaded: {exc})."
+        ) from exc
     try:
         image = Image.open(io.BytesIO(data))
     except UnidentifiedImageError:
@@ -235,7 +265,11 @@ class ScanInput:
             self._open(error_text="Could not read the selected photo. Try again.")
             return
 
-        code = decode_image_bytes(data)
+        try:
+            code = decode_image_bytes(data)
+        except ScanUnavailableError as exc:
+            self._open(error_text=str(exc))
+            return
         if code:
             if self.on_scan:
                 self.on_scan(code)
