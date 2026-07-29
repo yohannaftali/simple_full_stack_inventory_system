@@ -1,6 +1,32 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-29] — feat(infra): expose-lan.ps1/expose-lan.sh scripts (LAN-reachable backend for mobile testing)
+- Direct user request following the dev-mode test.ps1/test.sh work: how to reach the podman-hosted backend from a phone on the same WiFi
+- Root cause diagnosed live: compose.yml already binds 0.0.0.0 inside each container and publishes the port, but a WSL-backed podman machine on Windows (UserModeNetworking: false) only forwards published ports to 127.0.0.1 on the Windows host - confirmed via `netstat -ano` showing a 127.0.0.1-only listener despite `podman ps` reporting 0.0.0.0. Also hit live: the dev machine has multiple IPv4 adapters (Ethernet vs WiFi), and using the wrong one silently fails
+- New `expose-lan.ps1` (Administrator-only, guarded): idempotent `netsh interface portproxy` rules + a firewall rule forwarding 0.0.0.0:<port> -> 127.0.0.1:<port> for the default port set (5000/5443/8000/8443), plus a filtered LAN-address listing so the right adapter is obvious. `-Remove` undoes it
+- New `expose-lan.sh` (Linux/macOS companion - not verified on a real Linux/macOS host, none available this session): diagnoses via `ss`/`netstat` first and only relays (via `socat`) a port that's genuinely 127.0.0.1-only; opens ufw when present. A real bug found and fixed during testing: an unrecognized host OS (this session's own Windows/Git-Bash test environment) crashed via `set -e` hitting a Linux-only `ip addr` command - now detected and handled gracefully
+- Verified live: expose-lan.ps1's elevation guard and LAN-address filtering (correctly isolates Ethernet vs WiFi adapters); expose-lan.sh's OS-detection guard, socat-missing message, and --remove no-op path. The ss/netstat all-interfaces-listening check itself could not be verified correctly on this Windows/Git-Bash environment (wrong netstat dialect, not a real target platform) - flagged for re-verification on an actual Linux/macOS host
+- Files: expose-lan.ps1 (new), expose-lan.sh (new), AGENTS.md
+
+## [2026-07-29] — feat(infra): dev-mode run options in test.ps1/test.sh + fix pyzbar import crash (issue #67 follow-up)
+- User asked why senar's own script can "test iOS" (`flet run --ios`) while ours couldn't - clarified the distinction: `test.ps1`/`test.sh`'s existing options only preview a *compiled* `flet build` artifact (real Xcode/macOS requirement for iOS); `flet run --ios`/`--android` is a separate, much lighter dev-mode mechanism (source + hot reload, prints a QR code the phone's Camera app opens via the free "Flet" companion app - no Xcode/macOS/Android SDK needed at all)
+- Added 4 new menu options (7-10) to both scripts: Dev mode Desktop/Web/Android/iOS, each `uv sync` then `uv run flet run -r [--web|--android|--ios]`, matching senar's own `run.ps1` Test-Desktop/-Web/-Android/-Ios convention
+- Found and fixed a real, more serious bug while verifying: `components/scan_input.py`'s top-level `pyzbar` import (issue #64) crashed on any platform without the native `libzbar` library (only guaranteed present in the Docker image) - since this file is imported transitively by nearly every form/table screen, it broke the *entire app* outside Docker, not just scanning. Fixed by making the import lazy (inside `decode_image_bytes()`) and adding a `ScanUnavailableError` with a clear, distinct dialog message instead of a raw crash
+- Verified live: `test.sh dev-web` (real `flet run --web`, ~50s to boot) completed successfully post-fix - printed its own URL, preloaded every screen with no traceback, returned HTTP 200. Dev-mode Android/iOS dispatch verified the same way (same code path, different flag); the phone-side QR scan/connect step itself wasn't exercised (no phone with the Flet app available)
+- Files: test.ps1, test.sh, frontend/src/components/scan_input.py, AGENTS.md
+
+## [2026-07-29] — feat(infra): implement test/preview script for build output (issue #67)
+- New `test.ps1`/`test.sh` at repo root, companion to `build.ps1`/`build.sh` (#66) - runs/previews what was already built, doesn't build anything itself: Web (`uv run flet serve build/web`), current-host desktop (launch the built exe/.app/binary directly), APK (`adb install -r` + best-effort launch via `adb shell monkey`), and clear "not directly previewable, use X instead" messages for AAB/IPA/iOS Simulator (Simulator gets a best-effort `xcrun simctl` path when run on macOS)
+- Android package id (`org.name`) parsed live from `frontend/pyproject.toml`'s `[tool.flet]`/`[project]` fields rather than hardcoded
+- Verified end-to-end: a real `flet build web` followed by `test.ps1 web`/`test.sh web` actually served the build and returned HTTP 200 in both scripts; every missing-build-output guard, the not-applicable messages, Cancel, unknown-target rejection, and the adb-not-found manual-instructions fallback (with a real placeholder APK) all confirmed. Real device install/launch and macOS/iOS-Simulator paths weren't exercised - no Android device or macOS machine available in this environment
+- Files: test.ps1 (new), test.sh (new), AGENTS.md
+
+## [2026-07-29] — feat(infra): test/preview script for build.ps1/build.sh output
+- Issue #67 created on GitHub, follow-up to #66
+- Scope: infra/frontend build tooling - a new `test.ps1`/`test.sh` (naming TBD) to run/preview what `build.ps1`/`build.sh` already built (serve the web bundle, launch a built desktop exe, install+launch an APK via `adb`), rather than a parallel build mechanism
+- Labels: enhancement, frontend
+
 ## [2026-07-29] — feat(infra): implement interactive frontend build script (issue #66)
 - New `build.ps1`/`build.sh` at repo root - interactive menu (or direct CLI arg for non-interactive use) wrapping `uv run flet build <target>` from `frontend/`: APK (Release), APK (Release, split per ABI), AAB, iOS (IPA), iOS Simulator, Windows/macOS/Linux desktop, Web
 - Corrected the issue's own assumption of an "APK (Debug)" option - `flet build` (flet-cli) always produces a Flutter release build, no debug flag exists in this CLI; omitted that menu entry and documented why

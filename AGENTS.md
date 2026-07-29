@@ -85,7 +85,8 @@
 | #63 | chore(frontend): extract shared SearchBar component (dedupe Table/List search bars) | ready-for-review | 2026-07-29 |
 | #64 | feat(frontend): camera-based barcode/QR scan option alongside manual entry | ready-for-review | 2026-07-29 |
 | #65 | feat(frontend): zebra-striped List tiles + demonstrate label/icon-only fields | closed | 2026-07-28 |
-| #66 | feat(infra): interactive frontend build script (apk/aab/ios/desktop/web) | ready-for-review | 2026-07-29 |
+| #66 | feat(infra): interactive frontend build script (apk/aab/ios/desktop/web) | closed | 2026-07-29 |
+| #67 | feat(infra): test/preview script for build.ps1/build.sh output | ready-for-review | 2026-07-29 |
 
 ## Big Picture
 
@@ -182,6 +183,172 @@ weren't run — no Android SDK/Xcode toolchain in this environment), Cancel
 (`0`), an unknown-target error, and a missing-`uv`-on-PATH guard all
 behave correctly; the real web build completed successfully through both
 scripts with output correctly excluded from git.
+
+**`test.ps1`/`test.sh`** (repo root, issue #67) are the companion to
+`build.ps1`/`build.sh` above — they run/preview a build that's already
+been produced, they don't build anything themselves. Same menu shape
+(interactive with no args, or a direct CLI arg for non-interactive use):
+- **Web** — `uv run flet serve build/web` (flet-cli's own `flet serve`
+  command, confirmed by reading the installed `flet_cli/commands/serve.py`
+  source — a small static-file server defaulting to `./build/web` on port
+  8000, matching `flet build web`'s own on-success hint to run it) against
+  the `frontend/build/web` output from `build.ps1/.sh web`.
+- **Desktop, current host only** — `test.ps1` only offers Windows (glob
+  `frontend/build/windows/*.exe`, `Start-Process` it); `test.sh` detects
+  the running OS (`uname -s`) and either launches the `.app` bundle via
+  `open` on macOS or the executable bit found under
+  `frontend/build/linux/` directly — no attempt to launch a
+  host-incompatible target, matching `flet build` itself refusing to
+  build one.
+- **APK** — installs to a connected device/emulator via `adb install -r`
+  (globs `frontend/build/apk/*.apk`; a split-per-abi build's multiple APKs
+  installs just the first one, noting the others), then best-effort
+  launches it via `adb shell monkey -p <package> -c
+  android.intent.category.LAUNCHER 1` — a standard package-agnostic launch
+  trick that doesn't require knowing the app's main activity name. The
+  Android package id (`org.name`, e.g. `com.ptsenopati.sfsis`) is parsed
+  live from `frontend/pyproject.toml`'s own `[tool.flet]` `org` +
+  `[project]` `name` fields rather than hardcoded, so it can't silently
+  drift out of sync if either value changes. **When `adb` isn't on PATH**
+  (confirmed this is the actual state of the dev machine used to build
+  this), prints the exact manual `adb install -r "<path>"` command(s) for
+  every found APK instead of failing — verified live with a real (empty
+  placeholder) APK file in both scripts.
+- **AAB / iOS (IPA) / iOS Simulator** — none of these can be "just
+  launched" the way an APK or desktop exe can (an AAB isn't directly
+  installable at all; IPA needs a provisioning profile/TestFlight; the
+  Simulator needs Xcode) — each prints a clear, specific explanation of
+  why and what to use instead (`bundletool`/Play Console for AAB, Xcode's
+  Devices window/`xcrun devicectl` for IPA), rather than attempting
+  something fragile or failing silently. `test.sh`'s iOS Simulator branch
+  does attempt `xcrun simctl install booted <app>` +
+  `xcrun simctl launch booted <package>` when run on an actual macOS host
+  (falls through to the same "not available on this host" message
+  otherwise) — **not verified on a real macOS machine in this session**
+  (none available), flagged directly in the script's own comment for a
+  first real run there.
+- A target with no matching `build.ps1/.sh` output yet prints a clear
+  "run build.ps1/.sh `<target>` first" message with the exact expected
+  path, rather than a raw file-not-found error — verified for web/
+  windows/apk in both scripts.
+Verified live end-to-end: a real `flet build web` (via `build.ps1`/
+`build.sh`) followed by `test.ps1 web`/`test.sh web` actually served that
+build and returned `HTTP 200` from `http://localhost:8000/` in both
+cases; every missing-build-output guard, the AAB/iOS/iOS-Simulator
+not-applicable messages, Cancel, an unknown-target error, and the
+adb-not-found manual-instructions fallback (with a real placeholder APK
+file) were all confirmed in both scripts. Real APK install+launch via a
+connected device/emulator and any actual desktop/iOS-Simulator preview
+were **not** exercised (no Android device/emulator, no macOS machine
+available in this environment) — the dispatch/guard logic around them was
+verified, not the underlying `adb`/`xcrun` interaction itself.
+
+**Dev-mode run options added, resolving "why can't I test iOS?"** (same
+day, direct user follow-up referencing senar's own `run.ps1`
+`Test-Desktop`/`Test-Web`/`Test-Android`/`Test-Ios` functions): the six
+options above only preview a *compiled* `flet build` artifact, where the
+Xcode/macOS requirement for iOS is real. `flet run --ios`/`--android`
+(flet-cli's dev-mode runner, confirmed by reading its actual `run.py`
+source) is a completely different, much lighter mechanism — it runs the
+app directly from source with hot reload and prints a terminal QR code
+(`print_qr_code`, using a `flet://`/`https://android.flet.dev/...` URL
+scheme) that, when scanned with the phone's Camera app, opens the free
+"Flet" companion app (App Store/Play Store) which connects back over the
+LAN and renders the live UI — **no Xcode, no macOS, no Android SDK, no
+build step at all**. `test.ps1`/`test.sh` gained 4 new menu options
+(7-10, same numbering both scripts): Dev mode Desktop/Web/Android/iOS,
+each running `uv sync` (matching senar's own `run.ps1` convention of
+syncing before every dev-mode run) then `uv run flet run -r
+[--web|--android|--ios]` from `frontend/`.
+**A real, more serious bug was found and fixed while verifying this**:
+`components/scan_input.py`'s top-level `from pyzbar.pyzbar import decode`
+(issue #64) crashes immediately if the native `libzbar` shared library
+isn't present — which is only guaranteed true in the containerized
+deployment (`libzbar0`, added to `frontend/Dockerfile`), **not** on a
+bare `flet run` outside Docker, nor necessarily on an end user's native
+`flet build windows/macos/linux` desktop install. Since `scan_input.py`
+is imported by `components/form/input.py`, which nearly every form/table
+screen imports transitively, this crashed screen-preloading for the
+*entire app*, not just the scan feature — confirmed live: `test.sh
+dev-web` on this bare Windows dev machine (no libzbar) failed dozens of
+screens with a raw `FileNotFoundError: Could not find module
+'libzbar-64.dll'` traceback dump before the fix. Fixed by moving the
+`pyzbar` import inside `decode_image_bytes()` (lazy, only when a photo
+scan is actually attempted) and adding a new `ScanUnavailableError`
+raised when the import/load fails, caught explicitly in `_pick_photo()`
+to show a clear "Photo scanning is unavailable on this system..." dialog
+error instead of crashing — distinct from the existing "no barcode found
+in that photo" message, so a user isn't told to "try again" for a
+problem retrying can't fix. Verified live: `uv run python -c
+"import components.form.input; import components.scan_input"` succeeds
+cleanly post-fix (previously crashed), calling `decode_image_bytes()`
+directly now raises the expected `ScanUnavailableError` instead of
+crashing at import time, and a full `test.sh dev-web` run (real `flet run
+--web`, ~50s to first boot on this machine) completed successfully -
+printed its own URL, preloaded every screen with no traceback, and
+returned `HTTP 200` when curled directly. Dev-mode Android/iOS (the QR
+code + companion-app connection) were **not** verified end-to-end (no
+phone with the Flet companion app available in this environment) - the
+`flet run --android`/`--ios` dispatch itself was verified (same code path
+as the confirmed-working `--web` case, only the trailing CLI flag
+differs), not the phone-side QR scan/connect step.
+
+**`expose-lan.ps1`/`expose-lan.sh`** (repo root, same-day follow-up to a
+direct user question, not tied to a filed issue): exposes SFSIS's podman-
+published ports (backend 5000/5443, frontend 8000/8443 by default) to the
+rest of the LAN, so a phone/tablet on the same WiFi can reach them - the
+same real address a test/preview device needs, whether that's the
+containerized frontend's own URL or the Server Config screen inside a
+dev-mode (`test.ps1`/`test.sh`) or built app.
+- **Root cause diagnosed live on this dev machine, not assumed**:
+  `compose.yml` already binds every service to `0.0.0.0` inside its
+  container and publishes the port (`podman ps` shows
+  `0.0.0.0:5000->5000/tcp`), but this machine's `podman-machine-default`
+  is WSL-backed with `UserModeNetworking: false` (`podman machine
+  inspect`) - on Windows that combination only forwards published ports
+  to `127.0.0.1` on the Windows host itself, confirmed via `netstat -ano`
+  showing a `127.0.0.1:5000` listener, not `0.0.0.0:5000`, regardless of
+  what `podman ps` claims. A Windows dev machine also commonly has
+  several IPv4 adapters (Ethernet, WiFi, WSL's own vEthernet, podman's
+  virtual switch, ...) - picking the wrong one silently fails with no
+  useful error (hit live: `192.168.18.111` was Ethernet, the phone needed
+  the WiFi adapter's `192.168.16.170` instead) - both scripts list every
+  real candidate address, filtered to exclude loopback/virtual adapters,
+  rather than guessing at "the" IP.
+- **`expose-lan.ps1`** (must run as Administrator - checked and refused
+  otherwise): idempotent `netsh interface portproxy` rules (delete-then-
+  add, so re-running never fails on an "already exists" error) forwarding
+  `0.0.0.0:<port> -> 127.0.0.1:<port>` for each port, plus one
+  `New-NetFirewallRule` allowing them all inbound. `-Remove` undoes both.
+- **`expose-lan.sh`** (Linux/macOS - **not verified against a real
+  Linux/macOS host in this session**, none available; the Windows/WSL
+  root cause above is genuinely Windows-specific, so this script instead
+  diagnoses first via `ss`/`netstat`/`ifconfig` output parsing and only
+  acts if a port genuinely isn't already listening on all interfaces -
+  common on native Linux podman, less likely to be needed at all):
+  falls back to a `socat TCP-LISTEN:<port>,fork` relay when a port is
+  127.0.0.1-only and `socat` is available, and opens the port via `ufw`
+  when present (macOS gets an informational note about its Application
+  Firewall's own connection-time prompt instead, since scripting `pfctl`
+  changes safely is out of scope). An unrecognized host OS (e.g. this
+  session's own Windows/Git-Bash test environment - not a real target)
+  prints a pointer to `expose-lan.ps1` and exits cleanly rather than
+  crashing via a Linux-only command failing under `set -e` - a real bug
+  caught and fixed live during testing (the original version invoked `ip
+  addr show` unconditionally regardless of detected OS).
+- Verified live on this Windows machine: `expose-lan.ps1` correctly
+  refuses to run when not elevated; its LAN-address listing (isolated
+  from the privileged portproxy/firewall calls) correctly shows exactly
+  `192.168.18.111 (Ethernet)` / `192.168.16.170 (Wi-Fi)`, filtering out
+  every WSL/vEthernet/loopback adapter. `expose-lan.sh`'s OS-detection
+  guard, socat-missing fallback message, and `--remove` no-op path all
+  verified; its `ss`/`netstat` all-interfaces-listening check was tested
+  against a real `python3 -m http.server --bind 0.0.0.0` locally but
+  **did not correctly detect it** on this Windows/Git-Bash environment -
+  expected, since Git-Bash's `netstat` is Windows' own tool with a
+  different output format than the Linux/macOS tools this script's regex
+  targets, not evidence of a real Linux/macOS bug; re-verify this specific
+  check the first time the script runs on an actual Linux or macOS host.
 
 ## Backend Architecture (FastAPI — `backend/src`)
 
