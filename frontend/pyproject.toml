@@ -75,6 +75,15 @@ path = "src"
 [tool.flet.android]
 min_sdk_version = 33
 
+[tool.flet.android.permission]
+# Required by flet-camera's live in-app/in-browser scan (issue #64) and
+# flet-permission-handler's runtime request. No storage permission is
+# needed: the "Scan with Photo" fallback uses ft.FilePicker(file_type=IMAGE),
+# which on Android launches the system Photo Picker - not gated by
+# READ_MEDIA_IMAGES/READ_EXTERNAL_STORAGE - and nothing here writes to
+# shared storage.
+"android.permission.CAMERA" = true
+
 [dependency-groups]
 dev = [
     "flet[all]==0.86.4",

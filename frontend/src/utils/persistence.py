@@ -42,15 +42,37 @@ def _native_store_path() -> Path:
     """A writable, persistent JSON path in the OS user-data dir.
 
     Never returns a path inside the project tree (see module docstring).
-    """
-    if sys.platform == "win32":
-        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
-    elif sys.platform == "darwin":
-        base = os.path.expanduser("~/Library/Application Support")
-    else:
-        base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
 
-    store_dir = Path(base) / "sfsis"
+    Prefers `FLET_APP_STORAGE_DATA` (set automatically by the Flet
+    runtime itself on every native run/build - see
+    `utils/app_logger.py::_log_dir()`'s own docstring for the same
+    precedent), since guessing a per-OS home directory instead (issue
+    #74's follow-up) breaks on Android: `os.path.expanduser("~")`
+    resolves to `/data` there, a directory the app has no write
+    permission to at all (`PermissionError: [Errno 13] Permission
+    denied: '/data/.local'` trying to create `~/.local/share`).
+    `FLET_APP_STORAGE_DATA` is always a real, sandboxed, writable
+    app-data directory instead. Falls back to the previous per-OS guess
+    only when that env var is unset (e.g. running main.py directly,
+    without the Flet CLI/runtime wrapper) - desktop/web are unaffected
+    either way, since both already had a writable guess.
+    """
+    env_base = os.environ.get("FLET_APP_STORAGE_DATA") or os.environ.get(
+        "FLET_APP_STORAGE_TEMP"
+    )
+    if env_base:
+        store_dir = Path(env_base)
+    else:
+        if sys.platform == "win32":
+            base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+        elif sys.platform == "darwin":
+            base = os.path.expanduser("~/Library/Application Support")
+        else:
+            base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser(
+                "~/.local/share"
+            )
+        store_dir = Path(base) / "sfsis"
+
     store_dir.mkdir(parents=True, exist_ok=True)
     return store_dir / "session.json"
 

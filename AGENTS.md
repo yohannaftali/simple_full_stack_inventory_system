@@ -88,8 +88,10 @@
 | #66 | feat(infra): interactive frontend build script (apk/aab/ios/desktop/web) | closed | 2026-07-29 |
 | #67 | feat(infra): test/preview script for build.ps1/build.sh output | closed (fulfilled by run.ps1/run.sh's merged Preview section, not standalone test.ps1/test.sh) | 2026-07-30 |
 | #68 | chore(frontend): upgrade Flet 0.85.3 -> 0.86.4 | closed | 2026-07-30 |
-| #69 | feat(infra): add nginx reverse proxy in front of backend/frontend | ready-for-review (implemented as an additive passthrough layer per user decision, not a replacement of existing ports - verified live end-to-end) | 2026-07-30 |
+| #69 | feat(infra): add nginx reverse proxy in front of backend/frontend | closed (auto-closed via "Closes #69" commit trailer on push to main - implemented as an additive passthrough layer per user decision, not a replacement of existing ports - verified live end-to-end) | 2026-07-30 |
 | #71 | fix(frontend): select dropdown first click via text region doesn't populate value | open, root-caused as a genuine upstream Flutter/Flet limitation (not fixable in this app's Python code), documented and left open by explicit user decision | 2026-07-30 |
+| #73 | fix(frontend): multiple UI misalignment/rendering bugs on mobile web browsers (Safari/Chrome) | in-progress - `components/button.py` size_constraints fix landed (findings #1/#3/#6), findings #2/#4/#5 need live mobile-device root-cause before a fix is written | 2026-07-30 |
+| #74 | fix(frontend): APK crashes on launch - sys.stdout.reconfigure() unsupported by Android's _TeeWriter stdout | ready-for-review - fix landed, not yet verified on a real Android device | 2026-07-30 |
 
 ## Big Picture
 

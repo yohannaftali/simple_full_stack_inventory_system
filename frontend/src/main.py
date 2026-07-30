@@ -4,8 +4,12 @@ import sys
 # killed abruptly (e.g. by the hot-reload watchdog) - fully-buffered stdout
 # (the default when piped, as `flet run` does) can silently drop the last
 # partial buffer on a hard kill, hiding exactly the evidence needed to find
-# what happened right before a crash/restart.
-sys.stdout.reconfigure(line_buffering=True)
+# what happened right before a crash/restart. Guarded because a native
+# Android build's sys.stdout is a `_TeeWriter` (mirrors to logcat) with no
+# `.reconfigure()` method at all - the unguarded call crashed the app at
+# import time, before main() ever ran (issue #74).
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(line_buffering=True)
 
 # Prevent writing __pycache__/*.pyc files. The dev server's hot-reload file
 # watcher (flet run -r) watches all files recursively; importing a screen

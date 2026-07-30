@@ -70,4 +70,23 @@ class Button:
                 padding=self.padding,
                 shape=ft.RoundedRectangleBorder(radius=self.radius),
             ),
+            # `height`/`width` alone only set this control's own layout box -
+            # Flutter's Material IconButton still applies its own default
+            # minimum tap-target constraints (~40-48dp) to the internal
+            # ink/hover region regardless of that box (the same gap already
+            # fixed for ScanInput and the table search bar's clear button,
+            # issue #52). Every compact toolbar/footer button in the app
+            # goes through this one `size=`d branch (TableToolbar,
+            # ListToolbar, ModuleToolbar, TableFooter's nav/toggle buttons),
+            # so this single clamp closes that parity gap everywhere at
+            # once - suspected root cause of issue #73's "toolbar icons /
+            # submit checkmark not vertically centered" findings on mobile
+            # Safari/Chrome, where the unclamped internal region's larger
+            # intrinsic height can overflow the toolbar's fixed-height row.
+            size_constraints=ft.BoxConstraints(
+                min_width=self.size,
+                max_width=self.size,
+                min_height=self.size,
+                max_height=self.size,
+            ),
         )

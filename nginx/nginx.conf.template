@@ -11,13 +11,24 @@ events {
 # second, consolidated set of ports to connect through, alongside (not
 # replacing) each service's own directly-published ports.
 http {
-    upstream frontend_upstream {
-        server frontend:${FRONTEND_PORT};
-    }
-
-    upstream backend_upstream {
-        server backend:${UVICORN_PORT};
-    }
+    # Re-resolve `frontend`/`backend` on every request instead of once at
+    # worker startup. An `upstream {}` block (the original design here)
+    # resolves its `server` hostname a single time when the worker process
+    # starts and never looks it up again - confirmed live (2026-07-30):
+    # restarting the frontend container alone (e.g. to pick up a source
+    # change under the dev bind mount) gives it a new Podman-assigned IP,
+    # and nginx kept sending traffic to the old, now-dead address ("Host is
+    # unreachable") until nginx itself was restarted too. A `resolver` +
+    # variable-based `proxy_pass` (below) is the standard fix - nginx only
+    # re-resolves a hostname used via a variable, never a literal `upstream`
+    # server name, `valid=10s` caches each lookup briefly rather than
+    # re-resolving on literally every request. `${NGINX_RESOLVER}` is
+    # substituted by entrypoint.sh from the container's own
+    # /etc/resolv.conf (Podman/Docker's embedded DNS address), not
+    # hardcoded, since that address isn't the same across every
+    # environment (confirmed live: this Podman machine's is 10.89.2.1, not
+    # Docker's usual 127.0.0.11).
+    resolver ${NGINX_RESOLVER} valid=10s ipv6=off;
 
     server {
         listen ${NGINX_EXPOSED_FRONTEND_PORT};
@@ -28,7 +39,8 @@ http {
         # HTTP request. proxy_read_timeout is raised well past nginx's 60s
         # default so an idle-but-still-open Flet session isn't dropped.
         location / {
-            proxy_pass http://frontend_upstream;
+            set $frontend_upstream frontend:${FRONTEND_PORT};
+            proxy_pass http://$frontend_upstream;
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection "upgrade";
@@ -43,7 +55,8 @@ http {
         listen ${NGINX_EXPOSED_BACKEND_PORT};
 
         location / {
-            proxy_pass http://backend_upstream;
+            set $backend_upstream backend:${UVICORN_PORT};
+            proxy_pass http://$backend_upstream;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -62,13 +75,24 @@ http {
 # own built-in /docker-entrypoint.d/ templating (that mechanism only
 # writes into /etc/nginx/conf.d/, included from the http block alone).
 stream {
+    # Same stale-DNS fix as the `http` block above, and the same
+    # `resolver` directive is required again here - `stream` is a
+    # separate top-level context with its own directive set, it doesn't
+    # inherit `http`'s `resolver`. A literal `proxy_pass frontend:PORT;`
+    # (the original design) resolves once at worker startup and never
+    # re-resolves; a variable forces per-request (well, per `valid=`
+    # window) resolution instead.
+    resolver ${NGINX_RESOLVER} valid=10s ipv6=off;
+
     server {
         listen ${NGINX_EXPOSED_FRONTEND_PORT_SSL};
-        proxy_pass frontend:${FRONTEND_PORT_SSL};
+        set $frontend_ssl_upstream frontend:${FRONTEND_PORT_SSL};
+        proxy_pass $frontend_ssl_upstream;
     }
 
     server {
         listen ${NGINX_EXPOSED_BACKEND_PORT_SSL};
-        proxy_pass backend:${UVICORN_PORT_SSL};
+        set $backend_ssl_upstream backend:${UVICORN_PORT_SSL};
+        proxy_pass $backend_ssl_upstream;
     }
 }
