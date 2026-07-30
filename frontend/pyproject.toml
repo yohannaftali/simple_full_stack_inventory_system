@@ -16,9 +16,11 @@ dependencies = [
   # `flet[all]==0.86.4` toolchain for local dev (flet run, flet build, etc.)
   # is already declared separately below in [dependency-groups].dev - do not
   # duplicate it here.
+  # Issue #68: upgraded 0.85.3 -> 0.86.4. flet-datatable2 pinned exactly
+  # (its own requires_dist is `flet==0.86.4`, confirmed on PyPI before
+  # starting this upgrade) - both must move in lockstep or uv's resolver
+  # rejects the pair.
   "flet==0.86.4",
-  # flet-datatable2 tracks flet's own version lockstep (same pattern as
-  # flet-camera, see issue #64) - must match the pin above exactly.
   "flet-datatable2==0.86.4",
   # Live in-browser camera scan (issue #64 v1.5) - a genuine Flutter
   # `camera` plugin wrapper (Web/iOS/Android support), unblocked by the

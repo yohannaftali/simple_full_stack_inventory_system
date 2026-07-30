@@ -88,6 +88,7 @@
 | #66 | feat(infra): interactive frontend build script (apk/aab/ios/desktop/web) | closed | 2026-07-29 |
 | #67 | feat(infra): test/preview script for build.ps1/build.sh output | ready-for-review | 2026-07-29 |
 | #68 | chore(frontend): upgrade Flet 0.85.3 -> 0.86.4 | approved-to-close (web deployment merged to main and fully verified; user accepted the APK/Developer-Mode gap as a separate follow-up - GitHub close blocked, see note below) | 2026-07-29 |
+| #69 | feat(infra): add nginx reverse proxy in front of backend/frontend | open | 2026-07-29 |
 | #71 | fix(frontend): select dropdown first click via text region doesn't populate value | open (first fix attempt confirmed NOT working live - see AGENTS.md's `on_select`-fix note) | 2026-07-29 |
 
 ## Big Picture
@@ -3053,8 +3054,82 @@ itself grew two small hooks so a sub-table *can* reuse it:
 
 ## Frontend Architecture (Flet — `frontend/src`)
 
-Stack: Python ≥3.10, Flet 0.86.4, `requests` for HTTP, `flet-datatable2`;
-managed via `pyproject.toml` (uv/Poetry).
+Stack: Python ≥3.10, Flet 0.86.4 (issue #68, upgraded from 0.85.3),
+`requests` for HTTP, `flet-datatable2==0.86.4`; managed via
+`pyproject.toml` (uv/Poetry).
+
+**Flet 0.85.3 → 0.86.4 upgrade (issue #68)**: `frontend/pyproject.toml`
+(`flet`/`flet[all]`) and `flet-datatable2` bumped in lockstep — confirmed
+on PyPI before starting that `flet-datatable2`'s own `0.86.4` release
+requires `flet==0.86.4` exactly, the same pattern already seen for
+`flet-camera` while investigating issue #64. `uv lock` resolved cleanly
+with no conflicts; `uv sync --group dev` and a full `podman compose build
+frontend` both completed cleanly. **Verified working**: `uv run flet
+--version` reports `Flet: 0.86.4` / `Flutter: 3.44.8`; `main.py` imports
+cleanly under the new version; the rebuilt container starts and reports
+healthy; a direct in-container request (`podman exec sfsis-frontend
+python3 -c "urllib.request.urlopen('http://localhost:8000/login')"`)
+returns `200` with real page content (3928 bytes) — the app itself is
+confirmed working end-to-end under 0.86.4.
+**Browser-based click-through verification was blocked by an unrelated
+host-networking issue**, not a Flet 0.86 bug: after extensive testing
+this session (many `flet run`/`flet serve` invocations, ~50 stray
+`python.exe` processes accumulated and killed), the Windows host's
+`localhost:8000`/`localhost:5000` ports built up a large `TIME_WAIT`
+backlog (>12,000 entries on port 8000 alone) that didn't clear even after
+a 90s wait, blocking `curl`/`Invoke-WebRequest`/the browser from
+connecting — while a brand-new, never-used port on the same machine
+connected instantly, and the previously rock-solid backend port (5000)
+started failing the same way at the same time, confirming this is
+session-specific host-socket exhaustion on those two specific ports, not
+a regression in the containers themselves (both remained `healthy` via
+their own internal healthchecks throughout).
+
+**Full browser regression pass completed** (same-day follow-up, once host
+networking recovered): login -> home -> deep-link direct load (confirms
+issue #51's fix survives 0.86) -> `master_location` table (sort icon
+toggle, per-column filter row show/live-filter/clear, row hover/zebra
+striping, footer pagination) -> row click into edit screen (M3
+borderless/underline field styling from issue #53, QR-scan icon, delete/
+save buttons) -> QR/barcode "Scan to Search" dialog (issue #52/#64,
+autofocused manual entry + "Scan with Photo") -> TOTP setup modal (issue
+#58's PyPNG QR-generation fix, secret key/copy, verification code field)
+-> Dark Mode toggle from the user menu (applies instantly app-wide). No
+regressions found under 0.86.4 in any of these.
+
+**A separate, real issue was hit and resolved along the way, worth
+recording since it will recur**: after the extensive session-long
+networking troubleshooting above (many container/Podman-machine/Windows
+restarts), the browser got stuck on Flet 0.86's new boot screen
+("Working..." with a spinner) and never rendered past it, even though the
+container served every asset/websocket request with a real `200` and no
+error anywhere in its logs. Root-caused by reading
+`flet_web/fastapi/flet_app.py` directly: Flet's own session-recovery logic
+(distinct from this app's `sfsis_client_id` cookie in `asgi.py`) resolves
+a `session_id` the browser sends (via its own client-side storage) against
+a server-side session cache, and reuses a matching `candidate` session
+instead of creating a fresh one whenever `candidate.connection is None` -
+skipping `before_main()` entirely (see `asgi.py`'s own `before_main` note
+above), which is what left the boot screen hanging. The candidate here was
+stale, left over from before the round of restarts. **Fix: clear the
+browser's site storage for the app's origin (or open a fresh/incognito
+window) - not a container restart**, which forces the browser to request a
+genuinely new session. Confirmed via container logs: a fresh browser
+context shows a clean `route to: /home from: None` with no boot-screen
+hang, while a browser retaining the stale `session_id` hangs indefinitely
+with no `before_main` log line at all. Not itself a 0.86 regression (the
+session-recovery mechanism itself is unchanged, confirmed via
+`flet/app.py`'s `run()` signature), but worth knowing: a dev session with
+many restarts in a row can leave a browser tab pointed at a
+now-unrecoverable server-side session with no visible error to explain it.
+
+Not yet re-verified: `frontend/run.ps1`/`run.sh` (issue #66/#67) against
+a real 0.86 `flet build`/`flet run` (Android packaging was redesigned in
+0.86 - output paths may have changed) and the dev-mode QR-scan companion
+app's own protocol compatibility - both flagged as open follow-up work
+in issue #68's own acceptance criteria, deferred as lower-priority given
+the primary containerized web deployment (this app's main supported path)
+is now fully verified working end-to-end under 0.86.4.
 
 - **Entry & routing** (`src/main.py`): `ft.run(main)` bootstraps an async
   `main(page)`. Shows `SplashScreen`, loads persisted state via
