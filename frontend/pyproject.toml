@@ -22,6 +22,15 @@ dependencies = [
   # rejects the pair.
   "flet==0.86.4",
   "flet-datatable2==0.86.4",
+  # Live in-browser camera scan (issue #64 v1.5) - a genuine Flutter
+  # `camera` plugin wrapper (Web/iOS/Android support), unblocked by the
+  # flet==0.86.4 upgrade (its stable releases only ever matched 0.86.4,
+  # never 0.85.3 - see components/scan_input.py). Runtime camera
+  # permission on native Android/iOS goes through flet-permission-handler;
+  # a browser's own getUserMedia permission prompt covers the web
+  # deployment without it, but it's cheap to include for the native path.
+  "flet-camera==0.86.4",
+  "flet-permission-handler==0.86.4",
   "requests>=2.31.0",
   "websockets>=15.0",
   "openpyxl>=3.1.2",

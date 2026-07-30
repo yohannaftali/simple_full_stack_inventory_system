@@ -115,6 +115,7 @@ class SelectForm:
             expand=True,
             on_focus=self._on_focus,
             on_blur=self._on_blur,
+            on_select=self._on_select,
         )
         self.container = ft.Container(
             bgcolor=self.bgcolor,
@@ -173,6 +174,26 @@ class SelectForm:
     def _on_blur(self, e=None) -> None:
         self.select.label_style = ft.TextStyle(size=self.label_size, color=self.label_color)
         self._safe_container_update()
+
+    def _on_select(self, e=None) -> None:
+        # Real, user-reported bug: opening this field by tapping directly in
+        # its text-input region (vs. the trailing arrow) and picking the
+        # first option leaves the displayed text empty until a second pick -
+        # Flutter's `DropdownMenu` widget keeps its own internal text-field
+        # controller separate from the selected value (`ft.Dropdown` itself
+        # exposes them as two distinct properties, `value` vs `text`), and
+        # that internal sync isn't reliable on every interaction path. Don't
+        # trust it - explicitly resolve and set the displayed text from
+        # Python instead, the same "drive it explicitly" pattern already
+        # used for other flaky Flet/Flutter control behaviors in this app
+        # (`DataRow.color`, `ListTile.bgcolor`).
+        matched = next(
+            (opt for opt in self.select.options if opt.key == self.select.value),
+            None,
+        )
+        if matched is not None:
+            self.select.text = matched.text
+            self._safe_update()
 
     def _safe_container_update(self) -> None:
         try:
