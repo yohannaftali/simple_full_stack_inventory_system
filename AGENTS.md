@@ -166,6 +166,53 @@ locally via Podman:
   - `depends_on` both `backend`/`frontend` with `condition:
     service_healthy` — nginx only starts once both real upstreams are
     already serving.
+  - **Windows/Podman: nginx's own published ports can silently stop
+    forwarding after heavy container-restart churn, independently of
+    everything inside the container** (found live, 2026-07-30, on this
+    Windows/WSL dev machine — same session already carrying the resolver
+    fix above). Symptom: `curl http://localhost:8001/`/`:5001` (nginx's
+    own exposed ports) hangs or returns "Empty reply from server"/a
+    dropped connection, while `curl http://localhost:8000/` (frontend's
+    *own* directly-published port, unrelated to nginx) works fine at the
+    same moment — nginx and every container report `healthy` throughout,
+    and nginx's own internal healthcheck (`wget` from `127.0.0.1` inside
+    the container) keeps succeeding the whole time, so this is purely a
+    **host-to-container port-forwarding gap**, not an application bug.
+    Root cause, confirmed via `netstat -ano` on the Windows host: after
+    several `frontend` restarts, an `nginx --force-recreate`, a `podman
+    machine stop`/`start`, and even a full `wsl --shutdown`, Podman's
+    WSL-backed port-forwarder re-established a real `LISTENING` socket
+    for `frontend`'s port (8000) but never re-registered one for
+    `nginx`'s ports (8001/5001) at all — `netstat` showed no listener
+    whatsoever on those two, not a stale/wrong one. **Fix: a plain
+    `podman compose restart nginx`** (not `frontend`, not the whole
+    stack, not the Podman machine) — this alone made Podman re-bind the
+    host-side forwards for nginx's specific ports correctly.
+    **Two real, ruled-out red herrings from this same investigation**,
+    worth knowing so they're not chased again first:
+    1. `netsh interface portproxy` rules (from `expose-lan.ps1`, for
+       LAN/phone access) run under a `svchost` process that LOOKS
+       identical in `netstat` to what you'd expect from Podman's own
+       forwarder (a generic `svchost` PID holding the listening socket)
+       — genuinely worth checking (`netsh interface portproxy show
+       all`) and removing (`expose-lan.ps1 -Remove`) as a first
+       diagnostic step, but in this specific incident the ports were
+       broken with or without those rules present — the portproxy layer
+       was not the actual cause this time, just a plausible-looking
+       coincidence sharing the same OS mechanism.
+    2. Nothing about nginx's own config, `nginx.conf.template`, or the
+       resolver fix above was implicated — this failure mode is entirely
+       about the Windows-host/WSL port-forwarding layer between the
+       Podman machine and the Windows host, one level below anything
+       this repo's own nginx config controls.
+    **Fastest diagnosis next time**: `netstat -ano | findstr ":8001 "`
+    (swap the port) — if there's no `LISTENING` line at all for it (only
+    `TIME_WAIT` entries or nothing), it's this exact gap; restart just
+    the affected container(s) via `podman compose restart <service>`
+    before reaching for anything more disruptive (portproxy removal,
+    Podman machine restart, `wsl --shutdown` — all were tried this
+    session and none were the actual fix, restarting the specific
+    container was).
 
 All four services are defined in `compose.yml` and run together with:
 
@@ -256,6 +303,48 @@ Three sections in one numbered menu:
   Xcode, no macOS, no Android SDK, no build step at all**, a genuinely
   different mechanism from previewing a compiled build above (where the
   Xcode/macOS requirement for iOS is real).
+- **Signing** (21): "Generate Android upload keystore" — a one-time
+  setup step for a real, publishable APK/AAB release build (an unsigned/
+  debug-signed build works for local testing but Play Console requires a
+  real upload key). Runs `keytool -genkeypair` fully non-interactively
+  (`-storepass`/`-keypass`, matching this script's own `--yes`/
+  non-interactive philosophy elsewhere) into `frontend/key/upload-keystore.jks`
+  (alias `upload`) — **gitignored** (`frontend/.gitignore`'s `key/*` /
+  `!key/.gitkeep` pair keeps the empty folder tracked without ever
+  tracking the real key file), since a signing key is a secret that can
+  never be rotated once an app has shipped under it. Refuses to
+  overwrite an existing keystore rather than silently regenerating one.
+  The store/key password itself lives only in the repo-root `.env`
+  (`FLET_ANDROID_SIGNING_KEY_STORE_PASSWORD`, optionally a separate
+  `FLET_ANDROID_SIGNING_KEY_PASSWORD` — falls back to the same value for
+  both if only one is set, matching `flet-cli`'s own `build_base.py`
+  fallback) — never in `pyproject.toml`, which IS committed.
+  `pyproject.toml`'s `[tool.flet.android.signing]` table holds only the
+  non-secret `key_alias` (`"upload"`) — deliberately **not** `key_store`.
+  A real `flet build apk` run initially failed with Gradle's
+  `validateSigningRelease` reporting the keystore "not found" at
+  `build/flutter/android/app/key/upload-keystore.jks` — a relative
+  `key_store` value in `pyproject.toml` resolves against the *generated
+  Flutter scaffold's own app module directory*, not `frontend/` where
+  the keystore actually lives, contrary to the original assumption here.
+  Fixed by exporting `FLET_ANDROID_SIGNING_KEY_STORE` as an **absolute**
+  path instead (`Set-AndroidSigningEnv`/`set_android_signing_env`,
+  computed fresh at build time from `frontend/key/upload-keystore.jks`) —
+  correct regardless of where the scaffold resolves a relative path
+  from. Every `apk`/`apk-split`/`aab` build option loads this plus both
+  password env vars from `.env` before invoking `flet build` (harmless
+  no-op for every other target, which never touches Android signing).
+  **Verified live end-to-end, including a real build**: keystore
+  generated (`keytool` found via both PATH and Android Studio's bundled
+  JBR); `pyproject.toml` parses as valid TOML; the `.jks` file is
+  correctly excluded by `git status`/`git check-ignore` while
+  `.gitkeep` stages cleanly; re-running the keystore option correctly
+  refuses to overwrite an existing one; `bash run.sh apk` completed
+  successfully (`build/apk/sfsis.apk`); `apksigner verify --print-certs`
+  confirmed the built APK's actual signing certificate (SHA-256
+  fingerprint and DN) exactly matches the generated keystore's own — a
+  real signed release build, not a fallback to Flutter's default debug
+  key.
 
 **Real bugs found and fixed while building/verifying this tooling**
 (kept here since they'd resurface if the underlying mechanism were ever

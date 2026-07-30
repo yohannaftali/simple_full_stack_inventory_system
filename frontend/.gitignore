@@ -163,3 +163,11 @@ cython_debug/
 
 # Flet
 storage/
+
+# Android upload keystore (see pyproject.toml's [tool.flet.android.signing] -
+# key_store points into this folder). A signing key is a secret, never
+# committed - generate your own via run.ps1/run.sh's "Generate Android
+# upload keystore" option. .gitkeep keeps the folder itself tracked so a
+# fresh checkout has somewhere to put it.
+key/*
+!key/.gitkeep

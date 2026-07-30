@@ -75,6 +75,31 @@ path = "src"
 [tool.flet.android]
 min_sdk_version = 33
 
+[tool.flet.android.signing]
+# key_store is deliberately NOT set here, even though it isn't secret -
+# confirmed live (real `flet build apk` run) that flet-cli's generated
+# Gradle project resolves a relative `key_store` path against the
+# Flutter scaffold's OWN app module directory
+# (build/flutter/android/app/), not this project directory - a value
+# like "key/upload-keystore.jks" here fails with Gradle's
+# `validateSigningRelease` reporting a keystore that "doesn't exist" at
+# build/flutter/android/app/key/upload-keystore.jks, which is never
+# where the real file lives. run.ps1/run.sh instead export
+# FLET_ANDROID_SIGNING_KEY_STORE as an ABSOLUTE path to
+# frontend/key/upload-keystore.jks before every apk/aab build (see
+# Set-AndroidSigningEnv/set_android_signing_env) - computed fresh at
+# build time, so it's correct regardless of where the generated Flutter
+# scaffold happens to resolve a relative path from.
+#
+# The actual store/key passwords are NEVER put here either - `flet
+# build` reads those from the FLET_ANDROID_SIGNING_KEY_STORE_PASSWORD /
+# FLET_ANDROID_SIGNING_KEY_PASSWORD env vars (see .env, gitignored),
+# which run.ps1/run.sh also load from the repo-root .env before invoking
+# a build. Generate the keystore itself via run.ps1/run.sh's "Generate
+# Android upload keystore" option - it's gitignored (frontend/key/),
+# never commit the .jks file itself.
+key_alias = "upload"
+
 [tool.flet.android.permission]
 # Required by flet-camera's live in-app/in-browser scan (issue #64) and
 # flet-permission-handler's runtime request. No storage permission is

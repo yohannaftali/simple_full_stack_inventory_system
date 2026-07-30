@@ -67,6 +67,7 @@ TARGETS=(
     "Dev mode:18:dev-web:Web (flet run --web, hot reload)"
     "Dev mode:19:dev-android:Android (scan QR with Flet app - no SDK needed)"
     "Dev mode:20:dev-ios:iOS (scan QR with Flet app - no Xcode needed)"
+    "Signing:21:keystore-gen:Generate Android upload keystore"
 )
 
 show_menu() {
@@ -133,6 +134,131 @@ get_android_package_id() {
     echo "${org}.${name}"
 }
 
+get_pyproject_field() {
+    local name="$1"
+    grep -E "^\s*${name}\s*=" "${FRONTEND_DIR}/pyproject.toml" | head -1 | sed -E 's/.*"([^"]+)".*/\1/'
+}
+
+get_env_file_password() {
+    # Read a value out of the repo-root .env (not frontend/, which has no
+    # .env of its own - the same file compose.yml itself reads), without
+    # ever printing it. `flet build` picks this up from the process
+    # environment (FLET_ANDROID_SIGNING_KEY_STORE_PASSWORD/
+    # _KEY_PASSWORD - see flet_cli's build_base.py), it never reads .env
+    # files itself.
+    local var_name="$1"
+    local env_path="${FRONTEND_DIR}/../.env"
+    [ -f "$env_path" ] || return 1
+    local line
+    line=$(grep -E "^\s*${var_name}\s*=" "$env_path" | head -1)
+    [ -n "$line" ] || return 1
+    local value="${line#*=}"
+    value="${value%\"}"
+    value="${value#\"}"
+    value="${value%\'}"
+    value="${value#\'}"
+    echo "$value"
+}
+
+set_android_signing_env() {
+    # `flet build` reads FLET_ANDROID_SIGNING_KEY_STORE/
+    # _KEY_STORE_PASSWORD/_KEY_PASSWORD from the process environment
+    # (build_base.py), not from any .env file itself, and not from
+    # pyproject.toml for the store PATH specifically - see
+    # pyproject.toml's [tool.flet.android.signing] comment for why a
+    # relative key_store there resolves against the wrong directory
+    # (confirmed live via a real failed build). Computing an ABSOLUTE
+    # path here, fresh at build time, sidesteps that entirely. All of
+    # this is a harmless no-op for a non-Android build target, or if the
+    # keystore/passwords don't exist yet.
+    local keystore_path="${FRONTEND_DIR}/key/upload-keystore.jks"
+    if [ -f "$keystore_path" ]; then
+        export FLET_ANDROID_SIGNING_KEY_STORE="$keystore_path"
+    fi
+    local store_pw key_pw
+    if store_pw=$(get_env_file_password "FLET_ANDROID_SIGNING_KEY_STORE_PASSWORD"); then
+        export FLET_ANDROID_SIGNING_KEY_STORE_PASSWORD="$store_pw"
+    fi
+    if key_pw=$(get_env_file_password "FLET_ANDROID_SIGNING_KEY_PASSWORD"); then
+        export FLET_ANDROID_SIGNING_KEY_PASSWORD="$key_pw"
+    fi
+}
+
+get_keytool_path() {
+    # Same PATH-first, then-known-install-locations discovery pattern as
+    # get_adb_path above - `keytool` ships with any JDK, and Android
+    # Studio bundles its own (the JBR - JetBrains Runtime) even on a
+    # machine with no separate JDK install.
+    if command -v keytool >/dev/null 2>&1; then
+        command -v keytool
+        return 0
+    fi
+    local candidates=()
+    [ -n "${JAVA_HOME:-}" ] && candidates+=("${JAVA_HOME}/bin/keytool")
+    candidates+=("/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin/keytool")
+    candidates+=("${HOME}/android-studio/jbr/bin/keytool")
+    for candidate in "${candidates[@]}"; do
+        if [ -x "$candidate" ]; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+generate_android_keystore() {
+    # Loads FLET_ANDROID_SIGNING_KEY_STORE_PASSWORD from the repo-root
+    # .env so keytool can run fully non-interactively (-storepass/
+    # -keypass), matching this script's existing --yes/non-interactive
+    # philosophy for flet build. Uses that same password for both the
+    # store and the key (build_base.py's own fallback already treats a
+    # single password as valid for both, see pyproject.toml's own
+    # [tool.flet.android.signing] comment) - add a separate
+    # FLET_ANDROID_SIGNING_KEY_PASSWORD to .env if you ever want them to
+    # differ.
+    local key_dir="${FRONTEND_DIR}/key"
+    local keystore_path="${key_dir}/upload-keystore.jks"
+    local alias="upload"
+
+    if [ -f "$keystore_path" ]; then
+        echo "A keystore already exists at ${keystore_path}." >&2
+        echo "Refusing to overwrite it - a signing key can never be swapped once an app has been published under it." >&2
+        echo "Delete it yourself first if you really intend to generate a brand-new one." >&2
+        EXIT_CODE=1
+        return
+    fi
+
+    local password
+    if ! password=$(get_env_file_password "FLET_ANDROID_SIGNING_KEY_STORE_PASSWORD"); then
+        echo "FLET_ANDROID_SIGNING_KEY_STORE_PASSWORD is not set in the repo-root .env - add it first (see example.env), then re-run this option." >&2
+        EXIT_CODE=1
+        return
+    fi
+
+    local keytool_path
+    if ! keytool_path=$(get_keytool_path); then
+        echo "'keytool' was not found on PATH, \$JAVA_HOME/bin, or Android Studio's bundled JBR location - install a JDK (or Android Studio) to generate a keystore." >&2
+        EXIT_CODE=1
+        return
+    fi
+
+    mkdir -p "$key_dir"
+
+    local org company product
+    org=$(get_pyproject_field "org")
+    company=$(get_pyproject_field "company")
+    product=$(get_pyproject_field "product")
+    local dname="CN=${product}, OU=${org}, O=${company}, L=Unknown, ST=Unknown, C=US"
+
+    echo "Generating upload keystore at ${keystore_path} (alias '${alias}')..."
+    "$keytool_path" -genkeypair -v -keystore "$keystore_path" -storetype JKS -keyalg RSA -keysize 2048 -validity 10000 -alias "$alias" -storepass "$password" -keypass "$password" -dname "$dname"
+    EXIT_CODE=$?
+    if [ "$EXIT_CODE" -eq 0 ]; then
+        echo ""
+        echo "Keystore created. This file (and its password in .env) are the ONLY way to publish an update to this app under the same identity - back both up somewhere safe outside this repo."
+    fi
+}
+
 detect_host_os() {
     case "$(uname -s)" in
         Darwin*) echo "macos" ;;
@@ -163,6 +289,7 @@ run_build_target() {
     local flet_target="$1" label="$2"
     shift 2
     require_uv || return
+    set_android_signing_env
     stop_stale_gradle_daemon
     cd "$FRONTEND_DIR"
     uv sync
@@ -299,10 +426,48 @@ run_preview_apk() {
     fi
 
     echo "Installing $(basename "$target")..."
-    "$adb_path" install -r "$target"
-    if [ $? -ne 0 ]; then
-        EXIT_CODE=1
-        return
+    local install_output install_exit
+    install_output=$("$adb_path" install -r "$target" 2>&1)
+    install_exit=$?
+    echo "$install_output"
+    if [ "$install_exit" -ne 0 ]; then
+        # A real, one-time-transition error hit live: switching this app
+        # from an unsigned/debug-signed build to a real upload-keystore-
+        # signed one (see the Signing section above) means Android
+        # refuses to "update" an already-installed copy whose signature
+        # doesn't match - it isn't a bug in this script, it's Android's
+        # own signature-matching security rule. Detect it specifically
+        # and offer to uninstall the stale copy + retry, rather than just
+        # printing a generic failure and leaving the user to work out why.
+        if echo "$install_output" | grep -q "INSTALL_FAILED_UPDATE_INCOMPATIBLE"; then
+            local package
+            echo ""
+            echo "The app already installed on this device was signed with a DIFFERENT key (likely from before this project's Android signing was set up) - Android won't install an update over it."
+            if package=$(get_android_package_id); then
+                echo "Uninstalling the existing ${package} first will lose that copy's local app data/session on the device."
+                read -r -p "Uninstall the existing app and retry? [y/N] " confirm
+                if [[ "$confirm" =~ ^[Yy] ]]; then
+                    "$adb_path" uninstall "$package" >/dev/null
+                    echo "Retrying install of $(basename "$target")..."
+                    "$adb_path" install -r "$target"
+                    if [ $? -ne 0 ]; then
+                        echo "adb install still failed after uninstalling." >&2
+                        EXIT_CODE=1
+                        return
+                    fi
+                else
+                    EXIT_CODE=1
+                    return
+                fi
+            else
+                echo "Could not determine the package id to uninstall automatically - run 'adb uninstall <package>' yourself, then retry." >&2
+                EXIT_CODE=1
+                return
+            fi
+        else
+            EXIT_CODE=1
+            return
+        fi
     fi
 
     local package
@@ -404,6 +569,7 @@ dispatch_choice() {
         18|dev-web) run_dev --web ;;
         19|dev-android) run_dev --android ;;
         20|dev-ios) run_dev --ios ;;
+        21|keystore-gen) generate_android_keystore ;;
         *)
             echo "Unknown option: $choice" >&2
             EXIT_CODE=1

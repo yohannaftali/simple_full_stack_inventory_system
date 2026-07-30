@@ -69,6 +69,7 @@ $Targets = @(
     [PSCustomObject]@{ Category = "Dev mode"; Number = "18"; Slug = "dev-web";             Label = "Web (flet run --web, hot reload)" }
     [PSCustomObject]@{ Category = "Dev mode"; Number = "19"; Slug = "dev-android";         Label = "Android (scan QR with Flet app - no SDK needed)" }
     [PSCustomObject]@{ Category = "Dev mode"; Number = "20"; Slug = "dev-ios";             Label = "iOS (scan QR with Flet app - no Xcode needed)" }
+    [PSCustomObject]@{ Category = "Signing"; Number = "21"; Slug = "keystore-gen";         Label = "Generate Android upload keystore" }
 )
 
 function Show-Menu {
@@ -139,6 +140,105 @@ function Get-AndroidPackageId {
     return "$org.$name"
 }
 
+function Get-PyprojectField([string]$Name) {
+    $pyproject = Join-Path $FrontendDir "pyproject.toml"
+    $content = Get-Content -Path $pyproject -Raw
+    return [regex]::Match($content, "(?m)^\s*$Name\s*=\s*`"([^`"]+)`"").Groups[1].Value
+}
+
+function Get-EnvFilePassword([string]$VarName) {
+    # Read a value out of the repo-root .env (not frontend/, which has no
+    # .env of its own - the same file compose.yml itself reads) without
+    # ever printing it. `flet build` picks this up from the process
+    # environment (FLET_ANDROID_SIGNING_KEY_STORE_PASSWORD /
+    # FLET_ANDROID_SIGNING_KEY_PASSWORD - see build_base.py), it never
+    # reads .env files itself.
+    $envPath = Join-Path (Split-Path $FrontendDir -Parent) ".env"
+    if (-not (Test-Path $envPath)) {
+        return $null
+    }
+    $line = Get-Content -Path $envPath | Where-Object { $_ -match "^\s*$VarName\s*=" } | Select-Object -First 1
+    if (-not $line) {
+        return $null
+    }
+    $value = ($line -split "=", 2)[1].Trim()
+    return $value.Trim('"').Trim("'")
+}
+
+function Get-KeytoolPath {
+    # Same PATH-first, then-known-install-locations discovery pattern as
+    # Get-AdbPath above - `keytool` ships with any JDK, and Android
+    # Studio bundles its own (the JBR - JetBrains Runtime) even on a
+    # machine with no separate JDK install.
+    $cmd = Get-Command keytool -ErrorAction SilentlyContinue
+    if ($cmd) {
+        return $cmd.Source
+    }
+    $candidates = @()
+    if ($env:JAVA_HOME) {
+        $candidates += (Join-Path $env:JAVA_HOME "bin\keytool.exe")
+    }
+    $candidates += "C:\Program Files\Android\Android Studio\jbr\bin\keytool.exe"
+    foreach ($candidate in $candidates) {
+        if ($candidate -and (Test-Path $candidate)) {
+            return $candidate
+        }
+    }
+    return $null
+}
+
+function Invoke-KeystoreGen {
+    # Loads FLET_ANDROID_SIGNING_KEY_STORE_PASSWORD from the repo-root
+    # .env so keytool can run fully non-interactively (-storepass/
+    # -keypass), matching this script's existing --yes/non-interactive
+    # philosophy for flet build. Uses that same password for both the
+    # store and the key (build_base.py's own fallback already treats a
+    # single password as valid for both, see pyproject.toml's own
+    # [tool.flet.android.signing] comment) - add a separate
+    # FLET_ANDROID_SIGNING_KEY_PASSWORD to .env if you ever want them to
+    # differ.
+    $keyDir = Join-Path $FrontendDir "key"
+    $keystorePath = Join-Path $keyDir "upload-keystore.jks"
+    $alias = "upload"
+
+    if (Test-Path $keystorePath) {
+        Write-Host "A keystore already exists at $keystorePath." -ForegroundColor Yellow
+        Write-Host "Refusing to overwrite it - a signing key can never be swapped once an app has been published under it." -ForegroundColor Yellow
+        Write-Host "Delete it yourself first if you really intend to generate a brand-new one." -ForegroundColor Yellow
+        $script:ExitCode = 1
+        return
+    }
+
+    $password = Get-EnvFilePassword "FLET_ANDROID_SIGNING_KEY_STORE_PASSWORD"
+    if (-not $password) {
+        Write-Host "FLET_ANDROID_SIGNING_KEY_STORE_PASSWORD is not set in the repo-root .env - add it first (see example.env), then re-run this option." -ForegroundColor Red
+        $script:ExitCode = 1
+        return
+    }
+
+    $keytoolPath = Get-KeytoolPath
+    if (-not $keytoolPath) {
+        Write-Host "'keytool' was not found on PATH, `$env:JAVA_HOME\bin, or Android Studio's bundled JBR location - install a JDK (or Android Studio) to generate a keystore." -ForegroundColor Red
+        $script:ExitCode = 1
+        return
+    }
+
+    New-Item -ItemType Directory -Force -Path $keyDir | Out-Null
+
+    $org = Get-PyprojectField "org"
+    $company = Get-PyprojectField "company"
+    $product = Get-PyprojectField "product"
+    $dname = "CN=$product, OU=$org, O=$company, L=Unknown, ST=Unknown, C=US"
+
+    Write-Host "Generating upload keystore at $keystorePath (alias '$alias')..." -ForegroundColor Green
+    & $keytoolPath -genkeypair -v -keystore $keystorePath -storetype JKS -keyalg RSA -keysize 2048 -validity 10000 -alias $alias -storepass $password -keypass $password -dname $dname
+    $script:ExitCode = $LASTEXITCODE
+    if ($script:ExitCode -eq 0) {
+        Write-Host ""
+        Write-Host "Keystore created. This file (and its password in .env) are the ONLY way to publish an update to this app under the same identity - back both up somewhere safe outside this repo." -ForegroundColor Yellow
+    }
+}
+
 function Stop-StaleGradleDaemon {
     # Real, recurring failure found live: a Gradle daemon left running by
     # ANY earlier build attempt keeps a lock on files under
@@ -158,8 +258,34 @@ function Stop-StaleGradleDaemon {
     }
 }
 
+function Set-AndroidSigningEnv {
+    # `flet build` reads FLET_ANDROID_SIGNING_KEY_STORE/
+    # _KEY_STORE_PASSWORD/_KEY_PASSWORD from the process environment
+    # (build_base.py), not from any .env file itself, and not from
+    # pyproject.toml for the store PATH specifically - see
+    # pyproject.toml's [tool.flet.android.signing] comment for why a
+    # relative key_store there resolves against the wrong directory
+    # (confirmed live via a real failed build). Computing an ABSOLUTE
+    # path here, fresh at build time, sidesteps that entirely. All of
+    # this is a harmless no-op for a non-Android build target, or if the
+    # keystore/passwords don't exist yet.
+    $keystorePath = Join-Path $FrontendDir "key\upload-keystore.jks"
+    if (Test-Path $keystorePath) {
+        $env:FLET_ANDROID_SIGNING_KEY_STORE = $keystorePath
+    }
+    $storePw = Get-EnvFilePassword "FLET_ANDROID_SIGNING_KEY_STORE_PASSWORD"
+    if ($storePw) {
+        $env:FLET_ANDROID_SIGNING_KEY_STORE_PASSWORD = $storePw
+    }
+    $keyPw = Get-EnvFilePassword "FLET_ANDROID_SIGNING_KEY_PASSWORD"
+    if ($keyPw) {
+        $env:FLET_ANDROID_SIGNING_KEY_PASSWORD = $keyPw
+    }
+}
+
 function Invoke-BuildTarget([string]$Slug, [string]$Label, [string[]]$ExtraArgs) {
     if (-not (Test-Uv)) { return }
+    Set-AndroidSigningEnv
     Stop-StaleGradleDaemon
     & uv sync
     Write-Host "Building $Label..." -ForegroundColor Green
@@ -255,11 +381,47 @@ function Invoke-PreviewApk {
     }
 
     Write-Host "Installing $($target.Name)..." -ForegroundColor Green
-    & $adbPath install -r $target.FullName
+    $installOutput = & $adbPath install -r $target.FullName 2>&1
+    $installOutput | ForEach-Object { Write-Host $_ }
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "adb install failed (exit $LASTEXITCODE)." -ForegroundColor Red
-        $script:ExitCode = $LASTEXITCODE
-        return
+        # A real, one-time-transition error hit live: switching this app
+        # from an unsigned/debug-signed build to a real upload-keystore-
+        # signed one (see the Signing section above) means Android
+        # refuses to "update" an already-installed copy whose signature
+        # doesn't match - it isn't a bug in this script, it's Android's
+        # own signature-matching security rule. Detect it specifically
+        # and offer to uninstall the stale copy + retry, rather than just
+        # printing a generic failure and leaving the user to work out why.
+        if (($installOutput -join "`n") -match "INSTALL_FAILED_UPDATE_INCOMPATIBLE") {
+            $package = Get-AndroidPackageId
+            Write-Host ""
+            Write-Host "The app already installed on this device was signed with a DIFFERENT key (likely from before this project's Android signing was set up) - Android won't install an update over it." -ForegroundColor Yellow
+            if ($package) {
+                Write-Host "Uninstalling the existing $package first will lose that copy's local app data/session on the device." -ForegroundColor Yellow
+                $confirm = Read-Host "Uninstall the existing app and retry? [y/N]"
+                if ($confirm -match "^[Yy]") {
+                    & $adbPath uninstall $package | Out-Null
+                    Write-Host "Retrying install of $($target.Name)..." -ForegroundColor Green
+                    & $adbPath install -r $target.FullName
+                    if ($LASTEXITCODE -ne 0) {
+                        Write-Host "adb install still failed after uninstalling (exit $LASTEXITCODE)." -ForegroundColor Red
+                        $script:ExitCode = $LASTEXITCODE
+                        return
+                    }
+                } else {
+                    $script:ExitCode = 1
+                    return
+                }
+            } else {
+                Write-Host "Could not determine the package id to uninstall automatically - run 'adb uninstall <package>' yourself, then retry." -ForegroundColor Red
+                $script:ExitCode = 1
+                return
+            }
+        } else {
+            Write-Host "adb install failed (exit $LASTEXITCODE)." -ForegroundColor Red
+            $script:ExitCode = $LASTEXITCODE
+            return
+        }
     }
 
     $package = Get-AndroidPackageId
@@ -339,6 +501,7 @@ function Invoke-Selection([string]$Choice) {
         "dev-web" { Invoke-DevRun @("--web") }
         "dev-android" { Invoke-DevRun @("--android") }
         "dev-ios" { Invoke-DevRun @("--ios") }
+        "keystore-gen" { Invoke-KeystoreGen }
     }
     return $true
 }
