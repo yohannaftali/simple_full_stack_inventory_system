@@ -78,14 +78,24 @@ _STREAM_DECODE_INTERVAL_S = 0.4
 # prior timeout at all).
 _CAMERA_INIT_TIMEOUT_S = 10.0
 
-# Viewfinder square + corner-bracket geometry (a camera reticle look - only
-# the four corners are drawn, not a full border, per the requested UX).
-_VIEWFINDER_BOX = 300
+# Viewfinder reticle geometry (a camera reticle look - only the four
+# corners are drawn, not a full border, per the requested UX) - centered
+# over the full-screen camera feed (issue #64 follow-up, 2026-07-30: the
+# camera view is now a full-screen borderless overlay, matching a
+# conventional native QR/barcode scanner, rather than a small dialog box).
 _VIEWFINDER_SQUARE = 220
-_VIEWFINDER_INSET = (_VIEWFINDER_BOX - _VIEWFINDER_SQUARE) // 2
 _CORNER_SIZE = 28
 _CORNER_THICKNESS = 4
 _SCAN_LINE_ANIM_MS = 1400
+
+# Translucent circular background for icon buttons floating directly over
+# the live camera feed (close/switch-camera/gallery) - a plain IconButton
+# with no background would be nearly invisible against a bright/busy
+# camera image, and a solid opaque one would look out of place over a
+# live video feed - matches the "usual" scanner-app look of dark
+# semi-transparent circular controls overlaid on the viewfinder.
+_OVERLAY_BUTTON_BG = ft.Colors.with_opacity(0.35, ft.Colors.BLACK)
+_OVERLAY_BUTTON_ICON_COLOR = ft.Colors.WHITE
 
 
 class ScanUnavailableError(RuntimeError):
@@ -177,17 +187,23 @@ class ScanInput:
 
         # Live camera-scan state (issue #64 follow-up) - rebuilt fresh each
         # time the scan button opens, same "never reuse a stale control"
-        # convention as `self.dialog`/`self.field` above.
+        # convention as `self.dialog`/`self.field` above. `camera_overlay`
+        # is a full-screen `page.overlay` entry (NOT an `ft.AlertDialog` -
+        # see `_open_camera()`'s own comment for why a real native-scanner
+        # look needs a borderless full-screen container instead of dialog
+        # chrome).
         self.camera: fc.Camera | None = None
         self.cameras: list[fc.CameraDescription] = []
         self.camera_index = 0
+        self.camera_overlay: ft.Container | None = None
         self.camera_area: ft.Container | None = None
+        self.camera_top_bar: ft.Row | None = None
         self.camera_bottom_bar: ft.Row | None = None
         self.camera_status: ft.Text | None = None
         self.scan_line: ft.Container | None = None
         self._last_decode_ts = 0.0
         self._scan_active = False
-        self._scan_line_future = None
+        self._scan_line_at_top = True
 
     def build(self) -> ft.IconButton:
         # `width`/`height` alone only set this control's own layout box -
@@ -386,7 +402,30 @@ class ScanInput:
 
     # ---------------------------------------------------------- live camera scan
 
+    def _overlay_icon_button(self, icon, tooltip: str, on_click) -> ft.IconButton:
+        """A translucent circular icon button meant to float directly over
+        the live camera feed - see `_OVERLAY_BUTTON_BG`'s own comment for
+        why a plain/opaque button doesn't work here."""
+        return ft.IconButton(
+            icon=icon,
+            tooltip=tooltip,
+            on_click=on_click,
+            icon_color=_OVERLAY_BUTTON_ICON_COLOR,
+            style=ft.ButtonStyle(
+                bgcolor=_OVERLAY_BUTTON_BG,
+                shape=ft.CircleBorder(),
+            ),
+        )
+
     async def _open_camera(self) -> None:
+        # Full-screen, borderless overlay - a plain `page.overlay` entry
+        # (same mechanism `components/loading_overlay.py` already uses
+        # for a full-screen control, NOT an `ft.AlertDialog`), matching a
+        # conventional native QR/barcode scanner app: the camera feed
+        # fills the entire screen and every control (close, camera-switch,
+        # gallery) floats directly on top of it, rather than sitting in a
+        # small card with title/dialog chrome around a boxed-in preview
+        # (issue #64 follow-up, 2026-07-30, explicit user request).
         self.cameras = []
         self.camera_index = 0
         self.camera = fc.Camera(expand=True, preview_enabled=True)
@@ -394,7 +433,10 @@ class ScanInput:
         self.camera.on_stream_image = self._on_stream_image
 
         self.camera_status = ft.Text(
-            "Starting camera...", size=12, color=ft.Colors.ON_SURFACE_VARIANT
+            "Starting camera...",
+            size=13,
+            color=ft.Colors.WHITE,
+            text_align=ft.TextAlign.CENTER,
         )
         self.scan_line = ft.Container(
             width=_VIEWFINDER_SQUARE,
@@ -403,6 +445,12 @@ class ScanInput:
             left=0,
             top=0,
             animate_position=ft.Animation(_SCAN_LINE_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
+            # Drives the bounce loop off the client's own animation-complete
+            # event instead of a Python `asyncio.sleep` guess - see
+            # `_on_scan_line_animation_end()`'s own docstring for why the
+            # previous sleep-loop was the actual source of the reported
+            # "glitch/stutter", not just a timing constant to retune.
+            on_animation_end=self._on_scan_line_animation_end,
         )
         viewfinder = ft.Stack(
             width=_VIEWFINDER_SQUARE,
@@ -415,74 +463,78 @@ class ScanInput:
                 self._corner_bracket(top=False, left=False),
             ],
         )
+        # While a camera is active/streaming, "Enter Manually" is
+        # deliberately NOT offered here (explicit user request - a working
+        # scanner doesn't need a manual-entry escape hatch the way the
+        # no-camera/error fallback below still does); the close (X) button
+        # is the only way out, same as backing out of any native scanner.
+        self.camera_bottom_bar = ft.Row(
+            controls=[
+                self._overlay_icon_button(
+                    ft.Icons.PHOTO_LIBRARY_OUTLINED, "Gallery", self._use_gallery_from_camera
+                ),
+            ],
+            alignment=ft.MainAxisAlignment.CENTER,
+            spacing=16,
+        )
+        self.camera_top_bar = ft.Row(
+            controls=[
+                self._overlay_icon_button(ft.Icons.CLOSE, "Close", self._cancel_camera),
+            ],
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+        )
         self.camera_area = ft.Container(
-            width=_VIEWFINDER_BOX,
-            height=_VIEWFINDER_BOX,
+            expand=True,
             bgcolor=ft.Colors.BLACK,
-            border_radius=8,
             content=ft.Stack(
-                width=_VIEWFINDER_BOX,
-                height=_VIEWFINDER_BOX,
+                expand=True,
+                controls=[self.camera],
+            ),
+        )
+        self.camera_overlay = ft.Container(
+            expand=True,
+            bgcolor=ft.Colors.BLACK,
+            content=ft.Stack(
+                expand=True,
                 controls=[
-                    self.camera,
+                    self.camera_area,
+                    # Centered reticle, floating over the full-bleed feed.
                     ft.Container(
+                        alignment=ft.Alignment.CENTER,
+                        expand=True,
                         content=viewfinder,
-                        left=_VIEWFINDER_INSET,
-                        top=_VIEWFINDER_INSET,
+                    ),
+                    # Top bar: close (left) + camera-switch (right, added
+                    # once the camera count is known below) - floats over
+                    # the feed rather than living in dialog chrome.
+                    ft.Container(
+                        top=0,
+                        left=0,
+                        right=0,
+                        padding=ft.Padding.only(top=24, left=12, right=12),
+                        content=self.camera_top_bar,
+                    ),
+                    # Bottom: status caption + Gallery, floating near the
+                    # bottom edge of the feed.
+                    ft.Container(
+                        left=0,
+                        right=0,
+                        bottom=0,
+                        padding=ft.Padding.only(bottom=32, left=16, right=16),
+                        content=ft.Column(
+                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                            spacing=16,
+                            controls=[self.camera_status, self.camera_bottom_bar],
+                        ),
                     ),
                 ],
             ),
         )
-        self.camera_bottom_bar = ft.Row(
-            controls=[
-                ft.TextButton(
-                    content="Enter Manually",
-                    icon=ft.Icons.KEYBOARD,
-                    on_click=self._use_manual_from_camera,
-                ),
-                ft.TextButton(
-                    content="Gallery",
-                    icon=ft.Icons.PHOTO_LIBRARY_OUTLINED,
-                    on_click=self._use_gallery_from_camera,
-                ),
-            ],
-            alignment=ft.MainAxisAlignment.CENTER,
-            spacing=4,
-        )
-        self.dialog = ft.AlertDialog(
-            modal=True,
-            title=ft.Text(self.title),
-            content=ft.Container(
-                content=ft.Column(
-                    controls=[
-                        self.camera_area,
-                        self.camera_status,
-                        # A "transparent" (low-opacity tint over the
-                        # dialog's own surface, not literally see-through)
-                        # menu bar below the viewfinder, per the requested
-                        # UX - camera-switch icon (added below once the
-                        # camera count is known) plus the two always-on
-                        # fallback options.
-                        ft.Container(
-                            content=self.camera_bottom_bar,
-                            bgcolor=ft.Colors.with_opacity(0.06, ft.Colors.ON_SURFACE),
-                            border_radius=8,
-                            padding=ft.Padding.symmetric(vertical=4),
-                        ),
-                    ],
-                    spacing=8,
-                    tight=True,
-                ),
-                width=_VIEWFINDER_BOX + 40,
-            ),
-            actions=[ft.TextButton("Cancel", on_click=self._cancel_camera)],
-        )
-        self.page.overlay.append(self.dialog)
-        self.dialog.open = True
+        self.page.overlay.append(self.camera_overlay)
         self._safe_page_update()
 
         self._scan_active = True
-        self._scan_line_future = self.page.run_task(self._animate_scan_line)
+        self._scan_line_at_top = True
 
         try:
             self.cameras = await asyncio.wait_for(
@@ -511,9 +563,9 @@ class ScanInput:
         # `asyncio.wait_for` guards against a real, reported failure mode
         # (issue #64 follow-up, 2026-07-30: "on first camera sometimes it
         # freezes") - `camera.initialize()` is a native plugin call with no
-        # guaranteed return; without a timeout, a hang here left the dialog
-        # stuck on "Starting camera..." forever with no way out except
-        # closing it manually. A timeout instead surfaces the same
+        # guaranteed return; without a timeout, a hang here left the
+        # overlay stuck on "Starting camera..." forever with no way out
+        # except the close button. A timeout instead surfaces the same
         # `_show_camera_error` fallback every other init failure already
         # uses, so the user always has Gallery/Enter Manually available.
         try:
@@ -533,14 +585,16 @@ class ScanInput:
             self._show_camera_error(str(exc))
             return
 
+        # Camera-switch button, floated top-right - always added whenever
+        # more than one camera is available (explicit user request: this
+        # is a required control on the live-scan screen, not an
+        # afterthought), inserted once the real camera count is known
+        # (same timing as before - right after a successful initialize).
         if len(self.cameras) > 1:
-            self.camera_bottom_bar.controls.insert(
-                0,
-                ft.IconButton(
-                    icon=ft.Icons.CAMERASWITCH_OUTLINED,
-                    tooltip="Switch camera",
-                    on_click=self._switch_camera,
-                ),
+            self.camera_top_bar.controls.append(
+                self._overlay_icon_button(
+                    ft.Icons.CAMERASWITCH_OUTLINED, "Switch camera", self._switch_camera
+                )
             )
 
         try:
@@ -557,11 +611,17 @@ class ScanInput:
                 return
         else:
             self.camera_status.value = (
-                "Live scanning isn't supported on this camera - "
-                "use Gallery or Enter Manually"
+                "Live scanning isn't supported on this camera - use Gallery"
             )
 
         self._safe_page_update()
+        # Kicks off the scan-line bounce loop - `animate_position` only
+        # interpolates a CHANGE, so the line mounts motionless at top=0
+        # until this first flip actually triggers a transition; every
+        # further flip is then driven by `_on_scan_line_animation_end`
+        # firing when the client reports that transition genuinely
+        # finished, not by a Python-side timer guess.
+        self._on_scan_line_animation_end()
 
     def _corner_bracket(self, top: bool, left: bool) -> ft.Container:
         # A camera-reticle look - only the two edges of one corner are
@@ -583,20 +643,28 @@ class ScanInput:
             bottom=None if top else 0,
         )
 
-    async def _animate_scan_line(self) -> None:
-        # A simple bounce loop (top <-> bottom of the viewfinder square),
-        # relying on `animate_position` (set once, above) to interpolate
-        # each jump smoothly - Flet has no built-in "repeat forever"
-        # animation primitive, so the repetition itself is just an async
-        # sleep loop toggling one property. Cancelled via
-        # `self._scan_line_future` from `_teardown_camera()`.
-        at_top = True
-        while self._scan_active:
-            at_top = not at_top
-            if self.scan_line is not None:
-                self.scan_line.top = 0 if at_top else (_VIEWFINDER_SQUARE - 2)
-                self._safe_page_update()
-            await asyncio.sleep(_SCAN_LINE_ANIM_MS / 1000)
+    def _on_scan_line_animation_end(self, e=None) -> None:
+        # Replaces an earlier `asyncio.sleep`-driven bounce loop (issue #64
+        # follow-up, 2026-07-30) that was reported as "a little glitch,
+        # stop, or not smooth" even after moving the blocking `pyzbar`
+        # decode off the event loop. Root cause: a fixed-duration
+        # `asyncio.sleep(_SCAN_LINE_ANIM_MS / 1000)` assumes Python's own
+        # timer fires in lockstep with the CLIENT's actual Flutter-side
+        # `animate_position` transition - any event-loop scheduling jitter
+        # (a `page.update()` round trip taking a little longer some ticks,
+        # a stream-image callback landing at an inconvenient moment, ...)
+        # desyncs the two, which reads as the line stuttering/stalling.
+        # `on_animation_end` is a real, native Flutter event fired when a
+        # transition actually finishes on the client - flipping the
+        # position from THIS callback (self-correcting, driven by the
+        # client's own report of completion) can't drift out of sync with
+        # the visible animation, regardless of any Python-side timing
+        # jitter.
+        if not self._scan_active or self.scan_line is None:
+            return
+        self._scan_line_at_top = not self._scan_line_at_top
+        self.scan_line.top = 0 if self._scan_line_at_top else (_VIEWFINDER_SQUARE - 2)
+        self._safe_page_update()
 
     async def _request_camera_permission(self) -> None:
         # Native Android/iOS need an explicit runtime grant before the
@@ -616,10 +684,31 @@ class ScanInput:
         except Exception:
             pass
 
+    def _add_manual_entry_fallback(self) -> None:
+        """Only the no-camera/error fallback offers "Enter Manually" -
+        while a camera is actively streaming it's deliberately absent (see
+        `_open_camera()`'s own comment), but once there's genuinely no
+        working camera, typing the code is the only real alternative to
+        Gallery, same as before this redesign."""
+        if self.camera_bottom_bar is None:
+            return
+        already_present = any(
+            getattr(c, "tooltip", None) == "Enter Manually"
+            for c in self.camera_bottom_bar.controls
+        )
+        if not already_present:
+            self.camera_bottom_bar.controls.insert(
+                0,
+                self._overlay_icon_button(
+                    ft.Icons.KEYBOARD, "Enter Manually", self._use_manual_from_camera
+                ),
+            )
+
     def _show_no_camera(self) -> None:
         if self.camera_area is not None:
             self.camera_area.content = ft.Container(
                 alignment=ft.Alignment.CENTER,
+                expand=True,
                 content=ft.Column(
                     controls=[
                         ft.Icon(
@@ -633,12 +722,14 @@ class ScanInput:
                     tight=True,
                 ),
             )
+        self._add_manual_entry_fallback()
         if self.camera_status is not None:
             self.camera_status.value = "Use Gallery or enter the code manually"
         self._scan_active = False
         self._safe_page_update()
 
     def _show_camera_error(self, message: str) -> None:
+        self._add_manual_entry_fallback()
         if self.camera_status is not None:
             self.camera_status.value = f"Camera unavailable: {message}"
             self.camera_status.color = ft.Colors.ERROR
@@ -670,16 +761,17 @@ class ScanInput:
     async def _decode_and_handle(self, data: bytes) -> None:
         # `pyzbar` decode is a genuinely blocking call - previously invoked
         # directly inside the sync `_on_stream_image` handler above, which
-        # runs on the same single-threaded asyncio event loop as
-        # `_animate_scan_line`'s sleep-driven bounce loop. Every decode
-        # (up to twice a second per the throttle) stalled that loop for its
-        # own duration, starving the scan-line's scheduled position updates
-        # - reported live (2026-07-30) as the animation looking "too fast"
-        # (several delayed updates catching up at once) or "stuck"
-        # (blocked mid-decode). Running the decode in a worker thread via
-        # `asyncio.to_thread` keeps the event loop free to service the
-        # animation loop (and everything else) on schedule regardless of
-        # how long any single decode takes.
+        # runs on the same single-threaded asyncio event loop as every
+        # other scheduled callback (including, at the time, a sleep-driven
+        # scan-line bounce loop - since replaced by
+        # `_on_scan_line_animation_end`'s client-event-driven flip, see its
+        # own docstring). Every decode (up to twice a second per the
+        # throttle) stalled that loop for its own duration - reported live
+        # (2026-07-30) as the animation looking "too fast" (several delayed
+        # updates catching up at once) or "stuck" (blocked mid-decode).
+        # Running the decode in a worker thread via `asyncio.to_thread`
+        # keeps the event loop free regardless of how long any single
+        # decode takes.
         try:
             code = await asyncio.to_thread(decode_image_bytes, data)
         except ScanUnavailableError:
@@ -690,11 +782,10 @@ class ScanInput:
     async def _handle_scanned_code(self, code: str) -> None:
         if not self._scan_active:
             # Already handled by a previous frame's decode racing this one,
-            # or the dialog was closed in the meantime.
+            # or the overlay was closed in the meantime.
             return
         self._scan_active = False
         await self._teardown_camera()
-        self._close()
         if self.on_scan:
             self.on_scan(code)
             self._advance_focus()
@@ -732,17 +823,22 @@ class ScanInput:
     async def _cancel_camera(self, e=None) -> None:
         self._scan_active = False
         await self._teardown_camera()
-        self._close()
 
     async def _teardown_camera(self) -> None:
-        if self._scan_line_future is not None:
-            try:
-                self._scan_line_future.cancel()
-            except Exception:
-                pass
-            self._scan_line_future = None
+        # `_scan_active = False` (already set by every caller before this
+        # runs) is enough to stop `_on_scan_line_animation_end` from
+        # scheduling any further flips - no separate future/task to cancel
+        # now that the bounce loop is driven by the client's own animation
+        # events rather than a Python asyncio task.
         if self.camera is not None:
             try:
                 await self.camera.stop_image_stream()
             except Exception:
                 pass
+        if self.camera_overlay is not None:
+            try:
+                self.page.overlay.remove(self.camera_overlay)
+            except ValueError:
+                pass
+            self.camera_overlay = None
+            self._safe_page_update()

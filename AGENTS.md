@@ -83,7 +83,7 @@
 | #61 | feat(table): match date-formatted columns by displayed text in per-column filter | closed | 2026-07-28 |
 | #62 | fix(frontend): ListToolbar styling doesn't match TableToolbar (bg/icon color/padding) | closed | 2026-07-28 |
 | #63 | chore(frontend): extract shared SearchBar component (dedupe Table/List search bars) | closed | 2026-07-30 |
-| #64 | feat(frontend): camera-based barcode/QR scan option alongside manual entry | ready-for-review (live camera scan added, unverified in a real browser) | 2026-07-29 |
+| #64 | feat(frontend): camera-based barcode/QR scan option alongside manual entry | ready-for-review (full-screen UX redesign + scan-line animation fix landed, unverified on a real device/browser) | 2026-07-30 |
 | #65 | feat(frontend): zebra-striped List tiles + demonstrate label/icon-only fields | closed | 2026-07-28 |
 | #66 | feat(infra): interactive frontend build script (apk/aab/ios/desktop/web) | closed | 2026-07-29 |
 | #67 | feat(infra): test/preview script for build.ps1/build.sh output | closed (fulfilled by run.ps1/run.sh's merged Preview section, not standalone test.ps1/test.sh) | 2026-07-30 |
@@ -3933,6 +3933,61 @@ is now fully verified working end-to-end under 0.86.4.
       viewfinder/scan-line render as expected, switching cameras (if more
       than one) works, and scanning a real barcode/QR populates the
       target field.
+    - **Full-screen redesign + scan-line jitter fix** (issue #64
+      follow-up, 2026-07-30, explicit user request after trying the
+      original small-dialog version): the live-camera view is no longer
+      an `ft.AlertDialog` (title bar, card chrome, a small ~300x300 boxed
+      preview with a below-camera button row) - it's now a full-screen,
+      borderless `page.overlay` entry (the same mechanism
+      `components/loading_overlay.py` already established for a
+      full-screen control, not a dialog), matching a conventional native
+      QR/barcode scanner app: the camera feed fills the entire screen and
+      every control floats directly on top of it as a translucent
+      (`with_opacity(0.35, BLACK)`) circular icon button
+      (`ScanInput._overlay_icon_button()`) - close (X, top-left),
+      camera-switch (top-right, only when `len(cameras) > 1` - the user
+      specifically called out that this control should always be present
+      when more than one camera exists, not an easy-to-miss afterthought),
+      and Gallery (bottom-center). **"Enter Manually" is deliberately
+      absent from this overlay while a camera is active** (explicit user
+      request - a working scanner doesn't need a manual-entry escape
+      hatch, the close button is the only way out, same as backing out of
+      any native scanner) - it still appears (`_add_manual_entry_fallback()`)
+      in the no-camera/error fallback screens, where typing really is the
+      only real alternative to Gallery.
+      **Root-caused the reported scan-line "glitch, stop, or not smooth"
+      as a genuine timing-desync bug, not just a constant to retune**: the
+      previous implementation drove the bounce loop with a Python
+      `asyncio.sleep(_SCAN_LINE_ANIM_MS / 1000)` loop, assuming Python's
+      own timer fires in lockstep with the client's actual Flutter-side
+      `animate_position` transition - any event-loop scheduling jitter
+      (a `page.update()` round trip taking a little longer some ticks, a
+      stream-image callback landing at an inconvenient moment) desyncs
+      the two, reading as stutter/stalling. Fixed by driving the flip off
+      `ft.Container.on_animation_end` instead (confirmed present on
+      `LayoutControl`, `Container`'s own base class, by reading the
+      installed `flet==0.86.4` package source directly) - a real, native
+      Flutter event fired when a transition genuinely finishes on the
+      client, so the next flip is scheduled from a client-confirmed
+      completion rather than a Python-side guess, self-correcting
+      regardless of any event-loop jitter. `_animate_scan_line()`'s
+      separate `asyncio` task and its `self._scan_line_future`
+      cancel-on-teardown bookkeeping were removed entirely - the loop is
+      now just `_on_scan_line_animation_end()` re-triggering itself via
+      the animation's own completion callback, gated on `self._scan_active`
+      (no task to cancel in `_teardown_camera()` anymore, just letting
+      that flag go false stops further flips).
+      **Verified**: `py_compile` clean; `podman compose restart frontend`
+      reached healthy with all 65 screens preloading with zero import/
+      construction errors (this file is imported transitively by nearly
+      every form/table screen, so a real regression here would have shown
+      up immediately). **Not verified**: no camera/mobile device was
+      available in this environment (same gap as the original 2026-07-29
+      entry above) - the full-screen layout, overlay button positioning,
+      "Enter Manually" conditionally appearing only in the no-camera/error
+      states, and the scan-line's actual smoothness on a real device all
+      still need a live pass on an actual phone before this is considered
+      fully confirmed.
   - **`icon_picker`** (`components/form/icon_picker.py::IconPickerForm`,
     2026-07-27 — a sample consumer of issue #45's `"radio"`/by-column
     column type, not itself a filed issue): same read-only-tap-to-open
