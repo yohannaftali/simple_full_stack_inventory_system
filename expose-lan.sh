@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
-# Exposes SFSIS's podman-published ports (backend 5000/5443, frontend
-# 8000/8443 by default) to the rest of the LAN, so a phone/tablet on the
-# same WiFi can reach them for testing (Server Config screen, or a browser
-# hitting the containerized frontend directly).
+# Exposes SFSIS's nginx passthrough ports (backend 5001/5444, frontend
+# 8001/8444 - issue #69) to the rest of the LAN, so a phone/tablet on the
+# same WiFi can reach them for testing (Server Config screen, or a
+# browser hitting the containerized frontend directly). These are the
+# ports a real mobile/external client should use (see AGENTS.md's Big
+# Picture section) - the original direct backend/frontend ports
+# (5000/5443/8000/8443) are deliberately NOT in this script's default
+# set, since they're for local host-side debugging only, not LAN/
+# external exposure.
 #
 # WHY THIS IS NEEDED (see expose-lan.ps1's own header for the Windows/WSL
 # version of this problem): `compose.yml` already binds each service to
@@ -20,13 +25,37 @@
 # logic, but treat its macOS path as best-effort until confirmed.
 #
 # Usage:
-#   ./expose-lan.sh                 # check + fix the default port set
-#   ./expose-lan.sh 5000             # just one port
+#   ./expose-lan.sh                 # check + fix the default (nginx) port
+#                                    # set, read from .env (falls back to
+#                                    # example.env's own defaults if .env
+#                                    # is missing or a var is unset)
+#   ./expose-lan.sh 8001             # just one port
 #   sudo ./expose-lan.sh             # needed if ufw/pf changes are required
 #   ./expose-lan.sh --remove         # stop any relay this script started
 set -euo pipefail
 
-PORTS=(5000 5443 8000 8443)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="${SCRIPT_DIR}/.env"
+
+# Reads a port from .env rather than hardcoding it a second time here -
+# that file is the single source of truth for NGINX_EXPOSED_*, and
+# duplicating those numbers as literals would silently drift out of sync
+# the moment .env changes. `tail -n1` picks the last match if a var is
+# ever defined twice; `tr -d '\r'` guards a CRLF-saved .env on Windows.
+get_env_port() {
+    local name="$1" default="$2" val=""
+    if [ -f "$ENV_FILE" ]; then
+        val="$(grep -E "^${name}=" "$ENV_FILE" | tail -n1 | cut -d= -f2- | tr -d '\r' | xargs)"
+    fi
+    echo "${val:-$default}"
+}
+
+PORTS=(
+    "$(get_env_port NGINX_EXPOSED_BACKEND_PORT 5001)"
+    "$(get_env_port NGINX_EXPOSED_BACKEND_PORT_SSL 5444)"
+    "$(get_env_port NGINX_EXPOSED_FRONTEND_PORT 8001)"
+    "$(get_env_port NGINX_EXPOSED_FRONTEND_PORT_SSL 8444)"
+)
 RELAY_PID_DIR="/tmp/sfsis-expose-lan"
 
 if [ "${1:-}" = "--remove" ]; then
@@ -139,5 +168,5 @@ list_lan_ips "$HOST_OS" | while read -r ip iface; do
 done
 
 echo ""
-echo "Example: point the app's Server Config screen (or a browser) at http://<chosen-ip>:5000"
+echo "Example: point the app's Server Config screen (or a browser) at http://<chosen-ip>:${PORTS[0]}"
 echo "Undo with: ./expose-lan.sh --remove"

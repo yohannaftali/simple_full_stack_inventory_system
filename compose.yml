@@ -107,3 +107,42 @@ services:
       timeout: 5s
       retries: 20
       start_period: 20s
+  nginx:
+    container_name: sfsis-nginx
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+    restart: always
+    environment:
+      NGINX_EXPOSED_FRONTEND_PORT: ${NGINX_EXPOSED_FRONTEND_PORT}
+      NGINX_EXPOSED_FRONTEND_PORT_SSL: ${NGINX_EXPOSED_FRONTEND_PORT_SSL}
+      NGINX_EXPOSED_BACKEND_PORT: ${NGINX_EXPOSED_BACKEND_PORT}
+      NGINX_EXPOSED_BACKEND_PORT_SSL: ${NGINX_EXPOSED_BACKEND_PORT_SSL}
+      FRONTEND_PORT: ${FRONTEND_PORT}
+      FRONTEND_PORT_SSL: ${FRONTEND_PORT_SSL}
+      UVICORN_PORT: ${UVICORN_PORT}
+      UVICORN_PORT_SSL: ${UVICORN_PORT_SSL}
+    ports:
+      - "${NGINX_EXPOSED_FRONTEND_PORT}:${NGINX_EXPOSED_FRONTEND_PORT}"
+      - "${NGINX_EXPOSED_FRONTEND_PORT_SSL}:${NGINX_EXPOSED_FRONTEND_PORT_SSL}"
+      - "${NGINX_EXPOSED_BACKEND_PORT}:${NGINX_EXPOSED_BACKEND_PORT}"
+      - "${NGINX_EXPOSED_BACKEND_PORT_SSL}:${NGINX_EXPOSED_BACKEND_PORT_SSL}"
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    healthcheck:
+      # nginx:alpine has no python3, but does carry busybox's wget - hits
+      # nginx's own plain-HTTP frontend passthrough, which only reports
+      # healthy once nginx itself is actually up and its config is valid.
+      # Must target 127.0.0.1, not localhost - confirmed live that wget
+      # resolves "localhost" to ::1 first inside this image and nginx
+      # isn't listening on IPv6, so every healthcheck attempt failed with
+      # "Connection refused" despite nginx itself running and serving
+      # traffic correctly on IPv4.
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:${NGINX_EXPOSED_FRONTEND_PORT}/ >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s

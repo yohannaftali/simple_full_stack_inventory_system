@@ -1,0 +1,74 @@
+worker_processes auto;
+
+events {
+    worker_connections 1024;
+}
+
+# Plain-HTTP passthrough to the frontend/backend services' own existing
+# plain ports - a straightforward L7 reverse proxy, not TLS termination
+# (issue #69). Both services are already complete, self-serving ASGI
+# HTTP servers (Uvicorn) - nginx here only gives external/mobile clients a
+# second, consolidated set of ports to connect through, alongside (not
+# replacing) each service's own directly-published ports.
+http {
+    upstream frontend_upstream {
+        server frontend:${FRONTEND_PORT};
+    }
+
+    upstream backend_upstream {
+        server backend:${UVICORN_PORT};
+    }
+
+    server {
+        listen ${NGINX_EXPOSED_FRONTEND_PORT};
+
+        # Flet's UI updates ride a WebSocket connection - these three
+        # headers plus proxy_http_version 1.1 are required for nginx to
+        # forward the Upgrade handshake instead of treating it as a plain
+        # HTTP request. proxy_read_timeout is raised well past nginx's 60s
+        # default so an idle-but-still-open Flet session isn't dropped.
+        location / {
+            proxy_pass http://frontend_upstream;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_read_timeout 3600s;
+        }
+    }
+
+    server {
+        listen ${NGINX_EXPOSED_BACKEND_PORT};
+
+        location / {
+            proxy_pass http://backend_upstream;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+    }
+}
+
+# TLS passthrough (L4, raw TCP) for the frontend/backend services' own
+# existing HTTPS ports - both already terminate their own TLS themselves
+# (frontend via its socat OPENSSL-LISTEN relay, backend via Uvicorn's own
+# --ssl-keyfile/--ssl-certfile) - see AGENTS.md's Big Picture section, so
+# nginx does not need its own certificate here at all, only a byte-level
+# forward. `stream` is a top-level context (a sibling of `http`, not
+# nested inside `conf.d`), which is why this config is templated by an
+# explicit envsubst pass in entrypoint.sh rather than relying on nginx's
+# own built-in /docker-entrypoint.d/ templating (that mechanism only
+# writes into /etc/nginx/conf.d/, included from the http block alone).
+stream {
+    server {
+        listen ${NGINX_EXPOSED_FRONTEND_PORT_SSL};
+        proxy_pass frontend:${FRONTEND_PORT_SSL};
+    }
+
+    server {
+        listen ${NGINX_EXPOSED_BACKEND_PORT_SSL};
+        proxy_pass backend:${UVICORN_PORT_SSL};
+    }
+}
