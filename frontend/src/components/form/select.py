@@ -82,13 +82,21 @@ class SelectForm:
         # depends_param: the parameter name to send with the parent field's value
         self.depends_param = field.get("depends_param", self.depends_on)
 
-    def build(self):
-        self.leading_icon = (
-            ft.Icon(
-                icon=self.icon,
-                color=ft.Colors.ON_SURFACE_VARIANT) if self.icon is not None else None
-        )
-        self.select = ft.Dropdown(
+    def _build_dropdown(self, value=None, text=None, options=None) -> ft.Dropdown:
+        """Construct a brand-new `ft.Dropdown` control instance.
+
+        Factored out of `build()` so `_on_select()` can rebuild the control
+        from scratch instead of patching the existing instance's `.text` -
+        see `_on_select()`'s own comment for why a patch alone isn't
+        reliable here (confirmed via live server-log instrumentation,
+        2026-07-30: the server-side `.text`/`.value` were already correct
+        before the patch, yet the browser still didn't repaint - a client
+        patch-application bug, not a value bug). This mirrors the same
+        "force a full control rebuild instead of trusting an in-place
+        patch" fix this app already relies on elsewhere (`DataRow.color`,
+        header rebuilds for the resize/sort-icon fixes).
+        """
+        return ft.Dropdown(
             label=self.label,
             hint_text=self.hint_text,
             hint_style=ft.TextStyle(color=ft.Colors.ON_SURFACE_VARIANT),
@@ -113,10 +121,21 @@ class SelectForm:
             editable=self.editable,
             menu_height=_MENU_VISIBLE_ROWS * _MENU_ROW_HEIGHT,
             expand=True,
+            options=options if options is not None else [],
+            value=value,
+            text=text,
             on_focus=self._on_focus,
             on_blur=self._on_blur,
             on_select=self._on_select,
         )
+
+    def build(self):
+        self.leading_icon = (
+            ft.Icon(
+                icon=self.icon,
+                color=ft.Colors.ON_SURFACE_VARIANT) if self.icon is not None else None
+        )
+        self.select = self._build_dropdown()
         self.container = ft.Container(
             bgcolor=self.bgcolor,
             border_radius=0,
@@ -176,24 +195,66 @@ class SelectForm:
         self._safe_container_update()
 
     def _on_select(self, e=None) -> None:
-        # Real, user-reported bug: opening this field by tapping directly in
-        # its text-input region (vs. the trailing arrow) and picking the
-        # first option leaves the displayed text empty until a second pick -
-        # Flutter's `DropdownMenu` widget keeps its own internal text-field
-        # controller separate from the selected value (`ft.Dropdown` itself
-        # exposes them as two distinct properties, `value` vs `text`), and
-        # that internal sync isn't reliable on every interaction path. Don't
-        # trust it - explicitly resolve and set the displayed text from
-        # Python instead, the same "drive it explicitly" pattern already
-        # used for other flaky Flet/Flutter control behaviors in this app
-        # (`DataRow.color`, `ListTile.bgcolor`).
+        # Real, user-reported bug (issue #71): opening this field by tapping
+        # directly in its text-input region (vs. the trailing arrow) and
+        # picking the FIRST option leaves the displayed text unchanged -
+        # picking again (second attempt) works correctly. Opening via the
+        # arrow never has this problem.
+        #
+        # ROOT CAUSE, confirmed 2026-07-30 via live server-log instrumentation
+        # against the real containerized app (not automation - CDP-driven
+        # synthetic clicks could never reproduce this bug at all, only the
+        # user's real physical clicks could): on the failing first click,
+        # this handler NEVER FIRES - zero log output, verified with a clean
+        # `podman logs --since <now> -f` stream (an earlier round that
+        # appeared to show it firing/succeeding was contaminated by `podman
+        # logs -f`'s default behavior of replaying a container's ENTIRE
+        # historical log on every new invocation, not fresh output - a
+        # methodology mistake in this investigation, not evidence about the
+        # app). This means the click event is never dispatched from the
+        # Flutter client to the server at all on this interaction path - no
+        # Python code here, however written, can fix a callback that is
+        # never invoked.
+        #
+        # This matches a known class of real Flutter bug: when a
+        # `DropdownMenu`-style widget's text field gains keyboard focus as
+        # part of opening (exactly what `editable=True` does, needed for the
+        # type-to-filter feature from issue #26), the very first tap
+        # afterward is consumed by Flutter's own focus-settling handshake
+        # instead of registering as "select this item" - the second tap
+        # works because focus has already settled. Opening via the arrow
+        # never gives the text field focus, so it never hits this trap.
+        # This is a genuine upstream Flutter/Flet limitation, not a bug in
+        # this app's Python code - per explicit user decision (2026-07-30),
+        # left as a documented known limitation rather than removing
+        # `editable`/`enable_filter` (which would trade this bug away for
+        # losing type-to-filter everywhere). See AGENTS.md issue #71 for the
+        # full investigation history.
+        #
+        # This handler still corrects the display on every click that DOES
+        # reach the server (e.g. the second, working pick) - rebuilding a
+        # brand-new Dropdown control rather than patching the existing
+        # instance's `.text`, since in-place patching was separately proven
+        # unreliable on this widget (also confirmed via the same
+        # instrumentation): the server-side value/text were already correct
+        # before a patch was even applied, yet the browser didn't repaint -
+        # the same "don't trust an in-place patch, force a rebuild" lesson
+        # this app already learned from `DataRow.color` and the header
+        # resize/sort-icon fixes.
         matched = next(
             (opt for opt in self.select.options if opt.key == self.select.value),
             None,
         )
-        if matched is not None:
-            self.select.text = matched.text
-            self._safe_update()
+        if matched is None:
+            return
+        self.select = self._build_dropdown(
+            value=matched.key, text=matched.text, options=self.select.options
+        )
+        if not self.qr:
+            self.container.content = self.select
+        else:
+            self.container.content.controls[0] = self.select
+        self._safe_container_update()
 
     def _safe_container_update(self) -> None:
         try:

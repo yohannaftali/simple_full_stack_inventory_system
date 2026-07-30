@@ -43,21 +43,6 @@ _MENU_VISIBLE_ROWS = 5
 _MENU_ROW_HEIGHT = 48
 
 
-def _sync_dropdown_text(dropdown: ft.Dropdown) -> None:
-    """Explicitly resolve and set a Dropdown's displayed `text` from its
-    selected `value` on every `on_select` - see the call site's own comment
-    for why (a real, user-reported bug where the display doesn't update on
-    the first pick when the menu is opened via its text region).
-    """
-    matched = next((opt for opt in dropdown.options if opt.key == dropdown.value), None)
-    if matched is None:
-        return
-    dropdown.text = matched.text
-    try:
-        dropdown.update()
-    except RuntimeError:
-        pass
-
 # Position-based zebra stripe colors (issue #57, replacing the table's old
 # border/divider lines) - CSS :nth-child(even/odd)-style: derived fresh from
 # a row's index in the CURRENT render pass every time (the `row` counter
@@ -165,6 +150,30 @@ class _CheckboxCellValue:
         self._control.icon_color = (
             ft.Colors.PRIMARY if self.value else ft.Colors.ON_SURFACE_VARIANT
         )
+
+
+class _SelectCellValue:
+    """`value_holder` for an editable `"select"`/`"option"` cell.
+
+    An in-place `.text=` patch on the Dropdown control doesn't reliably
+    repaint when the menu was opened via its text region (confirmed via
+    live server-log instrumentation, 2026-07-30 - see
+    `_build_editable_cell()`'s own comment) - the fix rebuilds a brand-new
+    Dropdown control on every pick, which means `row_inputs[name]["control"]`
+    can't be a fixed reference to one Dropdown instance the way every other
+    editable cell type's value_holder is. This wraps the STABLE wrapper
+    `ft.Container` instead and reads `.value` off whatever Dropdown is
+    currently mounted inside it, so `get_input_values()`'s `entry["control"].value`
+    contract keeps working unchanged regardless of how many times the
+    underlying Dropdown has been rebuilt.
+    """
+
+    def __init__(self, wrapper: ft.Container):
+        self._wrapper = wrapper
+
+    @property
+    def value(self):
+        return self._wrapper.content.value
 
 
 class TableRows:
@@ -497,43 +506,71 @@ class TableRows:
                 else self._get_select_options(field, name)
             )
             enable_filter = field.get("enable_filter", True)
-            # No wrapping Container needed here (unlike the earlier
-            # background-swap design, issue #53) - the fill is now constant,
-            # so `ft.Dropdown` can carry its own `fill_color` directly. No
-            # border and no padding, same "seamless with the table grid"
-            # reasoning as every other editable cell type here.
-            control = ft.Dropdown(
-                options=[
-                    ft.DropdownOption(
-                        key=opt.get("value", ""),
-                        text=opt.get("label", opt.get("value", "")),
-                    )
-                    for opt in options
-                ],
-                value=str(raw_value) if has_value else None,
-                hint_text=field.get("hint_text", ""),
-                dense=True,
-                content_padding=ft.Padding.all(0),
-                enable_filter=enable_filter,
-                editable=field.get("editable", True) if enable_filter else False,
-                menu_height=_MENU_VISIBLE_ROWS * _MENU_ROW_HEIGHT,
-                width=width,
-                color=ft.Colors.ON_SURFACE,
-                border=ft.InputBorder.NONE,
-                filled=True,
-                fill_color=ft.Colors.SURFACE_CONTAINER_HIGHEST,
-            )
+            dropdown_options = [
+                ft.DropdownOption(
+                    key=opt.get("value", ""),
+                    text=opt.get("label", opt.get("value", "")),
+                )
+                for opt in options
+            ]
+
+            def _build_dropdown(value):
+                # No wrapping Container needed for the Dropdown itself
+                # (unlike the earlier background-swap design, issue #53) -
+                # the fill is now constant, so `ft.Dropdown` can carry its
+                # own `fill_color` directly. No border and no padding, same
+                # "seamless with the table grid" reasoning as every other
+                # editable cell type here.
+                dropdown = ft.Dropdown(
+                    options=dropdown_options,
+                    value=value,
+                    hint_text=field.get("hint_text", ""),
+                    dense=True,
+                    content_padding=ft.Padding.all(0),
+                    enable_filter=enable_filter,
+                    editable=field.get("editable", True) if enable_filter else False,
+                    menu_height=_MENU_VISIBLE_ROWS * _MENU_ROW_HEIGHT,
+                    width=width,
+                    color=ft.Colors.ON_SURFACE,
+                    border=ft.InputBorder.NONE,
+                    filled=True,
+                    fill_color=ft.Colors.SURFACE_CONTAINER_HIGHEST,
+                )
+                dropdown.on_select = lambda e, d=dropdown: _on_select(d)
+                return dropdown
+
             # Real, user-reported bug: opening this cell's dropdown by
             # tapping its text region (vs. the trailing arrow) and picking
-            # the first option leaves the displayed text empty until a
-            # second pick - see components/form/select.py::SelectForm's
-            # own `_on_select` for the full explanation (Flutter's
-            # `DropdownMenu` keeps its selected `value` and displayed
-            # `text` as two separate properties that don't reliably stay
-            # in sync on every interaction path). Same fix here: don't
-            # trust the client widget's own sync, drive it explicitly.
-            control.on_select = lambda e, ctrl=control: _sync_dropdown_text(ctrl)
-            return control, control
+            # the first option leaves the displayed text unchanged (still
+            # showing the previous value) until a second pick. Confirmed
+            # via live server-log instrumentation (2026-07-30, real clicks,
+            # not automation) that an in-place `.text=`/`.update()` patch on
+            # the EXISTING Dropdown instance does NOT reliably repaint on
+            # this interaction path, even though the server-side value/text
+            # were already correct before the patch - a client
+            # patch-application bug, not a value bug. Same fix as
+            # components/form/select.py::SelectForm's own `_on_select`:
+            # rebuild a brand-new Dropdown control (forcing Flutter to
+            # construct fresh rather than patch an existing widget) and
+            # swap it into the stable wrapper Container below.
+            wrapper = ft.Container(padding=0)
+            value_holder = _SelectCellValue(wrapper)
+
+            def _on_select(dropdown):
+                matched = next(
+                    (opt for opt in dropdown.options if opt.key == dropdown.value),
+                    None,
+                )
+                if matched is None:
+                    return
+                wrapper.content = _build_dropdown(matched.key)
+                try:
+                    wrapper.update()
+                except RuntimeError:
+                    pass
+
+            wrapper.content = _build_dropdown(str(raw_value) if has_value else None)
+            return wrapper, value_holder
 
         if field_type == "datepicker":
             date_form = DateForm(page=self.page, parent=self.parent, field=field)

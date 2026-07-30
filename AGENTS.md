@@ -71,10 +71,10 @@
 | #49 | fix(frontend): add top padding to master_config/mail_config singleton Form screens | closed | 2026-07-27 |
 | #50 | fix(table): column resize handle stops working on the second drag | open | 2026-07-27 |
 | #51 | fix(frontend): web app hangs on splash when loaded directly at /home or a deep route | closed | 2026-07-27 |
-| #52 | feat(frontend): scan barcode/QR into Material and Location pickers on stock item screens | ready-for-review | 2026-07-27 |
+| #52 | feat(frontend): scan barcode/QR into Material and Location pickers on stock item screens | closed | 2026-07-30 |
 | #53 | feat(frontend): borderless filled inputs with focus-color swap (PRIMARY_CONTAINER / TERTIARY_CONTAINER) | done | 2026-07-28 |
 | #54 | fix(frontend): table editable input/textarea cells still not fully flush (padding/border remnant) | open (pending) | 2026-07-28 |
-| #55 | feat(frontend): bring List component to parity with Table (lazy-load pagination toggle, per-field search, sortable) - no backend changes | ready-for-review | 2026-07-28 |
+| #55 | feat(frontend): bring List component to parity with Table (lazy-load pagination toggle, per-field search, sortable) - no backend changes | closed | 2026-07-30 |
 | #56 | feat(frontend): List gains Table download menu, full-width search bar, and Table/List view toggle | closed | 2026-07-28 |
 | #57 | feat(frontend): replace Table row borders with position-based zebra striping | closed | 2026-07-28 |
 | #58 | fix(frontend): TOTP QR generation fails - PyPNG library not installed | closed | 2026-07-28 |
@@ -82,14 +82,14 @@
 | #60 | feat(frontend): M3 row hover/focus state layer on Table (preserve zebra stripe) | closed | 2026-07-28 |
 | #61 | feat(table): match date-formatted columns by displayed text in per-column filter | closed | 2026-07-28 |
 | #62 | fix(frontend): ListToolbar styling doesn't match TableToolbar (bg/icon color/padding) | closed | 2026-07-28 |
-| #63 | chore(frontend): extract shared SearchBar component (dedupe Table/List search bars) | ready-for-review | 2026-07-29 |
+| #63 | chore(frontend): extract shared SearchBar component (dedupe Table/List search bars) | closed | 2026-07-30 |
 | #64 | feat(frontend): camera-based barcode/QR scan option alongside manual entry | ready-for-review (live camera scan added, unverified in a real browser) | 2026-07-29 |
 | #65 | feat(frontend): zebra-striped List tiles + demonstrate label/icon-only fields | closed | 2026-07-28 |
 | #66 | feat(infra): interactive frontend build script (apk/aab/ios/desktop/web) | closed | 2026-07-29 |
-| #67 | feat(infra): test/preview script for build.ps1/build.sh output | ready-for-review | 2026-07-29 |
-| #68 | chore(frontend): upgrade Flet 0.85.3 -> 0.86.4 | approved-to-close (web deployment merged to main and fully verified; user accepted the APK/Developer-Mode gap as a separate follow-up - GitHub close blocked, see note below) | 2026-07-29 |
+| #67 | feat(infra): test/preview script for build.ps1/build.sh output | closed (fulfilled by run.ps1/run.sh's merged Preview section, not standalone test.ps1/test.sh) | 2026-07-30 |
+| #68 | chore(frontend): upgrade Flet 0.85.3 -> 0.86.4 | closed | 2026-07-30 |
 | #69 | feat(infra): add nginx reverse proxy in front of backend/frontend | open | 2026-07-29 |
-| #71 | fix(frontend): select dropdown first click via text region doesn't populate value | open (first fix attempt confirmed NOT working live - see AGENTS.md's `on_select`-fix note) | 2026-07-29 |
+| #71 | fix(frontend): select dropdown first click via text region doesn't populate value | open, root-caused as a genuine upstream Flutter/Flet limitation (not fixable in this app's Python code), documented and left open by explicit user decision | 2026-07-30 |
 
 ## Big Picture
 
@@ -4126,6 +4126,74 @@ is now fully verified working end-to-end under 0.86.4.
     own issue trackers for this exact `DropdownMenu` symptom before
     writing more code. Issue #71 stays open, not closed, per explicit
     user instruction.
+    **Investigation continued 2026-07-30, this time with real browser
+    automation (Claude in Chrome) available** — an important lesson in
+    itself: an initial round of live-automated reproduction attempts
+    (`master_material/new`'s Unit/Category selects, `stock_in/item_new`'s
+    QR-enabled Material select, a zero-wait rapid open-then-pick) all
+    populated correctly on the first click via CDP-driven synthetic
+    clicks, which at first looked like proof the `ca097e8` fix worked —
+    **the user immediately tested live in the same browser tab and
+    confirmed the bug was still 100% reproducible for them**, ruling out
+    both a stale-container explanation and a stale-browser-cache
+    explanation (hard refresh/incognito already tried). This meant a
+    synthetic CDP click was never equivalent to a real physical click for
+    this specific bug — automated reproduction attempts should not be
+    trusted as proof of a fix without independent live confirmation,
+    especially for input/focus-timing-sensitive widgets.
+    Two further fix attempts were built on real, non-speculative server-
+    log instrumentation gathered while the user reproduced the bug live:
+    an in-place `self.select.text=`/`.update()` patch, then the same
+    patch preceded by `asyncio.sleep()` to dodge a hypothesized timing
+    race. **Both confirmed NOT to work** via direct live user retesting.
+    That instrumentation seemed to show `on_select` firing correctly with
+    already-correct values on every real click — which pointed toward a
+    client-side repaint bug — so a third attempt rebuilt the Dropdown
+    control from scratch on every selection (matching this app's own
+    established "force a rebuild, don't trust an in-place patch"
+    precedent from `DataRow.color`/header-icon fixes). **This also failed
+    live.**
+    **The actual root cause, found only after re-running the log
+    instrumentation with a corrected command**: `podman logs -f` without
+    `--since`/`--tail 0` replays a container's **entire historical log**
+    on every new invocation (since `podman compose restart` keeps the same
+    container, only restarting the process inside it) — every prior
+    "successful" instrumentation round had actually been watching stale,
+    already-seen log lines from an earlier test, not fresh data. Re-running
+    with `podman logs -f --since 0s` and asking the user to reproduce the
+    bug one more time showed **zero log output at all** — `_on_select`
+    never fires on the failing click. No Python code in this handler,
+    however written, could ever have fixed this, because the callback is
+    never invoked in the first place; the click event is never dispatched
+    from the Flutter client to the server on this interaction path at all.
+    This matches a known class of real Flutter bug: when a
+    `DropdownMenu`-style widget's text field gains keyboard focus as part
+    of opening (exactly what `editable=True` does, needed for the
+    type-to-filter feature from issue #26), the very first tap afterward
+    is consumed by Flutter's own focus-settling handshake instead of
+    registering as a selection — the second tap works because focus has
+    already settled by then. Opening via the trailing arrow never gives
+    the text field focus, so it never hits this trap — consistent with
+    every report across this entire investigation.
+    **This is a genuine upstream Flutter/Flet limitation, not a bug in
+    this app's own Python code.** Given the user's explicit choice
+    (2026-07-30) among the presented options — drop `editable`/
+    `enable_filter` app-wide (fixes it reliably but removes type-to-filter
+    everywhere), keep investigating a client-side workaround, or document
+    and leave it — **the user chose to document and leave it as a known
+    limitation.** `components/form/select.py::SelectForm._on_select()` was
+    left in its rebuild-based form (still correct and arguably more robust
+    for every selection that DOES reach the server, e.g. the working
+    second pick) with an updated docstring recording this full root cause;
+    debug `print()` instrumentation was removed. Issue #71 stays open on
+    GitHub, not closed — it cannot be closed as "fixed" since the
+    underlying framework behavior is unchanged, only documented.
+    **Any future attempt at a real fix should start from this root cause,
+    not repeat the value/timing/repaint hypotheses already disproven
+    above** — the only concretely fixable-from-here lever is removing
+    `editable=True`/`enable_filter=True` (which trades away issue #26's
+    type-to-filter feature) or an actual upstream Flet/Flutter release
+    fixing the underlying `DropdownMenu` focus-handshake bug.
   - `components/search_bar.py::SearchBar` (issue #63) — a shared search
     box, same root-level `components/` extraction precedent as
     `components/button.py::Button` (#21, immediately below). Replaces the
