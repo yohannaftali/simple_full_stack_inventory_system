@@ -72,6 +72,12 @@ except ImportError:  # pragma: no cover - see _request_camera_permission
 # frame for even one decode attempt per few hundred ms is plenty responsive).
 _STREAM_DECODE_INTERVAL_S = 0.4
 
+# Ceiling on how long camera enumeration/initialize are allowed to hang
+# before falling back to the existing error UI (issue #64 follow-up,
+# 2026-07-30 - a real reported "sometimes freezes on first camera" with no
+# prior timeout at all).
+_CAMERA_INIT_TIMEOUT_S = 10.0
+
 # Viewfinder square + corner-bracket geometry (a camera reticle look - only
 # the four corners are drawn, not a full border, per the requested UX).
 _VIEWFINDER_BOX = 300
@@ -479,8 +485,10 @@ class ScanInput:
         self._scan_line_future = self.page.run_task(self._animate_scan_line)
 
         try:
-            self.cameras = await self.camera.get_available_cameras()
-        except Exception:
+            self.cameras = await asyncio.wait_for(
+                self.camera.get_available_cameras(), timeout=_CAMERA_INIT_TIMEOUT_S
+            )
+        except (Exception, asyncio.TimeoutError):
             self.cameras = []
 
         if not self.cameras:
@@ -500,13 +508,27 @@ class ScanInput:
         )
         await self._request_camera_permission()
 
+        # `asyncio.wait_for` guards against a real, reported failure mode
+        # (issue #64 follow-up, 2026-07-30: "on first camera sometimes it
+        # freezes") - `camera.initialize()` is a native plugin call with no
+        # guaranteed return; without a timeout, a hang here left the dialog
+        # stuck on "Starting camera..." forever with no way out except
+        # closing it manually. A timeout instead surfaces the same
+        # `_show_camera_error` fallback every other init failure already
+        # uses, so the user always has Gallery/Enter Manually available.
         try:
-            await self.camera.initialize(
-                description=self.cameras[self.camera_index],
-                resolution_preset=fc.ResolutionPreset.MEDIUM,
-                enable_audio=False,
-                image_format_group=fc.ImageFormatGroup.JPEG,
+            await asyncio.wait_for(
+                self.camera.initialize(
+                    description=self.cameras[self.camera_index],
+                    resolution_preset=fc.ResolutionPreset.MEDIUM,
+                    enable_audio=False,
+                    image_format_group=fc.ImageFormatGroup.JPEG,
+                ),
+                timeout=_CAMERA_INIT_TIMEOUT_S,
             )
+        except asyncio.TimeoutError:
+            self._show_camera_error("timed out starting the camera")
+            return
         except Exception as exc:
             self._show_camera_error(str(exc))
             return
@@ -629,21 +651,41 @@ class ScanInput:
 
     def _on_stream_image(self, e: fc.CameraImageEvent) -> None:
         # Sync handler (matches flet-camera's own documented pattern,
-        # `preview.on_stream_image = on_stream_image`) - `pyzbar` decode is
-        # a blocking call, throttled so it only runs a few times a second
-        # instead of on every single streamed frame (~15-30fps).
+        # `preview.on_stream_image = on_stream_image`), throttled so it
+        # only runs a few times a second instead of on every single
+        # streamed frame (~15-30fps). The actual decode is dispatched to
+        # `_decode_and_handle` below rather than called directly here -
+        # see that method's own docstring for why (issue #64 follow-up,
+        # 2026-07-30: real-device testing found the scan-line animation
+        # "too fast or stuck" and the camera occasionally freezing on
+        # first open, both traced to this handler blocking the event loop).
         if not self._scan_active:
             return
         now = time.monotonic()
         if now - self._last_decode_ts < _STREAM_DECODE_INTERVAL_S:
             return
         self._last_decode_ts = now
+        self.page.run_task(self._decode_and_handle, e.bytes)
+
+    async def _decode_and_handle(self, data: bytes) -> None:
+        # `pyzbar` decode is a genuinely blocking call - previously invoked
+        # directly inside the sync `_on_stream_image` handler above, which
+        # runs on the same single-threaded asyncio event loop as
+        # `_animate_scan_line`'s sleep-driven bounce loop. Every decode
+        # (up to twice a second per the throttle) stalled that loop for its
+        # own duration, starving the scan-line's scheduled position updates
+        # - reported live (2026-07-30) as the animation looking "too fast"
+        # (several delayed updates catching up at once) or "stuck"
+        # (blocked mid-decode). Running the decode in a worker thread via
+        # `asyncio.to_thread` keeps the event loop free to service the
+        # animation loop (and everything else) on schedule regardless of
+        # how long any single decode takes.
         try:
-            code = decode_image_bytes(e.bytes)
+            code = await asyncio.to_thread(decode_image_bytes, data)
         except ScanUnavailableError:
             return
         if code:
-            self.page.run_task(self._handle_scanned_code, code)
+            await self._handle_scanned_code(code)
 
     async def _handle_scanned_code(self, code: str) -> None:
         if not self._scan_active:
