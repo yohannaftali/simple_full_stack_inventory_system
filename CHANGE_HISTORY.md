@@ -1,6 +1,15 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-31] — fix(frontend): mobile Safari picker blur-cancel bug, manual-dialog OK button, cancel-returns-to-camera UX (#77 follow-up 3)
+- User confirmed Gallery now works correctly on desktop web (opens the picker, parses the file as expected) - but iPhone still shows a blank screen with a stuck loading spinner, and iPad shows nothing at all
+- Root cause found: `FilePicker.pick_files()`'s `cancel_upload_on_window_blur` parameter defaults to `True` - meant as a desktop-style "user switched away = cancel" signal, but opening ANY native picker (photo library, camera) on mobile Safari always blurs the underlying page first, since the OS takes over the screen. That normal, expected blur was almost certainly being misread as an immediate cancellation before the picker UI could even finish opening - explains both the iPhone spinner (waiting on an already-self-cancelled pick that never resolves cleanly) and iPad showing nothing (picker dismissed before ever rendering). Fixed: pass `cancel_upload_on_window_blur=False` on the scan flow's `pick_files()` call
+- Two UX requests from the same session, both implemented:
+  - Added an explicit "OK" button to the manual-entry dialog's actions (alongside the existing Cancel) - `on_submit`/Enter still works too, this adds an equivalent tap target
+  - Cancelling the Gallery picker when it was opened FROM the live-camera view now returns to the camera instead of falling to manual entry - added a `_return_to_camera_on_cancel` flag set by `_use_gallery_from_camera()` and consumed once by `_pick_photo()`; cancelling from the manual dialog's own "Scan with Photo" button is unchanged (still reopens manual entry, since there's no camera to return to in that path)
+- Verified: `py_compile` clean; `docker compose up -d --build frontend` reached healthy with no errors. **Not verified on a real device** - next manual pass should confirm Gallery now opens on both iPhone and iPad, the OK button submits the manual-entry field, and cancelling Gallery from the camera view returns to a live camera instead of the manual dialog
+- Files: frontend/src/components/scan_input.py, CHANGE_HISTORY.md
+
 ## [2026-07-31] — fix(frontend): Gallery picker's real cause was a service-registration race, not gesture-chain ordering (#77 follow-up 2)
 - Previous fix (reordering `_pick_photo()` before `_teardown_camera()`) did not resolve it - user retested and got a black screen with a stuck loader, no native picker ever appeared
 - Real root cause: `_pick_photo()` created/registered the `FilePicker` service and immediately called `pick_files()` in the same handler - `page.update()` (registering the new service) does not wait for the client to actually process it before the very next line tries to use it, a genuine race

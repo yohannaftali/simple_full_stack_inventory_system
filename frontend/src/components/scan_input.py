@@ -184,6 +184,10 @@ class ScanInput:
         self.field: ft.TextField | None = None
         self.error_text: ft.Text | None = None
         self.file_picker: ft.FilePicker | None = None
+        # Set by `_use_gallery_from_camera()` right before calling
+        # `_pick_photo()` - tells that method to return to the live camera
+        # (instead of manual entry) if the picker is cancelled.
+        self._return_to_camera_on_cancel = False
 
         # Live camera-scan state (issue #64 follow-up) - rebuilt fresh each
         # time the scan button opens, same "never reuse a stale control"
@@ -290,7 +294,15 @@ class ScanInput:
                 ),
                 width=360,
             ),
-            actions=[ft.TextButton("Cancel", on_click=self._cancel)],
+            actions=[
+                ft.TextButton("Cancel", on_click=self._cancel),
+                # Explicit confirm button (issue #77 follow-up,
+                # 2026-07-31, user-requested) - `on_submit` (Enter) still
+                # works too, this just gives an equivalent tap target for
+                # anyone not using a physical/on-screen keyboard's return
+                # key.
+                ft.TextButton("OK", on_click=self._submit),
+            ],
         )
         self.page.overlay.append(self.dialog)
         self.dialog.open = True
@@ -375,15 +387,45 @@ class ScanInput:
             file_type=ft.FilePickerFileType.IMAGE,
             allow_multiple=False,
             with_data=True,
+            # Real, user-reported bug (issue #77 follow-up, 2026-07-31):
+            # on mobile Safari (iPhone/iPad), the picker never visibly
+            # appeared at all - stuck on a blank screen with a loading
+            # spinner. `cancel_upload_on_window_blur` defaults to `True`,
+            # meant for a desktop-style "user switched away = cancel"
+            # signal - but opening ANY native picker (photo library,
+            # camera) on mobile Safari always blurs the underlying page
+            # first, since the OS takes over the screen. With the default
+            # on, that normal, expected blur was almost certainly being
+            # misread as an immediate cancellation before the picker UI
+            # could even finish opening.
+            cancel_upload_on_window_blur=False,
         )
+        # Set by `_use_gallery_from_camera()` right before calling this -
+        # only true when Gallery was opened FROM the live-camera view.
+        return_to_camera = self._return_to_camera_on_cancel
+        self._return_to_camera_on_cancel = False
+
         if not files:
-            # User cancelled the picker - reopen the manual-entry dialog
-            # with no error, same as a plain Cancel. `_open_manual` (not
-            # `_open`, which is async and re-attempts the live camera) -
-            # a camera-scan detour that ended in "never mind, I'll type
-            # it" shouldn't loop back into re-initializing the camera.
-            self._open_manual()
+            if return_to_camera:
+                # Cancelling the picker from the live-camera view goes
+                # back to the camera instead of manual entry (issue #77
+                # follow-up, 2026-07-31, explicit user request) - the
+                # camera was never really abandoned, Gallery was just a
+                # detour.
+                await self._teardown_camera()
+                await self._open_camera()
+            else:
+                # Cancelling from the manual-entry dialog's own "Scan with
+                # Photo" button reopens that same dialog, same as a plain
+                # Cancel - there's no camera to go back to in this path.
+                self._open_manual()
             return
+
+        if return_to_camera:
+            # A photo was picked (not cancelled) - the camera view is done
+            # either way from here (on to on_scan, or to a manual-entry
+            # error dialog), so tear it down now.
+            await self._teardown_camera()
 
         picked = files[0]
         data = picked.bytes
@@ -918,20 +960,21 @@ class ScanInput:
         # work (issue #77 follow-up, 2026-07-31: selecting from Gallery
         # from the live-camera view silently did nothing). Browsers only
         # allow a file picker to open within a short window of the
-        # original user gesture (this button's own tap) - the previous
-        # order awaited `_teardown_camera()` (which itself awaits
+        # original user gesture (this button's own tap) - awaiting
+        # `_teardown_camera()` (which itself awaits
         # `camera.stop_image_stream()`, a native plugin call of unknown
-        # latency) BEFORE ever calling `pick_files()`, breaking that
-        # gesture chain and making the browser silently refuse to open
-        # the picker at all. The manual-entry dialog's own "Scan with
-        # Photo" button never had this problem, since it calls
-        # `pick_files()` immediately with no intervening await - matching
-        # that same immediacy here fixes it. Tearing down the camera
-        # overlay afterward is safe either way - the OS file picker
-        # covers the screen regardless of what's still mounted beneath it.
+        # latency) BEFORE ever calling `pick_files()` broke that gesture
+        # chain and made the browser silently refuse to open the picker
+        # at all. The manual-entry dialog's own "Scan with Photo" button
+        # never had this problem, since it calls `pick_files()`
+        # immediately with no intervening await - matching that same
+        # immediacy here fixes it. `_pick_photo()` now owns tearing down
+        # (and, on cancel, reopening) the camera itself via the
+        # `_return_to_camera_on_cancel` flag below - not done here, so it
+        # only runs once regardless of outcome.
         self._scan_active = False
+        self._return_to_camera_on_cancel = True
         await self._pick_photo()
-        await self._teardown_camera()
 
     async def _cancel_camera(self, e=None) -> None:
         self._scan_active = False
