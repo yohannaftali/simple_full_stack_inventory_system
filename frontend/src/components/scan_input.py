@@ -332,6 +332,28 @@ class ScanInput:
 
     # ---------------------------------------------------------- photo scan
 
+    def _ensure_file_picker_registered(self) -> None:
+        """Create/register the `FilePicker` service if not already present.
+
+        Called early (from `_open_camera()`, well before the Gallery
+        button could possibly be tapped - the camera still has to
+        initialize first) as well as lazily from `_pick_photo()` itself
+        for the manual-dialog path. Real, user-reported bug (issue #77
+        follow-up, 2026-07-31): registering the service and immediately
+        calling `pick_files()` in the SAME handler is a race -
+        `page.update()` doesn't wait for the client to actually process
+        the new service before the very next line tries to use it, which
+        showed up as the Gallery button producing a black screen and a
+        stuck loader with no native picker ever appearing. Pre-registering
+        here gives the client's round trip plenty of time to complete
+        before the user could realistically tap Gallery.
+        """
+        if self.file_picker is None:
+            self.file_picker = ft.FilePicker()
+        if self.file_picker not in self.page.services:
+            self.page.services.append(self.file_picker)
+            self._safe_page_update()
+
     async def _pick_photo(self, e=None) -> None:
         # Must be a real `async def` handler, not a sync lambda wrapping an
         # async call - Flet's dispatcher only awaits a handler that IS a
@@ -346,11 +368,7 @@ class ScanInput:
         # through the root view, which doesn't exist yet during a
         # ModulePage's own __init__ but does exist here, inside a live click
         # handler on the event loop.
-        if self.file_picker is None:
-            self.file_picker = ft.FilePicker()
-        if self.file_picker not in self.page.services:
-            self.page.services.append(self.file_picker)
-            self.page.update()
+        self._ensure_file_picker_registered()
 
         self._close()
         files = await self.file_picker.pick_files(
@@ -426,6 +444,7 @@ class ScanInput:
         # gallery) floats directly on top of it, rather than sitting in a
         # small card with title/dialog chrome around a boxed-in preview
         # (issue #64 follow-up, 2026-07-30, explicit user request).
+        self._ensure_file_picker_registered()
         self.cameras = []
         self.camera_index = 0
         self.camera = fc.Camera(expand=True, preview_enabled=True)

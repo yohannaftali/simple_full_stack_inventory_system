@@ -1,6 +1,13 @@
 
 # CHANGE_HISTORY.md
 
+## [2026-07-31] — fix(frontend): Gallery picker's real cause was a service-registration race, not gesture-chain ordering (#77 follow-up 2)
+- Previous fix (reordering `_pick_photo()` before `_teardown_camera()`) did not resolve it - user retested and got a black screen with a stuck loader, no native picker ever appeared
+- Real root cause: `_pick_photo()` created/registered the `FilePicker` service and immediately called `pick_files()` in the same handler - `page.update()` (registering the new service) does not wait for the client to actually process it before the very next line tries to use it, a genuine race
+- Fixed: extracted `_ensure_file_picker_registered()` and call it early from `_open_camera()` itself (well before the camera even finishes initializing, let alone before the user could realistically tap Gallery), so the service is already known to the client with plenty of round-trip time to spare by the time it's actually used. `_pick_photo()` now calls the same helper (still a safe no-op if already registered, still covers the manual-dialog path)
+- Verified: `py_compile` clean; `docker compose up -d --build frontend` reached healthy with no errors. **Not verified on a real device**
+- Files: frontend/src/components/scan_input.py, CHANGE_HISTORY.md
+
 ## [2026-07-31] — fix(frontend): Gallery picker silently did nothing from the live-camera view (#77 follow-up)
 - User confirmed the full-screen fix and camera-open animation both now work correctly; live-scanning-unsupported message on Safari/iOS remains expected (documented, not a bug). New report: tapping "Gallery" while the live camera view was open did nothing - no picker opened, no error
 - Root cause: `_use_gallery_from_camera()` awaited `_teardown_camera()` (which itself awaits `camera.stop_image_stream()`, a native plugin call of unknown latency) BEFORE ever calling the file picker. Browsers only allow a native file picker to open within a short window of the original user gesture (the tap on the Gallery button) - that extra await broke the gesture chain, so the browser silently refused to open the picker. The manual-entry dialog's own "Scan with Photo" button never had this problem, since it calls `pick_files()` immediately with no intervening await
