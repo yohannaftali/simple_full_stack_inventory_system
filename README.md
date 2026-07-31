@@ -13,6 +13,7 @@ department usage/cost reporting.
 
 1. [Deploying the application](#1-deploying-the-application)
    - [Alternative: Docker Desktop on Windows 11](#alternative-docker-desktop-on-windows-11)
+   - [Sharing the app on your LAN (phone/tablet testing)](#accessing-from-another-device-on-your-lan)
    - [Updating (`git pull`)](#15-updating-git-pull)
 2. [Accessing the frontend and logging in](#2-accessing-the-frontend-and-logging-in)
 3. [Changing the admin password](#3-changing-the-admin-password-first-time)
@@ -73,6 +74,45 @@ and Dockerfiles work unchanged with either engine.
    substitute `docker compose ...` / `docker ...` instead — the commands
    and flags are otherwise identical (e.g. `docker compose -f compose.yml
    up -d`, `docker logs sfsis-backend --tail 30`).
+
+### Accessing from another device on your LAN
+
+To test on a phone/tablet on the same WiFi (e.g. scanning a QR code that
+opens the app, or hitting the nginx-exposed ports from issue #69), run
+`expose-lan.ps1` (Windows, as Administrator) or `expose-lan.sh`
+(Linux/macOS) — see that script's own `-h`/`--help` output for the exact
+ports it forwards and your machine's LAN address(es).
+
+**Your PC must be connected via Wi-Fi, on the same network as the phone
+— not Ethernet** (confirmed live, issue #75). If both Ethernet and Wi-Fi
+are active at once, Windows may advertise/bind the Ethernet adapter's
+address instead of the Wi-Fi one — that's a genuinely different physical
+network the phone was never on, not a bug, and no amount of
+firewall/port-forwarding config fixes it. If you normally use Ethernet,
+disconnect it (or disable the adapter) before testing from a phone.
+
+**Use the HTTPS port (`8444`) if you need the camera/barcode scan
+button** — browsers refuse camera access entirely on a plain `http://`
+origin (no permission prompt, no error, it just silently doesn't work -
+issue #77), which is a browser security policy this app can't override.
+The app now shows a clear "requires HTTPS" message in that case instead
+of a misleading "no camera detected" one, but switching to `8444`
+(self-signed certificate — your browser will warn once, that's expected)
+is the actual fix.
+
+**Known issue on Windows + Podman**: nginx's own exposed ports (`8001`,
+`5001`, `8444`, `5444`) can silently stop forwarding to LAN devices after
+a burst of container restarts, even though `podman ps`/the container's own
+healthcheck both report everything fine — this is a WSL-backed
+Podman-machine port-forwarding gap, not an application bug (see
+`AGENTS.md`'s nginx networking notes for the full diagnosis). If you hit
+this, first try `podman compose -f compose.yml restart nginx` — if LAN
+access is still unreliable after that, **Docker Desktop's own networking
+has not exhibited this problem** for the same LAN-sharing scenario;
+switching to `docker compose` (see [Alternative: Docker Desktop
+above](#alternative-docker-desktop-on-windows-11)) is a reasonable
+workaround while this is tracked under
+[issue #75](https://github.com/yohannaftali/simple_full_stack_inventory_system/issues/75).
 
 ### 1.2 Get the code
 

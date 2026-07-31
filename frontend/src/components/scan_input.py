@@ -468,6 +468,10 @@ class ScanInput:
         # scanner doesn't need a manual-entry escape hatch the way the
         # no-camera/error fallback below still does); the close (X) button
         # is the only way out, same as backing out of any native scanner.
+        # Camera-switch lives here, beside Gallery, not in the top bar -
+        # user-requested layout (issue #77 follow-up, 2026-07-31): the top
+        # bar is Close-only, every other control floats in this one
+        # transparent bottom row.
         self.camera_bottom_bar = ft.Row(
             controls=[
                 self._overlay_icon_button(
@@ -481,13 +485,25 @@ class ScanInput:
             controls=[
                 self._overlay_icon_button(ft.Icons.CLOSE, "Close", self._cancel_camera),
             ],
-            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            alignment=ft.MainAxisAlignment.START,
         )
         self.camera_area = ft.Container(
             expand=True,
             bgcolor=ft.Colors.BLACK,
             content=ft.Stack(
                 expand=True,
+                # `expand=True` alone only makes the STACK fill its parent -
+                # it does not stretch the Stack's CHILDREN to match, which
+                # left `self.camera` sizing itself however it wanted (its
+                # own small/native size) rather than filling the available
+                # area. Confirmed live via screenshots (issue #77
+                # follow-up, 2026-07-31 - "only half"/cut-off camera in
+                # both portrait and landscape on a real iPhone/iPad): the
+                # video rendered at a fixed small size with the rest of the
+                # screen showing `camera_area`'s own black background.
+                # `StackFit.EXPAND` forces every child to take the Stack's
+                # full size instead.
+                fit=ft.StackFit.EXPAND,
                 controls=[self.camera],
             ),
         )
@@ -535,6 +551,25 @@ class ScanInput:
 
         self._scan_active = True
         self._scan_line_at_top = True
+
+        # Real, user-reported bug (issue #77): on a real iPad/iPhone
+        # accessed over plain HTTP (e.g. nginx's `NGINX_EXPOSED_FRONTEND_PORT`,
+        # not its `_SSL` counterpart), tapping the scan button showed no
+        # camera preview AND the OS/browser never even showed its camera
+        # permission prompt at all - `flet-camera`'s web support relies on
+        # the browser's own `getUserMedia`, which browsers refuse outright
+        # on an insecure origin (no prompt, no error surfaced to Python -
+        # `get_available_cameras()` below would just return empty, which
+        # previously fell through to the generic, misleading "No camera
+        # detected" message even though a camera genuinely exists).
+        # `localhost`/`127.0.0.1` are browser-exempted from this
+        # requirement (used for local dev), so only flag a *remote*
+        # insecure origin. Checked before ever calling
+        # `get_available_cameras()` so the message is accurate immediately
+        # instead of only after that call predictably returns nothing.
+        if self._is_insecure_remote_web_context():
+            self._show_insecure_context_error()
+            return
 
         try:
             self.cameras = await asyncio.wait_for(
@@ -585,13 +620,15 @@ class ScanInput:
             self._show_camera_error(str(exc))
             return
 
-        # Camera-switch button, floated top-right - always added whenever
-        # more than one camera is available (explicit user request: this
-        # is a required control on the live-scan screen, not an
-        # afterthought), inserted once the real camera count is known
-        # (same timing as before - right after a successful initialize).
+        # Camera-switch button, beside Gallery in the bottom bar (moved off
+        # the top bar - issue #77 follow-up, 2026-07-31, explicit user
+        # request: the top bar is Close-only, every other control floats
+        # in the one transparent bottom row) - always added whenever more
+        # than one camera is available, inserted once the real camera
+        # count is known (same timing as before - right after a
+        # successful initialize).
         if len(self.cameras) > 1:
-            self.camera_top_bar.controls.append(
+            self.camera_bottom_bar.controls.append(
                 self._overlay_icon_button(
                     ft.Icons.CAMERASWITCH_OUTLINED, "Switch camera", self._switch_camera
                 )
@@ -703,6 +740,48 @@ class ScanInput:
                     ft.Icons.KEYBOARD, "Enter Manually", self._use_manual_from_camera
                 ),
             )
+
+    def _is_insecure_remote_web_context(self) -> bool:
+        """True only for a web session loaded over plain `http://` on a
+        real remote host - never for native builds (`page.web` False) or
+        localhost/127.0.0.1 (browser-exempted, used for local dev)."""
+        if not self.page.web:
+            return False
+        url = getattr(self.page, "url", None) or ""
+        if not url.startswith("http://"):
+            return False
+        host = url[len("http://"):].split("/", 1)[0].split(":", 1)[0]
+        return host not in ("localhost", "127.0.0.1")
+
+    def _show_insecure_context_error(self) -> None:
+        if self.camera_area is not None:
+            self.camera_area.content = ft.Container(
+                alignment=ft.Alignment.CENTER,
+                expand=True,
+                padding=ft.Padding.symmetric(horizontal=24),
+                content=ft.Column(
+                    controls=[
+                        ft.Icon(
+                            ft.Icons.LOCK_OUTLINE, color=ft.Colors.WHITE70, size=48
+                        ),
+                        ft.Text(
+                            "Camera access requires a secure (HTTPS) connection",
+                            color=ft.Colors.WHITE70,
+                            size=13,
+                            text_align=ft.TextAlign.CENTER,
+                        ),
+                    ],
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=8,
+                    tight=True,
+                ),
+            )
+        self._add_manual_entry_fallback()
+        if self.camera_status is not None:
+            self.camera_status.value = "Reopen this page over HTTPS to use the camera"
+            self.camera_status.color = ft.Colors.ERROR
+        self._scan_active = False
+        self._safe_page_update()
 
     def _show_no_camera(self) -> None:
         if self.camera_area is not None:
@@ -816,9 +895,24 @@ class ScanInput:
         self._open_manual()
 
     async def _use_gallery_from_camera(self, e=None) -> None:
+        # Trigger the native file picker FIRST, before any other awaited
+        # work (issue #77 follow-up, 2026-07-31: selecting from Gallery
+        # from the live-camera view silently did nothing). Browsers only
+        # allow a file picker to open within a short window of the
+        # original user gesture (this button's own tap) - the previous
+        # order awaited `_teardown_camera()` (which itself awaits
+        # `camera.stop_image_stream()`, a native plugin call of unknown
+        # latency) BEFORE ever calling `pick_files()`, breaking that
+        # gesture chain and making the browser silently refuse to open
+        # the picker at all. The manual-entry dialog's own "Scan with
+        # Photo" button never had this problem, since it calls
+        # `pick_files()` immediately with no intervening await - matching
+        # that same immediacy here fixes it. Tearing down the camera
+        # overlay afterward is safe either way - the OS file picker
+        # covers the screen regardless of what's still mounted beneath it.
         self._scan_active = False
-        await self._teardown_camera()
         await self._pick_photo()
+        await self._teardown_camera()
 
     async def _cancel_camera(self, e=None) -> None:
         self._scan_active = False

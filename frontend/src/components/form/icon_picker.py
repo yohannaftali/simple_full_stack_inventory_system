@@ -90,7 +90,8 @@ class IconPickerForm:
             ),
             filled=self.filled,
             bgcolor=self.bgcolor,
-            adaptive=True,
+            # No `adaptive=True` (issue #73) - see main.py's `page.adaptive`
+            # removal note.
             expand=True,
             on_click=self._open_picker,
         )

@@ -56,7 +56,8 @@ class LabelForm:
             max_lines=self.max_lines,
             filled=self.filled,
             bgcolor=self.bgcolor,
-            adaptive=True,
+            # No `adaptive=True` (issue #73) - see main.py's `page.adaptive`
+            # removal note.
             expand=True,
             on_focus=self._on_focus,
             on_blur=self._on_blur,

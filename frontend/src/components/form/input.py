@@ -116,7 +116,10 @@ class InputForm:
             bgcolor=self.bgcolor,
             password=self.password,
             can_reveal_password=self.can_reveal_password,
-            adaptive=True,
+            # No `adaptive=True` (issue #73) - see main.py's own
+            # `page.adaptive` removal note for why: this app renders
+            # Material 3 uniformly, matching `SelectForm`'s Dropdown, which
+            # has no Cupertino/adaptive variant at all.
             expand=True,
             # Only the label's color needs a live swap on focus (per spec) -
             # the border color is handled natively by

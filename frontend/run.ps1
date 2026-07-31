@@ -447,6 +447,60 @@ function Invoke-DevRun([string[]]$FletRunArgs) {
     # pyproject.toml's own comment on why bare `flet` excludes it).
     & uv sync
     Write-Host "Starting Flet with hot reload (Ctrl+C to stop)..." -ForegroundColor Green
+
+    $isQrFlow = ($FletRunArgs -contains "--android") -or ($FletRunArgs -contains "--ios")
+    if ($isQrFlow) {
+        # `flet run --android`/`--ios` prints its connect URL as a terminal
+        # QR code (`qrcode.QRCode.print_ascii()`, real Unicode block glyphs
+        # - U+2588/U+2580/U+2584/space). Two real, confirmed-live findings
+        # while chasing this (2026-07-31), in order:
+        # 1. Clearing this script's own `PYTHONUTF8`/`PYTHONIOENCODING`
+        #    (added earlier for an unrelated `rich`-progress-output crash
+        #    under a legacy cp1252 console) to match the sister senar
+        #    project's own untouched `run.ps1` was WRONG - on this machine
+        #    it made `qr.print_ascii()` crash outright
+        #    (`UnicodeEncodeError: 'charmap' codec can't encode character
+        #    '█'` - `cp1252` can't represent it at all), which is
+        #    strictly worse than a blank render. `PYTHONIOENCODING=utf-8`
+        #    is REQUIRED here, not the culprit - confirmed by the crash
+        #    disappearing the moment it's restored.
+        # 2. With the encoding vars present (no crash) but no console
+        #    codepage change, the QR still didn't visually appear (blank) -
+        #    a first attempt at `chcp 65001` alone also didn't resolve it.
+        #    Both are applied together here, plus `[Console]::OutputEncoding`
+        #    explicitly (PowerShell's own .NET Console wrapper caches this
+        #    separately from the raw Win32 console codepage `chcp` sets, so
+        #    setting only one of the two can leave the other still assuming
+        #    the console's original codepage).
+        # Root cause, confirmed live (2026-07-31): none of the encoding
+        # tweaks above actually mattered - running the identical `uv run
+        # flet run -r --ios` command typed directly at the prompt showed
+        # the QR fine, while the *exact same command* run through this
+        # function (called as `Invoke-Selection`'s return value inside
+        # `if (-not (Invoke-Selection $choice))` in the menu loop below)
+        # did not. Invoking an external command via `&` from inside a
+        # PowerShell function whose result feeds an `if (...)` forces
+        # PowerShell to capture that function's entire output stream to
+        # resolve truthiness - which redirects the child process's stdout
+        # through a pipe instead of a real inherited console handle. A
+        # piped (non-tty) stdout is exactly why Python's encoding
+        # behavior differed between the manual and scripted runs in the
+        # first place (the `UnicodeEncodeError`/blank-render findings
+        # above were real symptoms, just downstream of this actual cause,
+        # not causes on their own). `Start-Process -NoNewWindow -Wait`
+        # gives the child a genuine console handle regardless of how this
+        # function's own return value is consumed by its caller, so the
+        # QR-scan dev-run paths use it instead of the `&` call operator.
+        chcp 65001 > $null
+        try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
+        $env:PYTHONUTF8 = "1"
+        $env:PYTHONIOENCODING = "utf-8"
+        $uvArgs = @("run", "flet", "run", "-r") + $FletRunArgs
+        $proc = Start-Process -FilePath "uv" -ArgumentList $uvArgs -NoNewWindow -Wait -PassThru
+        $script:ExitCode = $proc.ExitCode
+        return
+    }
+
     & uv run flet run -r @FletRunArgs
     $script:ExitCode = $LASTEXITCODE
 }

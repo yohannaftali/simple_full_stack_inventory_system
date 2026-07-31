@@ -45,13 +45,25 @@ class HttpClient:
         return cookies_dict
 
     def get(self, endpoint: str, params: dict = None):
-        """Make a GET request"""
+        """Make a GET request
+
+        `timeout` (below, and on `post()`) is in SECONDS, per `requests`'
+        own API - the previous value of `300000` was a units bug (meant as
+        milliseconds, ~83 hours as seconds), making a request against an
+        unreachable server effectively hang forever. Combined with
+        `main.py`'s boot sequence calling this synchronously (blocking the
+        whole single-threaded asyncio event loop, no `asyncio.to_thread`
+        wrap - see that file's own fix), this was the root cause of a
+        connecting client (e.g. the dev-mode QR-scan companion app)
+        appearing permanently stuck on "Connecting..." whenever the
+        persisted `server_url` pointed at a currently-unreachable backend.
+        """
         try:
             url = f"{self.base_url}/{endpoint.lstrip('/')}"
             print(f"GET Request: {url}")
             print(f"GET Params: {params}")
             response = self.session.get(
-                url, params=params, timeout=300000, allow_redirects=False, verify=self.verify)
+                url, params=params, timeout=30, allow_redirects=False, verify=self.verify)
             print(f"GET Status Code: {response.status_code}")
 
             # Check for redirects (usually means authentication failed)
@@ -118,7 +130,7 @@ class HttpClient:
             print(f"POST Request: {url}")
             print(f"POST Data: {data}")
             response = self.session.post(
-                url, data=data, timeout=300000, allow_redirects=False, verify=self.verify)
+                url, data=data, timeout=30, allow_redirects=False, verify=self.verify)
             print(f"POST Status Code: {response.status_code}")
 
             # Check for redirects (usually means authentication failed)

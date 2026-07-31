@@ -46,21 +46,44 @@ from utils.storage_compat import sp_call_with_retry
 async def main(page: ft.Page):
     page.title = "SFSIS"
     page.padding = 0
-    page.adaptive = True
+    # Deliberately NOT `page.adaptive = True` (removed, issue #73): that flag
+    # makes every adaptive-capable control (TextField/date/label - see the
+    # matching `adaptive=True` removals in components/form/) switch to a
+    # platform-specific look, which on a real iOS Safari/mobile-web session
+    # means Cupertino rendering instead of this app's own deliberate,
+    # consistent Material 3 design system (issue #53 etc.). `ft.Dropdown`
+    # (components/form/select.py) has no adaptive/Cupertino variant at all,
+    # so with the flag on, a Cupertino-rendered TextField sat next to an
+    # always-Material Dropdown on the same form - different heights, no
+    # floating label support in Cupertino's text field (labels missing
+    # entirely), and prefix/suffix icon slots that don't map the same way -
+    # exactly the finding #4 symptoms reported live on mobile Safari/Chrome.
+    # This flag had no explanatory comment anywhere in this otherwise
+    # exhaustively-documented codebase, consistent with being an unused
+    # default from Flet's project scaffold rather than a deliberate choice.
 
     # Custom typefaces referenced by themes/light_theme.py and
     # themes/dark_theme.py's TextTheme (Montserrat for display/headline/
     # title, Lato for body/label - matches frontend/design/material-theme's
-    # Compose export, the complete reference for this app's theme). page.fonts
-    # needs a direct .ttf/.otf/.ttc URL, not a Google Fonts CSS stylesheet URL.
+    # Compose export, the complete reference for this app's theme).
+    # Bundled locally under assets/fonts/ (issue: dev-mode QR-scan
+    # connection investigation, 2026-07-31) rather than fetched from
+    # fonts.gstatic.com at runtime - `page.fonts` accepts a path relative
+    # to `--assets-dir` (defaults to `assets/` next to the entry script,
+    # i.e. `src/assets/`, per `[tool.flet.app] path = "src"` in
+    # pyproject.toml) just as readily as a URL, and Flet's own asset
+    # server then serves it to the client directly. This removes a
+    # dependency on the CLIENT (the connecting browser or the phone's Flet
+    # companion app) being able to reach an external CDN at all - a real
+    # difference from the sister senar project, which sets no custom fonts
+    # and was used to rule out several other candidate causes for a
+    # phone stuck on "Connecting..." over a managed WiFi network that may
+    # filter outbound traffic to unfamiliar hosts. Files fetched once from
+    # the exact same gstatic URLs previously used here and committed to
+    # the repo - both verified as valid TrueType font data before commit.
     page.fonts = {
-        "Montserrat": (
-            "https://fonts.gstatic.com/s/montserrat/v31/"
-            "JTUHjIg1_i6t8kCHKm4532VJOt5-QNFgpCtr6Hw5aX8.ttf"
-        ),
-        "Lato": (
-            "https://fonts.gstatic.com/s/lato/v25/S6uyw4BMUTPHjx4wWw.ttf"
-        ),
+        "Montserrat": "fonts/Montserrat-Regular.ttf",
+        "Lato": "fonts/Lato-Regular.ttf",
     }
 
     # Set window size only for desktop mode
@@ -366,7 +389,22 @@ async def main(page: ft.Page):
 
         if not storage.server_url.is_configured():
             await _boot_navigate_to("/server_config")
-        elif storage.client_data.is_active():
+        elif await asyncio.to_thread(storage.client_data.is_active):
+            # Must run in a thread, not called directly - `is_active()`
+            # makes a synchronous, blocking `requests` HTTP call
+            # (client_data.py -> http_client.py), and Flet's server is a
+            # single-threaded asyncio event loop: calling it directly here
+            # would freeze the ENTIRE server (every connecting client, not
+            # just this session) for the duration of that call. Real,
+            # user-reported live: with a stale/unreachable persisted
+            # `server_url` (e.g. the backend not currently running) and
+            # `http_client.py`'s own now-fixed `timeout=300000` units bug
+            # (seconds, not milliseconds - ~83 hours), this made the
+            # dev-mode QR-scan companion app hang on "Connecting..."
+            # indefinitely - the WebSocket handshake could never complete
+            # because this call never let the event loop run anything else.
+            # Matches the sister senar project's own `main.py`, which
+            # already wraps the identical check this same way.
             await _boot_navigate_to(_preserved_boot_route() or "/home")
         else:
             await _boot_navigate_to("/login")

@@ -247,6 +247,13 @@ class TableFooter:
             content_padding=ft.Padding.symmetric(horizontal=8, vertical=4),
             border_radius=8,
             keyboard_type=ft.KeyboardType.NUMBER,
+            # Same fix `components/search_bar.py`'s field already applies
+            # (issue #19) for the identical symptom - a fixed-`height`
+            # TextField with no explicit vertical alignment lets Flutter's
+            # default text baseline drift toward the top of the box under a
+            # mobile browser's own font metrics, reading as "positioned too
+            # high" (issue #73 finding #3).
+            text_vertical_align=ft.VerticalAlignment.CENTER,
             on_submit=self._on_limit_commit,
             on_blur=self._on_limit_commit,
             # Must be set explicitly (issue #35) - a bare ft.TextField's
