@@ -3,6 +3,13 @@ import flet as ft
 from components.scan_input import ScanInput
 from repository.storage import Storage
 
+# M3 standard touch-target sizing (issue #76) - previously a hard-locked
+# 32dp compact profile (issue #63/#19) that user-confirmed live testing on
+# a real iPad/iPhone found too small to comfortably tap.
+_FIELD_HEIGHT = 48
+_ICON_BUTTON_SIZE = 40
+_ICON_SIZE = 20
+
 
 class SearchBar:
     """Shared search bar component (issue #63), extracted from the
@@ -47,9 +54,9 @@ class SearchBar:
         clear_button = ft.IconButton(
             icon=ft.Icons.CLEAR,
             icon_color=ft.Colors.ON_SURFACE,
-            icon_size=14,
-            width=24,  # Constrained icon button envelope bounds
-            height=24,
+            icon_size=_ICON_SIZE,
+            width=_ICON_BUTTON_SIZE,  # Constrained icon button envelope bounds
+            height=_ICON_BUTTON_SIZE,
             padding=0,  # Absolute graphic centering
             on_click=self.clear_search,
             tooltip="Clear text",
@@ -59,7 +66,10 @@ class SearchBar:
             # (issue #52 follow-up). Matched here so the clear button and
             # the scan button never bleed hover/highlight into each other.
             size_constraints=ft.BoxConstraints(
-                min_width=24, max_width=24, min_height=24, max_height=24
+                min_width=_ICON_BUTTON_SIZE,
+                max_width=_ICON_BUTTON_SIZE,
+                min_height=_ICON_BUTTON_SIZE,
+                max_height=_ICON_BUTTON_SIZE,
             ),
         )
         if self.qr:
@@ -75,19 +85,19 @@ class SearchBar:
                 on_scan=self._apply_scanned_code,
                 title="Scan to Search",
                 tooltip="Scan barcode / QR to search",
-                icon_size=14,
-                width=24,
-                height=24,
+                icon_size=_ICON_SIZE,
+                width=_ICON_BUTTON_SIZE,
+                height=_ICON_BUTTON_SIZE,
             )
             suffix_control = ft.Row(
                 controls=[self.scan_input.build(), clear_button],
                 spacing=0,
                 tight=True,
             )
-            suffix_width = 48
+            suffix_width = _ICON_BUTTON_SIZE * 2
         else:
             suffix_control = clear_button
-            suffix_width = 24
+            suffix_width = _ICON_BUTTON_SIZE
 
         # Compact Text Field Configuration replacing the rigid 56dp ft.SearchBar
         self.search_bar = ft.TextField(
@@ -99,8 +109,8 @@ class SearchBar:
             hint_style=ft.TextStyle(
                 color=ft.Colors.with_opacity(0.5, ft.Colors.ON_SURFACE), size=13
             ),
-            height=32,  # Hard-locked compact dimension profile
-            text_size=13,  # Scaled down to prevent text vertical wrapping
+            height=_FIELD_HEIGHT,  # M3 standard touch-target height (issue #76)
+            text_size=14,
             text_vertical_align=ft.VerticalAlignment.CENTER,
             on_change=self.on_search_change,
             on_submit=self.on_submit,
@@ -112,14 +122,14 @@ class SearchBar:
             border_color=ft.Colors.OUTLINE_VARIANT,
             focused_border_color=ft.Colors.TERTIARY,
             # Content padding adjustment prevents the text block from drifting out of alignment
-            content_padding=ft.Padding.symmetric(horizontal=10, vertical=6),
+            content_padding=ft.Padding.symmetric(horizontal=12, vertical=8),
             # `prefix_icon`/`suffix_icon` (not `prefix`/`suffix`) - Flutter's
             # InputDecoration only renders `prefix`/`suffix` once the field is
             # focused or non-empty; `prefix_icon`/`suffix_icon` render
             # unconditionally, which is what a persistent search/clear icon
             # needs (issue #19). `input.py`'s `prefix_icon` usage never had
             # this bug for the same reason.
-            prefix_icon=ft.Icon(ft.Icons.SEARCH, color=ft.Colors.ON_SURFACE, size=14),
+            prefix_icon=ft.Icon(ft.Icons.SEARCH, color=ft.Colors.ON_SURFACE, size=_ICON_SIZE),
             suffix_icon=suffix_control,
             # Without this, Flutter reserves its default ~48dp tap-target
             # width/height for the suffix icon slot, pushing it well past the
@@ -129,8 +139,8 @@ class SearchBar:
             suffix_icon_size_constraints=ft.BoxConstraints(
                 min_width=suffix_width,
                 max_width=suffix_width,
-                min_height=24,
-                max_height=24,
+                min_height=_ICON_BUTTON_SIZE,
+                max_height=_ICON_BUTTON_SIZE,
             ),
             expand=True,
         )

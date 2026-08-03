@@ -23,6 +23,8 @@ import os
 import flet as ft
 import openpyxl
 
+from components.button import TOUCH_TARGET_RADIUS, TOUCH_TARGET_SIZE
+
 # (format, menu label, icon) - label text matches the issue's exact wording.
 _FORMAT_OPTIONS = [
     ("csv", "Download as CSV", ft.Icons.INSERT_DRIVE_FILE_OUTLINED),
@@ -161,24 +163,25 @@ class TableMenu:
                 )
             )
 
-        # Sized/padded to match the compact 32dp toolbar buttons
-        # (components/button.py::Button's `size=32, radius=16`) - the
-        # default PopupMenuButton's own ~48dp size and 8px padding didn't
-        # fit inside the 48dp toolbar bar's 32px content height (after its
-        # 8px vertical padding), so the hamburger rendered low/off-center
-        # next to the other toolbar buttons rather than sharing their
-        # vertical center.
+        # Sized/padded to match the other toolbar buttons
+        # (components/button.py::Button's `TOUCH_TARGET_SIZE`, issue #76) -
+        # the default PopupMenuButton's own ~48dp size and 8px padding
+        # didn't fit inside the older, compact 48dp toolbar bar's 32px
+        # content height, so the hamburger rendered low/off-center next to
+        # the other toolbar buttons rather than sharing their vertical
+        # center. Now that every toolbar button is a full 48dp touch
+        # target, this matches them directly.
         self.menu = ft.PopupMenuButton(
             icon=ft.Icons.MENU,
             icon_color=ft.Colors.ON_SURFACE_VARIANT,
-            icon_size=20,
+            icon_size=24,
             tooltip="Actions" if self.parent.is_inside_form else "Download",
             items=menu_items,
-            height=32,
-            width=32,
+            height=TOUCH_TARGET_SIZE,
+            width=TOUCH_TARGET_SIZE,
             padding=0,
             style=ft.ButtonStyle(
-                shape=ft.RoundedRectangleBorder(radius=16),
+                shape=ft.RoundedRectangleBorder(radius=TOUCH_TARGET_RADIUS),
             ),
         )
 

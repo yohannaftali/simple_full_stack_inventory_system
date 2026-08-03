@@ -4,7 +4,8 @@ Toolbar component for module
 
 import flet as ft
 
-from components.button import Button
+from components.button import TOUCH_TARGET_RADIUS, TOUCH_TARGET_SIZE, Button
+from components.table.toolbar import TOOLBAR_HEIGHT
 
 
 class ModuleToolbar:
@@ -27,7 +28,7 @@ class ModuleToolbar:
             return ft.Container()
 
         return ft.Container(
-            height=48,
+            height=TOOLBAR_HEIGHT,
             padding=ft.Padding.symmetric(horizontal=16, vertical=8),
             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
             border=ft.Border.only(bottom=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
@@ -54,10 +55,10 @@ class ModuleToolbar:
         bgcolor=None,
         icon_color=None,
     ):
-        """Return a standard Material 3 icon button (32dp, transparent
-        background - only the icon shows, with Flutter's own hover/pressed
-        state-layer highlight). Pass `bgcolor` for the rare filled/tonal
-        variant (e.g. a red "danger" delete button)."""
+        """Return a standard Material 3 icon button (`TOUCH_TARGET_SIZE`dp,
+        transparent background - only the icon shows, with Flutter's own
+        hover/pressed state-layer highlight). Pass `bgcolor` for the rare
+        filled/tonal variant (e.g. a red "danger" delete button)."""
         btn_fg = (
             icon_color if icon_color is not None else ft.Colors.ON_SURFACE_VARIANT
         )
@@ -68,8 +69,8 @@ class ModuleToolbar:
             tooltip=tooltip,
             icon_color=btn_fg,
             bgcolor=bgcolor,
-            size=32,
-            radius=16,
+            size=TOUCH_TARGET_SIZE,
+            radius=TOUCH_TARGET_RADIUS,
         ).build()
         if position == "right":
             self.right.append(button)

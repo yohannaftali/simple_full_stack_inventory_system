@@ -19,6 +19,8 @@ rows can have, so there is nothing for an upload to populate.
 
 import flet as ft
 
+from components.button import TOUCH_TARGET_RADIUS, TOUCH_TARGET_SIZE
+
 # (format, menu label, icon) - same options/labels as TableMenu's own.
 _FORMAT_OPTIONS = [
     ("csv", "Download as CSV", ft.Icons.INSERT_DRIVE_FILE_OUTLINED),
@@ -49,14 +51,14 @@ class ListMenu:
         self.menu = ft.PopupMenuButton(
             icon=ft.Icons.MENU,
             icon_color=ft.Colors.ON_SURFACE_VARIANT,
-            icon_size=20,
+            icon_size=24,
             tooltip="Download",
             items=menu_items,
-            height=32,
-            width=32,
+            height=TOUCH_TARGET_SIZE,
+            width=TOUCH_TARGET_SIZE,
             padding=0,
             style=ft.ButtonStyle(
-                shape=ft.RoundedRectangleBorder(radius=16),
+                shape=ft.RoundedRectangleBorder(radius=TOUCH_TARGET_RADIUS),
             ),
         )
 

@@ -4,7 +4,12 @@ Toolbar component for table
 
 import flet as ft
 
-from components.button import Button
+from components.button import TOUCH_TARGET_RADIUS, TOUCH_TARGET_SIZE, Button
+
+# Bar height must clear the touch-target button size plus its own vertical
+# padding (issue #76) - previously a fixed `48` sized around the old 32dp
+# compact buttons (issue #21/#62).
+TOOLBAR_HEIGHT = TOUCH_TARGET_SIZE + 16
 
 
 class TableToolbar:
@@ -39,7 +44,7 @@ class TableToolbar:
             return ft.Container()
 
         return ft.Container(
-            height=48,  # Forces layout boundary limits to match precise M3 standards
+            height=TOOLBAR_HEIGHT,  # Forces layout boundary limits to match precise M3 standards
             padding=ft.Padding.symmetric(horizontal=16, vertical=8),
             bgcolor=ft.Colors.SURFACE_CONTAINER_LOW,
             border=ft.Border.only(bottom=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
@@ -90,8 +95,8 @@ class TableToolbar:
             tooltip=tooltip,
             icon_color=btn_fg,
             bgcolor=bgcolor,
-            size=32,
-            radius=16,
+            size=TOUCH_TARGET_SIZE,
+            radius=TOUCH_TARGET_RADIUS,
         ).build()
         if position == "right":
             self.right.append(button)

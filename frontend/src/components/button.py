@@ -4,6 +4,16 @@ Shared Button component (Material 3 standard), reused across toolbars and screen
 
 import flet as ft
 
+# Material 3's own minimum recommended touch target (issue #76) - every
+# toolbar/footer button in the app now sizes itself off this shared
+# constant instead of a locally-duplicated `32`/`16` pair, so restoring
+# standard sizing (or retuning it later) only needs one edit. Previously
+# this was a compact, desktop-only `32`dp/`16`dp pair (issue #21) that
+# user-confirmed live testing on a real iPad/iPhone (issue #75) found
+# too small to comfortably tap.
+TOUCH_TARGET_SIZE = 48
+TOUCH_TARGET_RADIUS = TOUCH_TARGET_SIZE / 2
+
 
 class Button:
     """

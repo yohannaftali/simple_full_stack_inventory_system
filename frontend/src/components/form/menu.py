@@ -41,6 +41,7 @@ constructor, FilePicker registered lazily in the async click handler via
 
 import flet as ft
 
+from components.button import TOUCH_TARGET_SIZE
 from components.table.menu import parse_csv_bytes, parse_xlsx_bytes, resolve_option_value
 from utils.http_client import HttpClient
 
@@ -69,8 +70,9 @@ class MenuForm:
         self.menu = ft.PopupMenuButton(
             icon=ft.Icons.MENU,
             tooltip="Bulk upload",
-            height=32,
-            width=32,
+            icon_size=24,
+            height=TOUCH_TARGET_SIZE,
+            width=TOUCH_TARGET_SIZE,
             style=ft.ButtonStyle(
                 padding=0,  # Forces the icon inside the popup boundary to hit absolute center
             ),

@@ -30,7 +30,7 @@ table's default look/behavior changes until a user explicitly toggles it.
 
 import flet as ft
 
-from components.button import Button
+from components.button import TOUCH_TARGET_RADIUS, TOUCH_TARGET_SIZE, Button
 
 # Matches y.panel.js's own visible-button cap (max 7, with "..." gap
 # markers once the page count exceeds it) - see _page_number_tokens().
@@ -151,8 +151,8 @@ class TableFooter:
             tooltip="Switch to pagination" if to_pagination else "Switch to lazy load",
             on_click=self._on_toggle_mode,
             icon_color=ft.Colors.ON_SURFACE_VARIANT,
-            size=32,
-            radius=16,
+            size=TOUCH_TARGET_SIZE,
+            radius=TOUCH_TARGET_RADIUS,
         ).build()
 
     def _on_toggle_mode(self, e) -> None:
@@ -216,18 +216,18 @@ class TableFooter:
             tooltip=tooltip,
             on_click=(lambda e, p=target_page: self._on_page_click(p)),
             icon_color=ft.Colors.ON_SURFACE_VARIANT,
-            size=32,
-            radius=16,
+            size=TOUCH_TARGET_SIZE,
+            radius=TOUCH_TARGET_RADIUS,
         ).build()
         button.disabled = disabled
         return button
 
     def _page_button(self, page_no: int, active: bool) -> ft.Control:
         return ft.Container(
-            width=32,
-            height=32,
+            width=TOUCH_TARGET_SIZE,
+            height=TOUCH_TARGET_SIZE,
             alignment=ft.Alignment.CENTER,
-            border_radius=16,
+            border_radius=TOUCH_TARGET_RADIUS,
             bgcolor=ft.Colors.PRIMARY if active else None,
             on_click=None if active else (lambda e, p=page_no: self._on_page_click(p)),
             content=ft.Text(
@@ -242,8 +242,8 @@ class TableFooter:
         return ft.TextField(
             value=str(self.parent.limit),
             width=64,
-            height=36,
-            text_size=12,
+            height=44,
+            text_size=13,
             content_padding=ft.Padding.symmetric(horizontal=8, vertical=4),
             border_radius=8,
             keyboard_type=ft.KeyboardType.NUMBER,
