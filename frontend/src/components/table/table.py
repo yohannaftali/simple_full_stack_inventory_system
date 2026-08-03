@@ -208,6 +208,11 @@ class Table:
             page.data["active_tables"] = []
         page.data["active_tables"].append(self)
 
+        # One Stack reused for this table's whole lifetime - see
+        # _build_header_with_resize_overlay() for why it must not be
+        # rebuilt per drag tick (issue #50).
+        self._header_stack: ft.Stack | None = None
+
         if not is_inside_form:
             self.get_data()
 
@@ -333,7 +338,35 @@ class Table:
         # fresh every call - see get_radio_group_overlay()'s docstring for
         # why it doesn't need the same caching the handles do).
         overlay = self.columns.get_resize_overlay() + self.columns.get_radio_group_overlay()
-        return ft.Stack([header_control, *overlay]) if overlay else header_control
+        if not overlay:
+            return header_control
+
+        # Reuse ONE Stack for this table's lifetime and swap its children
+        # in place, instead of returning a brand-new Stack on every call
+        # (issue #50).
+        #
+        # A drag tick rebuilds the header, and returning a fresh Stack each
+        # time meant the resize handles - though themselves cached by
+        # get_resize_overlay() - were re-parented into a brand-new Stack on
+        # the client every tick. Live instrumentation confirmed that was
+        # really happening: the Stack's control id changed on every single
+        # tick of a drag (1814 -> 2391 -> 2553 -> 2703 ...), so the widget
+        # carrying the in-flight pan gesture was being re-created
+        # underneath the user's pointer. Caching the handles alone can't
+        # prevent that, because a widget's place in the tree is part of its
+        # client-side identity, not just its id. With the Stack stable,
+        # only controls[0] (the header's DataTable) changes per tick.
+        #
+        # HONEST SCOPE: this removes a real and confirmed source of churn
+        # during a gesture, but it was NOT possible to reproduce the
+        # reported second-drag failure here - synthetic/CDP drags always
+        # succeeded, before and after. Do not treat this as a proven fix
+        # for that symptom; see AGENTS.md's issue #50 row.
+        if self._header_stack is None:
+            self._header_stack = ft.Stack([header_control, *overlay])
+        else:
+            self._header_stack.controls = [header_control, *overlay]
+        return self._header_stack
 
     def _handle_scroll_end(self):
         """Handle scroll to bottom - load next page"""

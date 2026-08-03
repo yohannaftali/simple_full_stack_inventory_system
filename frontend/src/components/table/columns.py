@@ -791,8 +791,9 @@ class TableColumns:
             self._drag_last_x = current_x
 
         def _on_pan_end(e, i=index):
-            if self._drag_index == i:
-                self.manually_resized = True
+            # `manually_resized` is set in handle_drag() where the widths
+            # actually change - see there for why it can't rely on this
+            # event being delivered.
             self._drag_index = None
             self._drag_last_x = None
             if self._highlighted_index == i:
@@ -853,6 +854,15 @@ class TableColumns:
 
         self.widths[index] = int(new_w)
         self.widths[index + 1] = int(new_w_next)
+        # Mark the manual override HERE, the moment widths actually change,
+        # rather than only in `_on_pan_end` (issue #50). A drag tick rebuilds
+        # the header, and if that ever costs us the closing `on_pan_end`
+        # event, the flag would never be set - and the next `load()` would
+        # silently recompute auto-fit widths from content, discarding the
+        # resize the user just made. Setting it on the change itself is also
+        # simply more truthful: these widths are manual from this point on,
+        # whether or not the gesture reports its own end.
+        self.manually_resized = True
         self._reposition_handles()
         if self.on_resize_commit:
             self.on_resize_commit(False)
