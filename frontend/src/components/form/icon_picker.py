@@ -1,5 +1,10 @@
 import flet as ft
 
+from components.form.input import (
+    FIELD_BORDER_RADIUS,
+    HELPER_TEXT_STYLE,
+    field_content_padding,
+)
 from utils.icon import get_icon
 
 
@@ -58,8 +63,11 @@ class IconPickerForm:
         self.hint_text = field.get("hint_text", "e.g. chevron_right")
         self.default_icon = field.get("icon") or ft.Icons.APPS
         self.autofocus = field.get("autofocus", False)
-        self.value_size = field.get("value_size", 16)
-        self.label_size = field.get("label_size", 14)
+        # Same defaults as every other field type (issue #79) - these were
+        # 16/14 here, which alone made this field render taller than its
+        # siblings now that heights are natural rather than forced.
+        self.value_size = field.get("value_size", 14)
+        self.label_size = field.get("label_size", 13)
         self.value_color = field.get("color", ft.Colors.ON_SURFACE)
         self.label_color = field.get("color", ft.Colors.ON_SECONDARY_CONTAINER)
         self.border_color = field.get("border_color", ft.Colors.ON_SURFACE)
@@ -67,6 +75,10 @@ class IconPickerForm:
         self.bgcolor = field.get("bgcolor", ft.Colors.TRANSPARENT)
 
         self.value: str = field.get("default", "") or ""
+        # Always present, even blank (issue #78) - see input.py's own
+        # HELPER_TEXT_STYLE notes for why every field reserves this
+        # space unconditionally.
+        self.helper_text = field.get("helper_text", "")
         self.field: ft.TextField | None = None
         self.prefix_icon: ft.Icon | None = None
 
@@ -78,7 +90,14 @@ class IconPickerForm:
             value=self.value,
             prefix_icon=self.prefix_icon,
             suffix_icon=ft.Icons.ARROW_DROP_DOWN,
-            border_radius=10,
+            # No explicit `height` (issue #79) - every field type shares the
+            # same border, content padding, text size and an always-present
+            # helper line, so they all size to the same height naturally.
+            helper=self.helper_text,
+            helper_style=HELPER_TEXT_STYLE,
+            content_padding=field_content_padding(True),
+            border_radius=FIELD_BORDER_RADIUS,
+            border=ft.InputBorder.OUTLINE,
             border_color=self.border_color,
             autofocus=self.autofocus,
             text_size=self.value_size,
@@ -126,7 +145,7 @@ class IconPickerForm:
         ).open()
 
     def _safe_update(self, control) -> None:
-        """Mirrors DateForm/SelectForm's own `_safe_update()`: `Control.update()`
+        """Mirrors DateForm's own `_safe_update()`: `Control.update()`
         raises `RuntimeError` (Flet 0.85+) if the control isn't attached to
         the page's control tree yet (e.g. `set_value()` called from
         `Form.load()` before `Form.build()` has ever run)."""

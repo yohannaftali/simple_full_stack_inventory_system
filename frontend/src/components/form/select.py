@@ -1,5 +1,11 @@
 import flet as ft
 
+from components.form.input import (
+    FIELD_BORDER_RADIUS,
+    HELPER_TEXT_LINE_HEIGHT,
+    HELPER_TEXT_STYLE,
+    field_content_padding,
+)
 from components.scan_input import ScanInput
 from components.table.menu import resolve_option_value
 from utils.http_client import HttpClient
@@ -10,28 +16,66 @@ from utils.http_client import HttpClient
 # ...) never dumps its entire option list open at once. Deliberately not a
 # hard cap on the *option list itself* with a "show more" indicator (issue
 # #26's original design) - that requires rebuilding Dropdown.options on
-# every keystroke, which repeatedly broke Flutter's DropdownMenu focus
-# (see AGENTS.md's "Capped/'show more' select filtering" entry for the full
-# history). Flutter's own `enable_filter` does the actual typing-driven
-# search entirely client-side (case-insensitive substring match against
-# each option's full "CODE - Name" label, so it already matches code or
-# name, anywhere in the string) with zero server round-trip, which is what
-# makes it reliable.
+# every keystroke, which repeatedly broke Flutter's DropdownMenu focus.
+# Flutter's own `enable_filter` does the actual typing-driven search
+# entirely client-side (case-insensitive substring match against each
+# option's full "CODE - Name" label, so it already matches code or name,
+# anywhere in the string) with zero server round-trip.
 _MENU_VISIBLE_ROWS = 5
 _MENU_ROW_HEIGHT = 48
 
-# The scan button lives inside the field's decoration box, so it must be
-# sized explicitly - an unconstrained IconButton there carries Flutter's
-# ~48dp tap target and visibly grows the field's height (the same ballooning
-# a Control-typed suffix_icon caused on TextField, issue #52).
-SCAN_BUTTON_SIZE = 24
-SCAN_ICON_SIZE = 18
-# Gap between the scan button and the open/close arrow sharing the trailing
-# slot, so the two don't read as one control.
+# The scan button sits next to the Dropdown, so it must be sized explicitly
+# - an unconstrained IconButton carries Flutter's ~48dp tap target and
+# visibly grows the row's height (issue #52).
+SCAN_BUTTON_SIZE = 32
+SCAN_ICON_SIZE = 20
 SCAN_TRAILING_SPACING = 6
 
 
 class SelectForm:
+    """`"select"`-type form field: an `ft.Dropdown` with options fetched
+    from `C_{module}/call_{name}_select`.
+
+    Deliberately a thin wrapper around a plain, stock `ft.Dropdown`. Every
+    piece of custom machinery this class used to carry has been removed
+    after each was traced to a bug it was causing rather than fixing:
+
+    * `_build_dropdown()` - rebuilt the whole control on every selection.
+    * `_on_select()` - its rebuild never fixed issue #71.
+    * a wrapping `ft.Container` - only ever existed to carry a fill colour
+      that outlined fields don't have.
+    * `schedule_notch_refresh()`/`_notch_refresh()` - a delayed post-mount
+      `update()` "nudge" for a clipping bug whose real cause was
+      too-small `content_padding` (see `input.py`).
+    * `_on_focus()`/`_on_blur()` - **the actual cause of issue #71**, see
+      below.
+    * `refresh_with_values()`/`depends_on`/`depends_param` - a cascading
+      select mechanism that no screen in this app has ever used.
+
+    **Issue #71 - first pick via the text region did nothing.** Opening
+    this field by tapping its text-input region (rather than the trailing
+    arrow) and picking an option used to do nothing on the first attempt;
+    a second pick worked, and opening via the arrow was never affected.
+    Live instrumentation proved `on_select` never fired on the failing
+    click, which was (wrongly) read as an unfixable upstream Flutter
+    limitation.
+
+    The real cause was this class's own `_on_focus` handler. Tapping the
+    text region requests focus for the text field (that is what
+    `editable=True` means, and it is what makes type-to-filter possible at
+    all, issue #26), so `on_focus` fired, mutated `label_style` and called
+    `update()` - pushing a control patch to the client *while the menu
+    overlay was still opening*. The client rebuilt the Dropdown, the
+    half-built overlay went with it, and the pending tap was lost. Tapping
+    the trailing arrow never focuses the text field, so no patch was sent
+    and that path always worked - and the second attempt worked because
+    the field was already focused, so `on_focus` didn't fire again.
+
+    Removing the handler removes the patch, and nothing is lost: Flutter
+    already colours a focused field's floating label from the M3 theme via
+    `floatingLabelStyle`, so leaving `label_style` without an explicit
+    colour gets the same effect natively, with no round-trip.
+    """
 
     def __init__(self, page: ft.Page, parent, field: dict, endpoint: str | None = None, custom_param: dict | None = None):
         self.page = page
@@ -45,122 +89,80 @@ class SelectForm:
         self.autofocus = field.get("autofocus", False)
         self.value_size = field.get("value_size", 14)
         self.label_size = field.get("label_size", 13)
-        # M3 filled text field color roles - see components/form/input.py's
-        # class docstring for the full spec-correction rationale (issue #53
-        # follow-up). Fill/text are constant; only the label turns PRIMARY
-        # on focus. `ft.Dropdown` has no `focused_bgcolor`/live-swappable
-        # fill of its own (its `bgcolor` prop colors the *popup menu*, not
-        # the field), so the constant fill is still applied via a wrapping
-        # `ft.Container` (see `build()`) - the Dropdown itself renders
-        # transparent (`fill_color=TRANSPARENT`) so the wrapper's color
-        # shows through; only `label_style` needs a live on_focus/on_blur
-        # swap now.
+        # M3 outlined colour roles (issue #79). No container fill, a full
+        # border box. The focused label/border colours are left to
+        # Flutter's own theme rather than swapped from Python - see the
+        # class docstring on issue #71 for why that matters here.
         self.value_color = field.get("color", ft.Colors.ON_SURFACE)
         self.label_color = field.get("label_color", ft.Colors.ON_SURFACE_VARIANT)
-        self.focused_label_color = field.get("focused_label_color", ft.Colors.PRIMARY)
         self.border_color = field.get("border_color", ft.Colors.ON_SURFACE_VARIANT)
         self.focused_border_color = field.get("focused_border_color", ft.Colors.PRIMARY)
-        self.leading_icon = None
-        self.filled = field.get("filled", True)
-        self.bgcolor = field.get("bgcolor", ft.Colors.SURFACE_CONTAINER_HIGHEST)
-        self.container: ft.Container | None = None
+        self.leading_icon = (
+            ft.Icon(icon=self.icon, color=ft.Colors.ON_SURFACE_VARIANT)
+            if self.icon is not None
+            else None
+        )
+        # Outlined fields have no container fill by default (issue #79) -
+        # still overridable per-field for a rare caller that wants one.
+        self.filled = field.get("filled", False)
+        self.bgcolor = field.get("bgcolor")
         self.enable_filter = field.get("enable_filter", True)
         self.editable = field.get("editable", True)
-        # Opt-in barcode/QR scan button inside this select (issue #52) - off
-        # unless the field dict says `"qr": True`, so every existing select
-        # in the app is untouched.
+        # `enable_search` hands focus to a highlighted menu item, which is
+        # a second thing competing for focus with the text field. Off by
+        # default; it only controls "auto-highlight the entry matching what
+        # is typed", NOT the type-to-filter narrowing (`enable_filter`).
+        self.enable_search = field.get("enable_search", False)
+        # Always present, even blank - an empty string still makes Flutter
+        # reserve the supporting-text line, so every field type ends up the
+        # same height without anyone forcing an explicit height.
+        self.helper_text = field.get("helper_text", "")
+        # Opt-in barcode/QR scan button beside this select (issue #52).
         self.qr = field.get("qr", False)
         self.scan_input: ScanInput | None = None
-        self.select = None
+        self.select: ft.Dropdown | None = None
         self.data: list = []
         self.options: list = []
         self.custom_param: dict | None = custom_param
         self.endpoint = endpoint if endpoint is not None else f"C_{self.module}/call_{self.name}_select"
-        # depends_on: field name that this select depends on
-        # When the parent field changes, this select will refresh with new params
-        self.depends_on = field.get("depends_on", None)
-        # depends_param: the parameter name to send with the parent field's value
-        self.depends_param = field.get("depends_param", self.depends_on)
 
-    def _build_dropdown(self, value=None, text=None, options=None) -> ft.Dropdown:
-        """Construct a brand-new `ft.Dropdown` control instance.
-
-        Factored out of `build()` so `_on_select()` can rebuild the control
-        from scratch instead of patching the existing instance's `.text` -
-        see `_on_select()`'s own comment for why a patch alone isn't
-        reliable here (confirmed via live server-log instrumentation,
-        2026-07-30: the server-side `.text`/`.value` were already correct
-        before the patch, yet the browser still didn't repaint - a client
-        patch-application bug, not a value bug). This mirrors the same
-        "force a full control rebuild instead of trusting an in-place
-        patch" fix this app already relies on elsewhere (`DataRow.color`,
-        header rebuilds for the resize/sort-icon fixes).
-        """
-        return ft.Dropdown(
+    def build(self):
+        self.select = ft.Dropdown(
             label=self.label,
             hint_text=self.hint_text,
             hint_style=ft.TextStyle(color=ft.Colors.ON_SURFACE_VARIANT),
             leading_icon=self.leading_icon,
-            border_radius=0,
-            border=ft.InputBorder.UNDERLINE,
+            helper_text=self.helper_text,
+            helper_style=HELPER_TEXT_STYLE,
+            border_radius=FIELD_BORDER_RADIUS,
+            border=ft.InputBorder.OUTLINE,
             border_color=self.border_color,
             focused_border_color=self.focused_border_color,
             autofocus=self.autofocus,
             text_size=self.value_size,
             color=self.value_color,
-            content_padding=ft.Padding.only(
-                left=12 if self.icon else 16, right=16, top=8, bottom=8
-            ),
-            label_style=ft.TextStyle(
-                size=self.label_size,
-                color=self.label_color,
-            ),
+            content_padding=field_content_padding(self.icon is not None),
+            label_style=ft.TextStyle(size=self.label_size, color=self.label_color),
             filled=self.filled,
-            fill_color=ft.Colors.TRANSPARENT,
+            fill_color=self.bgcolor,
             enable_filter=self.enable_filter,
+            enable_search=self.enable_search,
             editable=self.editable,
             menu_height=_MENU_VISIBLE_ROWS * _MENU_ROW_HEIGHT,
             expand=True,
-            options=options if options is not None else [],
-            value=value,
-            text=text,
-            on_focus=self._on_focus,
-            on_blur=self._on_blur,
-            on_select=self._on_select,
-        )
-
-    def build(self):
-        self.leading_icon = (
-            ft.Icon(
-                icon=self.icon,
-                color=ft.Colors.ON_SURFACE_VARIANT) if self.icon is not None else None
-        )
-        self.select = self._build_dropdown()
-        self.container = ft.Container(
-            bgcolor=self.bgcolor,
-            border_radius=0,
-            padding=0,
-            expand=True,
+            options=[],
         )
         if not self.qr:
-            self.container.content = self.select
-            return self.container
+            return self.select
 
-        # The scan button used to sit INSIDE the field's own trailing_icon
-        # slot, next to the open/close arrow. That put both controls inside
-        # the Dropdown's own decoration box, and Flutter's MouseRegion-based
-        # hover detection doesn't stop at a nested child's bounds the way
-        # tap/click hit-testing does - hovering *anywhere* in the decoration
-        # (the label, blank space, either icon) lit up the whole field's own
-        # hover overlay, which made the scan button and the arrow look like
-        # they shared one hover state (reported live, 2026-07-28). The two
-        # can only be made to look and behave fully independently by taking
-        # the scan button out of the Dropdown's decoration entirely - a
-        # sibling control next to it, not a child inside it - so its own
-        # IconButton hover/ripple is the only thing that ever lights up when
-        # hovering it, and the Dropdown's own field-level hover is the only
-        # thing that lights up for the rest of the field (label, arrow,
-        # blank space), each independent of the other.
+        # The scan button is a SIBLING of the Dropdown, not a child of its
+        # decoration. It used to live inside the Dropdown's own
+        # `trailing_icon` slot, but Flutter's MouseRegion-based hover
+        # detection doesn't stop at a nested child's bounds the way tap
+        # hit-testing does - hovering anywhere in the decoration lit up the
+        # whole field's hover overlay, making the scan button and the
+        # dropdown arrow look like they shared one hover state (issue #52
+        # follow-up). As siblings, each lights up independently.
         self.scan_input = ScanInput(
             page=self.page,
             on_scan=self.apply_scanned_code,
@@ -170,97 +172,23 @@ class SelectForm:
             width=SCAN_BUTTON_SIZE,
             height=SCAN_BUTTON_SIZE,
         )
-        # The scan button is a sibling control, not part of the Dropdown's
-        # own decoration (see the class-level docstring for why), so it
-        # doesn't inherit the Dropdown's own right-side content_padding -
-        # without an explicit right inset here it sat flush against the
-        # container's true right edge, unlike every other trailing icon in
-        # the app (the QR button's own trailing arrow, the table search
-        # bar's icons, etc.), which all sit inside a padded decoration box.
-        self.container.padding = ft.Padding.only(right=8)
-        self.container.content = ft.Row(
-            controls=[self.select, self.scan_input.build()],
+        return ft.Row(
+            controls=[
+                self.select,
+                # The Dropdown's full height is its input box PLUS the
+                # reserved helper-text line underneath, so centring the
+                # button against the whole thing leaves it sitting visibly
+                # low. A bottom margin of the helper line's height shifts
+                # it up by half that, landing it on the box's own centre.
+                ft.Container(
+                    content=self.scan_input.build(),
+                    margin=ft.Margin.only(bottom=HELPER_TEXT_LINE_HEIGHT),
+                ),
+            ],
             spacing=SCAN_TRAILING_SPACING,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
             expand=True,
         )
-        return self.container
-
-    def _on_focus(self, e=None) -> None:
-        self.select.label_style = ft.TextStyle(size=self.label_size, color=self.focused_label_color)
-        self._safe_container_update()
-
-    def _on_blur(self, e=None) -> None:
-        self.select.label_style = ft.TextStyle(size=self.label_size, color=self.label_color)
-        self._safe_container_update()
-
-    def _on_select(self, e=None) -> None:
-        # Real, user-reported bug (issue #71): opening this field by tapping
-        # directly in its text-input region (vs. the trailing arrow) and
-        # picking the FIRST option leaves the displayed text unchanged -
-        # picking again (second attempt) works correctly. Opening via the
-        # arrow never has this problem.
-        #
-        # ROOT CAUSE, confirmed 2026-07-30 via live server-log instrumentation
-        # against the real containerized app (not automation - CDP-driven
-        # synthetic clicks could never reproduce this bug at all, only the
-        # user's real physical clicks could): on the failing first click,
-        # this handler NEVER FIRES - zero log output, verified with a clean
-        # `podman logs --since <now> -f` stream (an earlier round that
-        # appeared to show it firing/succeeding was contaminated by `podman
-        # logs -f`'s default behavior of replaying a container's ENTIRE
-        # historical log on every new invocation, not fresh output - a
-        # methodology mistake in this investigation, not evidence about the
-        # app). This means the click event is never dispatched from the
-        # Flutter client to the server at all on this interaction path - no
-        # Python code here, however written, can fix a callback that is
-        # never invoked.
-        #
-        # This matches a known class of real Flutter bug: when a
-        # `DropdownMenu`-style widget's text field gains keyboard focus as
-        # part of opening (exactly what `editable=True` does, needed for the
-        # type-to-filter feature from issue #26), the very first tap
-        # afterward is consumed by Flutter's own focus-settling handshake
-        # instead of registering as "select this item" - the second tap
-        # works because focus has already settled. Opening via the arrow
-        # never gives the text field focus, so it never hits this trap.
-        # This is a genuine upstream Flutter/Flet limitation, not a bug in
-        # this app's Python code - per explicit user decision (2026-07-30),
-        # left as a documented known limitation rather than removing
-        # `editable`/`enable_filter` (which would trade this bug away for
-        # losing type-to-filter everywhere). See AGENTS.md issue #71 for the
-        # full investigation history.
-        #
-        # This handler still corrects the display on every click that DOES
-        # reach the server (e.g. the second, working pick) - rebuilding a
-        # brand-new Dropdown control rather than patching the existing
-        # instance's `.text`, since in-place patching was separately proven
-        # unreliable on this widget (also confirmed via the same
-        # instrumentation): the server-side value/text were already correct
-        # before a patch was even applied, yet the browser didn't repaint -
-        # the same "don't trust an in-place patch, force a rebuild" lesson
-        # this app already learned from `DataRow.color` and the header
-        # resize/sort-icon fixes.
-        matched = next(
-            (opt for opt in self.select.options if opt.key == self.select.value),
-            None,
-        )
-        if matched is None:
-            return
-        self.select = self._build_dropdown(
-            value=matched.key, text=matched.text, options=self.select.options
-        )
-        if not self.qr:
-            self.container.content = self.select
-        else:
-            self.container.content.controls[0] = self.select
-        self._safe_container_update()
-
-    def _safe_container_update(self) -> None:
-        try:
-            self.container.update()
-        except RuntimeError:
-            pass
 
     def apply_scanned_code(self, code: str) -> None:
         """Select the option a scanned code refers to (issue #52).
@@ -279,7 +207,7 @@ class SelectForm:
             return
 
         self.select.value = resolved
-        self._safe_update()
+        self.select.update()
 
     def _show_error(self, message: str) -> None:
         """Surface an unmatched scan instead of silently doing nothing."""
@@ -289,16 +217,12 @@ class SelectForm:
         else:
             print(message)
 
-    def get_data(self, extra_params: dict = None):
+    def get_data(self):
         client = HttpClient(self.page)
 
         params = self.custom_param.copy() if self.custom_param else {}
-        if hasattr(self.parent, 'record_id') and self.parent.record_id:
-            params['record_id'] = self.parent.record_id
-
-        # Add extra params (e.g., from depends_on field)
-        if extra_params:
-            params.update(extra_params)
+        if getattr(self.parent, "record_id", None):
+            params["record_id"] = self.parent.record_id
 
         response = client.get(self.endpoint, params if params else None)
         if isinstance(response, dict) and "error" in response:
@@ -308,81 +232,18 @@ class SelectForm:
         if isinstance(response, list):
             self.data = response
 
-    def rebuild(self, extra_params: dict = None):
-        # If this select depends on another field and no parent value provided yet,
-        # but only if check strict dependency (optional logic, for now we assume strict if params missing)
-        # Note: We now check if ALL required dependencies are present in extra_params if we want to be strict
-        # For simple cascading, we just check if extra_params is provided at all
+    def rebuild(self):
+        """Fetch this select's options and load them into the control."""
+        self.get_data()
 
-        if self.depends_on and not extra_params:
-            self.data = []
-            if self.select:
-                self.select.options = []
+        if not isinstance(self.select, ft.Dropdown) or not isinstance(self.data, list):
             return
 
-        self.get_data(extra_params)
-
-        if not isinstance(self.select, ft.Dropdown):
-            return
-
-        if not isinstance(self.data, list):
-            return
-
-        self.options = []
-        for item in self.data:
-            option_value = item.get("value", "")
-            option_label = item.get("label", option_value)
-            self.options.append(ft.DropdownOption(
-                key=option_value, text=option_label))
+        self.options = [
+            ft.DropdownOption(
+                key=item.get("value", ""),
+                text=item.get("label", item.get("value", "")),
+            )
+            for item in self.data
+        ]
         self.select.options = self.options
-
-    def refresh_with_values(self, form_values: dict):
-        """Refresh options using current form values"""
-        # Clear current value and options
-        if self.select:
-            self.select.value = None
-            self.select.options = []
-
-        # If depends_on is set, check if the dependent value is present
-        # Support single string depends_on for now, or we can logic check
-        if self.depends_on:
-            # depends_on can be a single field or list of fields (future proofing)
-            deps = [self.depends_on] if isinstance(self.depends_on, str) else self.depends_on
-
-            # Check if primary dependency is present in form_values
-            # and verify it has a value
-            missing_dep = False
-            for dep in deps:
-                if not form_values.get(dep):
-                    missing_dep = True
-                    break
-
-            if missing_dep:
-                # Dependency missing or empty, clear options and return
-                self.data = []
-                if self.select:
-                    self._safe_update()
-                return
-
-        # Load options with full form values as params
-        # This allows backend to pick whatever params it needs
-        self.rebuild(form_values)
-
-        # Update the UI
-        if self.select:
-            self._safe_update()
-
-    def _safe_update(self):
-        """Update the select control if it's already mounted on the page.
-
-        refresh_with_values() can run during the initial Form.build() (e.g.
-        an edit screen pre-populating a cascading select), before the
-        control tree has been appended to page.views. Control.update()
-        raises RuntimeError in that case since Flet 0.85 - the eventual
-        page.update() once the view is mounted will render the values
-        already assigned above, so a failed early update is safe to skip.
-        """
-        try:
-            self.select.update()
-        except RuntimeError:
-            pass

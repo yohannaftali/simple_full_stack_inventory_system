@@ -2,6 +2,11 @@ import datetime
 
 import flet as ft
 
+from components.form.input import (
+    FIELD_BORDER_RADIUS,
+    HELPER_TEXT_STYLE,
+    field_content_padding,
+)
 from utils.formatting import format_date
 
 
@@ -29,19 +34,21 @@ class DateForm:
         self.autofocus = field.get("autofocus", False)
         self.value_size = field.get("value_size", 14)
         self.label_size = field.get("label_size", 13)
-        # M3 filled text field color roles - see components/form/input.py's
-        # class docstring for the full spec-correction rationale (issue #53
-        # follow-up). Fill/text are constant; only the label turns PRIMARY
-        # on focus.
+        # M3 outlined colour roles - see components/form/input.py's class
+        # docstring (issue #79). No container fill; focused-state colouring
+        # is left to Flutter/M3 rather than swapped from Python.
         self.value_color = field.get("color", ft.Colors.ON_SURFACE)
         self.label_color = field.get("label_color", ft.Colors.ON_SURFACE_VARIANT)
-        self.focused_label_color = field.get("focused_label_color", ft.Colors.PRIMARY)
         self.border_color = field.get("border_color", ft.Colors.ON_SURFACE_VARIANT)
         self.focused_border_color = field.get("focused_border_color", ft.Colors.PRIMARY)
-        self.filled = field.get("filled", True)
-        self.bgcolor = field.get("bgcolor", ft.Colors.SURFACE_CONTAINER_HIGHEST)
+        self.filled = field.get("filled", False)
+        self.bgcolor = field.get("bgcolor")
         self.first_date = field.get("first_date", datetime.date(2000, 1, 1))
         self.last_date = field.get("last_date", datetime.date(2100, 12, 31))
+        # Assistive text stating the expected/displayed format (issue #78) -
+        # overridable per-field, defaulting to the exact format
+        # `utils/formatting.py::format_date()` renders ("%d %b %Y").
+        self.helper_text = field.get("helper_text", "Format: dd Mon yyyy")
 
         default = field.get("default")
         if default == "today":
@@ -66,8 +73,18 @@ class DateForm:
             value=format_date(self.value) if self.value else "",
             prefix_icon=prefix_icon,
             suffix_icon=ft.Icons.CALENDAR_MONTH,
-            border_radius=10,
-            border=ft.InputBorder.UNDERLINE,
+            # No explicit `height` (issue #79) - every field type shares the
+            # same border, content padding, text size and an always-present
+            # helper line, so they all size to the same height naturally.
+            #
+            # TextField (via FormFieldControl) names this property `helper`,
+            # not `helper_text` - unlike Dropdown, which still uses
+            # `helper_text`/`helper_style` (confirmed by the actual
+            # TypeError raised when this used `helper_text` here).
+            helper=self.helper_text,
+            helper_style=HELPER_TEXT_STYLE,
+            border_radius=FIELD_BORDER_RADIUS,
+            border=ft.InputBorder.OUTLINE,
             border_color=self.border_color,
             focused_border_color=self.focused_border_color,
             # The whole field opens the picker (on_click below), so the
@@ -82,7 +99,7 @@ class DateForm:
             text_size=self.value_size,
             read_only=True,
             color=self.value_color,
-            content_padding=ft.Padding.only(left=12, right=12, top=8, bottom=8),
+            content_padding=field_content_padding(self.icon is not None),
             label_style=ft.TextStyle(
                 size=self.label_size,
                 color=self.label_color,
@@ -93,18 +110,8 @@ class DateForm:
             # removal note.
             expand=True,
             on_click=self._open_picker,
-            on_focus=self._on_focus,
-            on_blur=self._on_blur,
         )
         return self.field
-
-    def _on_focus(self, e=None) -> None:
-        self.field.label_style = ft.TextStyle(size=self.label_size, color=self.focused_label_color)
-        self._safe_update()
-
-    def _on_blur(self, e=None) -> None:
-        self.field.label_style = ft.TextStyle(size=self.label_size, color=self.label_color)
-        self._safe_update()
 
     def get_value(self) -> str:
         """The raw ISO "YYYY-MM-DD" value, for Form.serialize()."""
@@ -179,9 +186,10 @@ class DateForm:
     def _safe_update(self):
         """Update the field if it's already mounted on the page.
 
-        Mirrors components/form/select.py's _safe_update(): Control.update()
-        raises RuntimeError (Flet 0.85+) if the control hasn't been attached
-        to the page's control tree yet.
+        `Control.update()` raises RuntimeError (Flet 0.85+) if the control
+        hasn't been attached to the page's control tree yet, which
+        `set_value()` can hit when called from `Form.load()` before
+        `Form.build()` has run.
         """
         try:
             self.field.update()

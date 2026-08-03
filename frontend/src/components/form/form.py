@@ -109,12 +109,26 @@ class Form:
         self.form_container = ft.Container(
             content=ft.Column(
                 controls=self.controls,
-                spacing=10,
+                # Standard M3 field-row spacing. Issue #78 originally
+                # widened this (and added bottom padding below) to make
+                # room for a field's helper/supporting text - superseded
+                # once every field type (input/select/date/label/
+                # icon_picker) started reserving that space itself via an
+                # always-present helper line (see components/form/input.py),
+                # so a plain, ordinary row gap is enough again regardless
+                # of which fields carry real helper text and which don't.
+                spacing=16,
+                # STRETCH (issue #79 fix), not `expand=True` on each row
+                # Container - each row now sizes to its own natural height
+                # (see that Container's own comment for why), so this
+                # Column's cross-axis stretch is what keeps every row at
+                # full form width instead.
+                horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
                 expand=True,
                 scroll=ft.ScrollMode.AUTO,
             ),
             expand=True,
-            padding=0,
+            padding=ft.Padding(top=0, right=0, bottom=16, left=0),
         )
 
         # After building, update any list/table components with their data
@@ -126,15 +140,6 @@ class Form:
 
         for element in self.select.values():
             element.rebuild()
-
-        # Set up cascading select dependencies
-        self.setup_cascading_selects()
-
-        # Trigger dependent selects with current form values in case form was pre-populated
-        form_data = self.serialize(self.fields)
-        for field_name, select_form in self.select.items():
-            if select_form.depends_on and form_data.get(select_form.depends_on):
-                select_form.refresh_with_values(form_data)
 
         return self.form_container
 
@@ -169,55 +174,6 @@ class Form:
             view.toolbar.right = []
         view.toolbar.right.append(self.bulk_menu.build())
         self._bulk_menu_attached = True
-
-    def setup_cascading_selects(self):
-        """Set up on_change handlers for parent fields that have dependent selects"""
-
-        # Find all select fields that have depends_on
-        for field_name, select_form in self.select.items():
-            depends_on = select_form.depends_on
-
-            if not depends_on:
-                continue
-
-            # Normalize to list
-            parent_fields = [depends_on] if isinstance(depends_on, str) else depends_on
-
-            for parent_field in parent_fields:
-                # Check if parent field is a select
-                if parent_field not in self.select:
-                    continue
-
-                parent_select_form = self.select[parent_field]
-
-                # Create on_change handler for parent
-                def create_handler(child_select):
-                    def handler(e, child=child_select):  # Capture by value using default param
-                        # Only serialize simple values to avoid overhead/recursion
-                        # We need current values of all fields to pass to the child
-                        form_data = self.serialize(self.fields)
-
-                        # Update the child with all form values
-                        child.refresh_with_values(form_data)
-
-                        # Also handle linked fields update if any
-                        # Note: we don't need to manually call link handler here because we chain it below
-                        pass
-
-                    return handler
-
-                # Set on_select on parent dropdown (Flet 0.85 renamed
-                # Dropdown.on_change to on_select)
-                if parent_select_form.select:
-                    # Store original handler if exists
-                    original_handler = parent_select_form.select.on_select
-
-                    def chained_handler(e, child_sel=select_form):  # Capture by value
-                        if original_handler:
-                            original_handler(e)
-                        create_handler(child_sel)(e)
-
-                    parent_select_form.select.on_select = chained_handler
 
 
     def build_elements(self):
@@ -317,9 +273,24 @@ class Form:
                 self.index.append(field_name)
 
                 # wrap control in a responsive column and add to the row
+                #
+                # horizontal_alignment=STRETCH is required for Dropdown
+                # fields specifically: unlike ft.TextField (which always
+                # fills the max width its parent offers, regardless of the
+                # Column's own cross-axis alignment), Flet's Dropdown wraps
+                # Flutter's M3 DropdownMenu widget, which sizes itself to
+                # its own content/menu width and ignores `expand=True`
+                # here since this Column's main axis is vertical, not
+                # horizontal - `expand` only affects a control's main-axis
+                # size within its parent Row/Column. STRETCH forces every
+                # field control (input or select) to fill this Column's
+                # full width, which is what was rendering selects narrower
+                # than inputs. Does not affect field height - unrelated to
+                # the earlier field-height mismatch fix (issue #76).
                 row_elements.append(
                     ft.Column(
                         col=field_col,
+                        horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
                         controls=[self.elements[field_name]]
                         if self.elements[field_name] is not None
                         else [],
@@ -332,7 +303,30 @@ class Form:
                         controls=row_elements,
                         run_spacing={"xs": 10},
                     ),
-                    expand=True,
+                    # No `expand=True` here (issue #79 fix) - this Container
+                    # sits inside build()'s outer Column, which scrolls
+                    # (scroll=ScrollMode.AUTO). A scrollable axis has no
+                    # fixed remaining space for a flex child to "expand"
+                    # into, so every row was being squeezed to a height
+                    # allocation shorter than its own content needed -
+                    # tolerated invisibly by ft.TextField (which degrades
+                    # gracefully under a few px of shortfall) but visibly
+                    # clipping ft.Dropdown's outlined floating label
+                    # (confirmed live: every select field past the form's
+                    # first row had its label's top sliced off by the
+                    # border stroke, while every input field and the
+                    # first-row select were unaffected). Each row now sizes
+                    # to its own natural/intrinsic height instead.
+                    #
+                    # NOTE: adding top padding here was tried and confirmed
+                    # NOT to fix a related follow-up report (a select's
+                    # label still sliced by its own border stroke even with
+                    # 8px of row padding) - the clipping happens INSIDE the
+                    # field's own box (the OutlineInputBorder's label notch
+                    # not being cut correctly), not from an ancestor
+                    # container's bounds. Do not re-attempt a
+                    # padding/spacing fix for that symptom; see
+                    # components/form/select.py's own notes instead.
                     padding=ft.Padding(
                         left=self.padding_row, right=self.padding_row, top=0, bottom=0
                     ),
@@ -452,12 +446,6 @@ class Form:
                     print(f"list field name {field_name}")
                     if isinstance(list_data, list):
                         self.load_list(field_name, list_data)
-
-        # After loading all form fields, trigger dependent selects refresh
-        form_data = self.serialize(self.fields)
-        for field_name, select_form in self.select.items():
-            if select_form.depends_on and form_data.get(select_form.depends_on):
-                select_form.refresh_with_values(form_data)
 
     def load_table(self, field_name: str, data: list) -> None:
         """Populate table field with data

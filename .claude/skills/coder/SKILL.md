@@ -144,7 +144,18 @@ Implement following `AGENTS.md` conventions strictly, in particular:
   `ALTER TABLE` (new table, new/changed/dropped column, index, FK, etc.)
   needed for this fix **must be added to `db_migration.md`** in the same
   change, with the SQL and a note on which model/feature needs it.
+- **Flet workarounds (issues #71/#79, 2026-08-03):** before adding any
+  custom rebuild/refresh/nudge/patch method around a stock Flet control,
+  isolate the real root cause with evidence first - see AGENTS.md's
+  "Working Principle - Think Twice Before Workarounds on Standard Flet
+  Components". Never stack a second workaround on a symptom that keeps
+  moving around; that means the earlier fix addressed the wrong layer -
+  stop and re-diagnose instead.
 - No comments unless explaining non-obvious WHY. No unrelated refactors.
+
+<!-- learned: 2026-08-03 - require root-cause diagnosis before any Flet
+control workaround, per AGENTS.md's Working Principle section
+(issues #71/#79) -->
 
 Work through the tasks from Step 5, marking each done in `TodoWrite` as
 completed.

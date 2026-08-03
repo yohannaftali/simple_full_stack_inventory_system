@@ -528,6 +528,12 @@ class TableRows:
                     dense=True,
                     content_padding=ft.Padding.all(0),
                     enable_filter=enable_filter,
+                    # See components/form/select.py's class docstring
+                    # (issue #71): `enable_search` hands focus to a
+                    # highlighted menu item, which fights the text field's
+                    # own focus-on-tap and eats the first selection click.
+                    # Turning it off costs no filtering behavior.
+                    enable_search=field.get("enable_search", False),
                     editable=field.get("editable", True) if enable_filter else False,
                     menu_height=_MENU_VISIBLE_ROWS * _MENU_ROW_HEIGHT,
                     width=width,

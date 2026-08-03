@@ -204,6 +204,20 @@ Map the scope to the component owner found in `AGENTS.md`.
 - Change history entry: [date if logged]
 ```
 
+**Frontend/Flet issues - workaround discipline (learned 2026-08-03, issues #71/#79):**
+
+When the issue's scope touches `frontend/src/components/` or any Flet
+control, add this Acceptance Criteria item before any other:
+
+- [ ] Root cause isolated with evidence (not a plausible guess) before
+      any custom rebuild/refresh/nudge/patch method is added around a
+      stock Flet control - see AGENTS.md's "Working Principle - Think
+      Twice Before Workarounds on Standard Flet Components"
+
+<!-- learned: 2026-08-03 - always flag workaround-discipline in
+frontend/Flet issue Acceptance Criteria, per AGENTS.md's Working
+Principle section (issues #71/#79) -->
+
 **Labels** — assign one primary label based on text classification:
 
 | Signal words | Label |

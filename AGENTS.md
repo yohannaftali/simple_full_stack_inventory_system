@@ -12,6 +12,65 @@
 > chronological detail into [`CHANGE_HISTORY.md`](CHANGE_HISTORY.md) and leave only
 > the current state here. See **Change Log Policy** at the bottom.
 
+## Working Principle — Think Twice Before Workarounds on Standard Flet Components
+
+**Every agent (Claude, coder, planner, or any other model touching
+`frontend/src/components/`) must read this before writing a custom
+rebuild/refresh/nudge/patch method around a stock Flet control.**
+
+This was learned the hard way on issues #71/#79 (2026-08-03): five
+consecutive "fixes" were layered on top of a stock `ft.Dropdown` -
+rebuilding the whole control on every selection, wrapping it in an extra
+`Container`, scheduling a delayed post-mount `update()` "nudge", removing
+`expand=True` from an unrelated row Container, adding extra row padding -
+each one masking a different symptom instead of addressing the cause,
+which is exactly why the bug kept looking "intermittent" and kept moving
+between fields. The real causes needed **zero** workarounds once found:
+(1) this app's own `on_focus` handler was pushing an `update()` patch that
+tore down a menu overlay while it was still opening, and (2) a hardcoded
+`content_padding` was less than half of what Flutter's own outlined-field
+default reserves for the floating label. See `CHANGE_HISTORY.md`'s
+2026-08-03 entries for the full investigation, including every wrong
+hypothesis tried along the way.
+
+**Rules, going forward:**
+
+1. **Diagnose before you patch.** Before adding any custom
+   rebuild/refresh/nudge method around a stock control, ask: "is this
+   compensating for a real, confirmed Flet limitation, or for a bug in
+   OUR OWN code (wrong property, wrong default, wrong value, wrong
+   timing)?" Check the control's actual property defaults and behavior
+   first - read the installed source under
+   `frontend/.venv/Lib/site-packages/flet/controls/`, check Flet's own
+   docs/examples, compare against a field type in this codebase that
+   *doesn't* show the bug (the working example is often the fastest way
+   to find what's different about the broken one - it found both #71 and
+   #79's real causes).
+2. **A workaround is only acceptable when**: the root cause has been
+   isolated with evidence (not just a plausible story), there genuinely
+   is no way to configure the stock control correctly to avoid it, and
+   the workaround is documented with the exact evidence for why it's
+   needed.
+3. **Never stack a second workaround on a first one** to "further fix" a
+   symptom that keeps moving around. That is the single clearest sign the
+   earlier fix addressed the wrong layer. Stop, revert the workaround,
+   and re-diagnose from a stock control instead of adding another layer.
+4. **Prefer configuration over code.** Check every property the control
+   already exposes before writing a custom Python-side patch/hook -
+   `enable_search`, `content_padding`, and plain `height` all turned out
+   to be the actual levers needed here, not new methods.
+5. **Flag every kept workaround as fragile against a Flet version
+   upgrade** (this app pins Flet, see issue #68's own upgrade history) -
+   a future bump may fix the underlying issue natively, at which point the
+   workaround becomes dead weight or actively wrong. Comment it as such
+   and re-check it during the next Flet version bump.
+
+When filing or picking up a frontend/Flet issue (`planner` and `coder`
+skills both), call this principle out explicitly - in the issue's own
+Acceptance Criteria when filing, and in the investigation notes when
+implementing - so it isn't silently reintroduced by a future pass that
+hasn't seen this section.
+
 ## Repository
 
 - Remote: https://github.com/yohannaftali/simple_full_stack_inventory_system.git
@@ -89,12 +148,14 @@
 | #67 | feat(infra): test/preview script for build.ps1/build.sh output | closed (fulfilled by run.ps1/run.sh's merged Preview section, not standalone test.ps1/test.sh) | 2026-07-30 |
 | #68 | chore(frontend): upgrade Flet 0.85.3 -> 0.86.4 | closed | 2026-07-30 |
 | #69 | feat(infra): add nginx reverse proxy in front of backend/frontend | closed (auto-closed via "Closes #69" commit trailer on push to main - implemented as an additive passthrough layer per user decision, not a replacement of existing ports - verified live end-to-end) | 2026-07-30 |
-| #71 | fix(frontend): select dropdown first click via text region doesn't populate value | open, root-caused as a genuine upstream Flutter/Flet limitation (not fixable in this app's Python code), documented and left open by explicit user decision | 2026-07-30 |
+| #71 | fix(frontend): select dropdown first click via text region doesn't populate value | **closed 2026-08-03** (confirmed working live by the user with real physical clicks) - **the earlier "unfixable upstream limitation" verdict was incomplete**: it is a Flutter behavior, but one triggered by a combination of two options *this app itself sets*, and disabling one resolves it at no cost. `editable=True` (Flutter's `requestFocusOnTap: true`, needed for issue #26's type-to-filter) makes the TEXT FIELD request focus when the text region is tapped, while `enable_search=True` (Flet's own default, never set explicitly here - which is why it was never suspected) makes Flutter compute a `currentHighlight` and hand focus to the HIGHLIGHTED MENU ITEM. Opening via the text region requests both at once and the first tap on an option is consumed resolving the contention instead of selecting - exactly matching the live finding that `on_select` never fired on the failing click, and exactly why opening via the trailing arrow (which never focuses the text field) always worked. Fixed by passing `enable_search=False` (per-field overridable) at both Dropdown construction sites (`components/form/select.py`, `components/table/rows.py`): Flutter then sets `currentHighlight` to null so no menu item grabs focus. Costs nothing - `enable_search` only auto-highlights the entry matching typed text, a different feature from `enable_filter`, which does the real type-to-filter narrowing and stays on. **That `enable_search` explanation was still not the cause** - the user reported the bug persisting and correctly suspected `SelectForm`'s own `_on_focus`/`_on_blur` handlers. ACTUAL root cause: `_on_focus` mutated `label_style` and called `update()`, pushing a control patch to the client *while the menu overlay was still opening*; the client rebuilt the Dropdown, the half-built overlay went with it, and the pending tap was lost - exactly why `on_select` never fired. The arrow path never focuses the text field so no patch was sent, and the second attempt worked because the field was already focused. Fixed by deleting `_on_focus`/`_on_blur` from `select.py` (and from `input.py`/`date.py`/`label.py` for consistency - same needless per-focus round-trip); Flutter/M3 already recolours the focused outline via `focused_border_color` and the floating label via its own theme, so nothing was lost. `enable_search=False` was kept as a second, genuine focus competitor that costs nothing. Also removed as confirmed dead code: `depends_on`/`depends_param`/`refresh_with_values()` + `Form.setup_cascading_selects()` and both `depends_on` loops (a cascading-select mechanism **no screen in this app has ever used**), and `SelectForm._safe_update()` with it. Also fixed: the QR scan button beside a select now carries a bottom margin of `HELPER_TEXT_LINE_HEIGHT` so it centres on the input BOX rather than on box-plus-helper-line. Verified live on `ap_master_user/edit/1` and `stock_in/item_new/1`; synthetic clicks never reproduced #71, so one real physical-click confirmation is still needed before closing | 2026-08-03 |
 | #73 | fix(frontend): multiple UI misalignment/rendering bugs on mobile web browsers (Safari/Chrome) | ready-for-review - findings #1/#3(nav buttons)/#6 fixed via `components/button.py` size_constraints; findings #2/#4/#5 root-caused to `page.adaptive = True` (removed) + a missing `text_vertical_align` on the footer's rows-per-page input (fixed) - not yet verified on a real mobile device | 2026-07-31 |
 | #74 | fix(frontend): APK crashes on launch - sys.stdout.reconfigure() unsupported by Android's _TeeWriter stdout | ready-for-review - fix landed, not yet verified on a real Android device | 2026-07-30 |
 | #75 | fix(infra): nginx LAN exposure unreliable under Podman/WSL - evaluate docker compose | open (LAN access confirmed working) - user confirmed live that `192.168.16.170:8001` opens successfully from a real iPad/iPhone; exact deciding factor (Hyper-V vs Podman/WSL2 NAT, vs simply having correct adapter/IP + healthy backend after two unrelated bugs were fixed) not fully isolated. Two new findings from this real-device test session filed separately as #76 (mobile touch-target sizing) and #77 (camera scan not working on real device) | 2026-07-31 |
-| #76 | fix(frontend): compact toolbar/search-bar/button/input sizing too small for real mobile touch use - restore M3 standard sizing | open | 2026-07-31 |
+| #76 | fix(frontend): compact toolbar/search-bar/button/input sizing too small for real mobile touch use - restore M3 standard sizing | ready-for-review - reverted every compact 32dp/24px sizing decision from #19/#21/#53/#63 back to M3's 48dp minimum app-wide (not a platform-conditional scheme); input/select height mismatch fixed via a shared explicit `FIELD_HEIGHT=48`; not yet verified live (container build blocked by an unrelated pre-existing Podman/Docker-Desktop registry config conflict on this dev machine) | 2026-08-03 |
 | #77 | fix(frontend): camera scan button does nothing on real iPad/iPhone - no permission prompt, no preview | ready-for-review - HTTPS fix confirmed working live (permission prompt + camera open now work); follow-up fixes also confirmed/applied: camera-switch button moved beside Gallery, `StackFit.EXPAND` fix for camera filling the full screen (confirmed working), Gallery-picker-does-nothing-from-camera-view fix (user-gesture-chain ordering, not yet confirmed). "Live scanning not supported, use Gallery" on Safari/iOS and camera-switch zoom flicker are documented as expected platform limitations, not bugs | 2026-07-31 |
+| #79 | feat(frontend): switch form fields from filled to outlined M3 style | **closed 2026-08-03** (confirmed working live by the user) - every field type (`input`/`select`/`date`/`label`/`icon_picker`) reverted from #53's filled design to `filled=False`/`border=OUTLINE`/no bgcolor, via a new shared `FIELD_BORDER_RADIUS` constant (replacing each file's own hardcoded radius, including select.py's now-obsolete square-corner special case); #78's height/spacing standardization and select.py's fill-color fix were preserved/adapted, not reverted - an unfilled outlined Dropdown structurally can't leak fill into its reserved helper-text slot; verified live on stock_in/new and ap_master_user/edit/1 with correct focused-border coloring and no regressions; follow-up (user-caught, same day) - select fields on rows after the first had their outlined floating label's top sliced off by the border stroke (text inputs unaffected) - root cause: each row's Container used `expand=True` inside `Form.build()`'s scrolling outer Column, an invalid combination (a scrollable axis has no fixed space to expand into) that squeezed every row's height allocation shorter than needed - TextField tolerated the shortfall invisibly, Dropdown's outlined label didn't - fixed by removing `expand=True` from each row Container (sizes to natural height now) and adding `horizontal_alignment=STRETCH` to the outer Column to keep full row width instead; verified live via zoomed screenshot on ap_master_user/edit/1 (labels now intact) with stock_out/edit/1 re-confirmed unaffected; ACTUAL root cause found on further user investigation (the layout fix above only shuffled which field showed the bug, confirmed live when stock_out/edit's previously-fine Department became clipped instead) - user pointed to Flet's own official Dropdown docs example, which never sets `height` on the control; direct A/B test confirmed setting `height=` on `ft.Dropdown` itself desyncs its OutlineInputBorder's label notch from the label's painted position for any pre-populated select, causing the border stroke to paint through the label - fixed by moving the fixed height off the Dropdown and onto its wrapping Container instead (external BoxConstraints, not the Dropdown's own internal height field), preserving #78's uniform-height guarantee without the notch desync; verified live on stock_out/edit/1 and ap_master_user/edit/1 with zoomed screenshots confirming every label fully intact; user then reported the same fields STILL clipped on their end despite this session's own repeated testing showing them correct - confirming the bug is a genuine intermittent client-side render race (not deterministic) that no static property/layout fix can reliably win, since every prior attempt only ever changed what's sent to the client at first mount - fixed via `SelectForm.schedule_notch_refresh()`, called from `Form.load()` right after a select's value is populated: schedules a short `asyncio.sleep(0.3)` then a genuine second `update()` patch on an already-mounted select, forcing Flutter to redo layout rather than trust first paint - explicitly documented as a workaround for an upstream race, not a root-cause fix; verified live across 3 consecutive fresh-tab reloads of ap_master_user/edit/1 with every label intact each time; **ALL OF THE ABOVE CLIPPING DIAGNOSES WERE WRONG** - four fixes in a row (row `expand=True` removal, extra row top padding, moving `height` onto a wrapping Container, and the delayed post-mount `update()` nudge) each only shuffled *which* field showed the bug, which is why it kept looking "intermittent"; the ACTUAL root cause is that `content_padding` vertical was hardcoded to `8` on every field type, while Flutter's `InputDecorator` reserves the floating label's room on an OUTLINE border out of that very padding (its own default for a non-dense outlined field is `20`) - at `8` the label had nowhere to go and the border stroke painted through it; invisible under #53's filled/UNDERLINE style, surfaced only when #79 switched to OUTLINE, and the clincher was that `icon_picker.py` - the one field type that never set `content_padding` at all - was also the one never reported as clipping. Fixed via a shared `field_content_padding()`/`FIELD_CONTENT_PADDING_VERTICAL=16`/`HELPER_TEXT_STYLE` in `input.py`, plus removing every explicit `height=` (fields now size naturally and uniformly from shared padding/border/text-size/helper line; `FIELD_HEIGHT`/`HELPER_TEXT_HEIGHT`/`FIELD_TOTAL_HEIGHT` deleted). Also stripped every accumulated workaround per user direction: `select.py` is now a thin wrapper over a stock `ft.Dropdown` - `_build_dropdown()`, `_on_select()`, the wrapping `Container`, `_safe_container_update()` and `schedule_notch_refresh()`/`_notch_refresh()` all deleted, `leading_icon` moved to `__init__`, `build()` the only construction path; `_safe_update()` was checked and KEPT (flet 0.86's `BaseControl.update()` genuinely raises `RuntimeError` when unmounted, which `refresh_with_values()` hits during initial `Form.build()`). Verified live on ap_master_user/edit/1 and stock_in/new | 2026-08-03 |
+| #78 | fix(frontend): standardize form field heights/spacing and add date assistive text | ready-for-review - DateForm/LabelForm/IconPickerForm now set the shared `FIELD_HEIGHT` (input.py/select.py already had it from #76); DateForm gained a "Format: dd Mon yyyy" assistive text (via `helper=`, not `helper_text=` - TextField's FormFieldControl names this property differently than Dropdown's); Form.build()'s row spacing widened 10->22 for the added helper text; follow-up fix (same day, user-caught against the real M3 spec) - `height=FIELD_HEIGHT` was squeezing DateForm's input box shorter to fit the helper text inside one fixed 48px, instead of the box staying full height with the control growing taller - fixed via `height=None if self.helper_text else FIELD_HEIGHT`; verified live via pixel-level screenshot comparison that Date's box now matches Supplier's box height exactly, with the helper text below it; second follow-up (user-caught on stock_out/edit/1) - the item-table Container below Form in stock_in/stock_out/stock_movement's edit.py bodies lives in a separate outer Column outside Form's own rows, so Form's row-spacing fix never reached the gap between the whole form and the item table - fixed by adding spacing=24 to all three edit screens' outer Column; verified live on both stock_out/edit/1 and stock_in/edit/1; third follow-up (user's own concern, preempting a future bug) - the row-spacing fixes only add room BETWEEN rows, so a future helper-text field ending up as a form's very LAST row with nothing appended after it would still have zero guaranteed clearance - fixed by giving Form.build()'s own form_container a permanent bottom padding (20px) so every Form guarantees its own clearance below the last row regardless of what follows it; fourth follow-up (user-requested standardization) - the spacing=24/height=400 fix had been copy-pasted as a literal into three edit.py files instead of centralized, and a 4th identical consumer (ap_master_user/edit.py's permission_table) had been missed and was still on the old unfixed default - fixed by adding `components/module/detail_body.py::build_form_with_detail()` as the one shared "Form + bounded-height sub-table(s)" composition (owning DETAIL_TABLE_HEIGHT=400/FORM_DETAIL_SPACING=24 as the single source of truth) and switching all four consumers (stock_in/stock_out/stock_movement/ap_master_user edit.py) to call it instead of hand-building their own Column; verified live on stock_out/edit/1 (unchanged) and ap_master_user/edit/1 (previously-unfixed screen now consistent); fifth follow-up (user-requested correction of the design itself) - the two prior follow-ups only fixed spacing AROUND fields from the page/composition-helper level, which doesn't stop a future page from reintroducing the same bug - reverted both (deleted `components/module/detail_body.py`, reverted all four edit.py bodies back to plain `ft.Column` with no custom spacing, reverted Form.build()'s spacing/padding to standard 16) and instead made every field type reserve a fixed `FIELD_TOTAL_HEIGHT` (`FIELD_HEIGHT` + a new `HELPER_TEXT_HEIGHT=20`) unconditionally, always passing a helper string even when blank - an empty string still makes Flutter reserve the helper line's space, so every field (with or without real supporting text) renders at one identical total height everywhere in the app; verified live via a pixel-level zoomed screenshot that Supplier's box+blank-helper-slot now matches Date's box+"Format: dd Mon yyyy" exactly, with zero page-level spacing customization needed anywhere; sixth follow-up (user-caught visual regression from the fifth) - SelectForm's fill color was applied via a wrapping `ft.Container(bgcolor=...)` (a leftover from when the fill needed to live-swap on focus, pre-#53) with the Dropdown itself `fill_color=TRANSPARENT` - that Container shrink-wraps to the Dropdown, so once the Dropdown grew to `FIELD_TOTAL_HEIGHT` its bgcolor painted the entire taller area including the blank reserved helper slot, unlike `ft.TextField`'s own internal decoration fill which never paints its helper line - fixed by setting `fill_color=self.bgcolor` directly on the Dropdown (matching TextField) and removing the Container's bgcolor entirely; verified live via zoomed screenshot that the reserved slot now renders transparent, matching every other field type | 2026-08-03 |
 
 ## Big Picture
 
@@ -4428,6 +4489,48 @@ is now fully verified working end-to-end under 0.86.4.
     icon next to the clear icon with no `qr=True` argument passed by
     either screen, and clicking it opens the same "Scan to Search" dialog
     on both.
+  - **Compact 32dp/24px sizing reverted to M3's 48dp minimum touch target
+    app-wide (issue #76, 2026-08-03)**: every compact-sizing decision
+    documented below this point (`Button`'s `size=32, radius=16`
+    toolbar/footer buttons from issue #21, the hamburger `PopupMenuButton`s
+    in `components/table/menu.py`/`components/list/menu.py`/
+    `components/form/menu.py` sized to match, `SearchBar`'s hard-locked
+    32dp field height from issue #63, and `InputForm`/`SelectForm`'s 24px
+    scan buttons from issue #52) was found too small for comfortable
+    real-device touch interaction (user-confirmed live on a real
+    iPad/iPhone via issue #75's nginx LAN access) even though it read fine
+    on a desktop mouse-driven UI. Rather than a platform-conditional
+    sizing scheme (compact on desktop, standard on touch), every one of
+    these was reverted to a single, constant M3-standard ~48dp size
+    app-wide - simpler and lower-risk than detecting touch vs. mouse
+    input, and 48dp is itself a valid M3 size on desktop too, just less
+    dense. New shared constants: `components/button.py::TOUCH_TARGET_SIZE`
+    (48) / `TOUCH_TARGET_RADIUS` (24), `components/table/toolbar.py::
+    TOOLBAR_HEIGHT` (64, `TOUCH_TARGET_SIZE + 16` vertical padding -
+    `ModuleToolbar`/`ListToolbar` both import and reuse it instead of each
+    hardcoding their own bar height), `components/form/input.py::
+    FIELD_HEIGHT` (48, explicitly set on both `InputForm`'s `TextField`
+    and `SelectForm`'s `Dropdown` - fixes the separately-reported "select
+    and input render at different heights" finding, since neither control
+    had an explicit `height` before and their intrinsic decoration heights
+    quietly diverged). `SearchBar`'s field height went from a hard-locked
+    32 to 48, its clear/scan buttons from 24px to 40px. Table/List
+    editable-cell density (`components/table/rows.py`, the dense
+    Excel-style grid from issues #43/#44/#53) was deliberately left
+    unchanged - that's a distinct, already-reviewed density decision (row
+    heights 36-44px) serving a different, already-dense desktop-table
+    context, not named in scope for this pass, and reopening it would mean
+    revisiting the whole table-density history rather than the
+    button/search/form-field sizing this issue actually reported. Verified
+    via direct Python import of every touched module (no syntax/circular-
+    import errors); a full containerized rebuild+click-through was
+    **not** completed this session — blocked by an unrelated, pre-existing
+    Podman/Docker-Desktop registry config conflict on this dev machine
+    (`toml: line 4 ... expected '.' or '=' `, from
+    `/etc/containers/registries.conf.d/999-podman-desktop-registries-from-host.conf`),
+    not something this change touched. Next step before closing #76: get a
+    working container build (or run `flet run` directly) and click through
+    on a real mobile device per the issue's own acceptance criteria.
   - `components/button.py::Button` (issue #21) — a shared Material 3
     button builder factoring out what used to be three near-identical
     inline `ft.IconButton(...)` constructions in `components/list/toolbar.py`,

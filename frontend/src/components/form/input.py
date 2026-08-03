@@ -6,8 +6,73 @@ from components.scan_input import ScanInput
 # be sized explicitly - an unconstrained IconButton there carries Flutter's
 # ~48dp tap target and visibly grows the field's height (same as
 # components/form/select.py's own scan button, issue #52).
-SCAN_BUTTON_SIZE = 24
-SCAN_ICON_SIZE = 18
+SCAN_BUTTON_SIZE = 32
+SCAN_ICON_SIZE = 20
+
+# Shared corner radius (issue #79) - every field type uses the same value
+# now that all are outlined; select.py previously used a deliberately
+# different (square, 0) radius as part of #53's filled-style design, which
+# no longer applies once every field shares one plain outlined box.
+FIELD_BORDER_RADIUS = 10
+
+# Vertical content padding, shared by every field type (issue #79).
+#
+# This is the single most important number in these components, and the
+# root cause of the long "select label is clipped by its own border" hunt:
+# on an OUTLINE border, Flutter's floating label straddles the top border
+# line, and `InputDecorator` reserves the room for it out of the field's
+# vertical content padding. Flutter's own default for a non-dense outlined
+# field is 20; these components previously hardcoded 8, less than half of
+# what the label needs, so the border stroke painted straight through the
+# label text.
+#
+# It stayed invisible until issue #79 because the previous filled/UNDERLINE
+# style (#53) has no label notch to cut and different internal metrics.
+# `icon_picker.py` was the one field type that never set `content_padding`
+# at all - inheriting Flutter's correct default - and was also the one
+# field type never reported as clipping, which is what finally identified
+# this as the cause.
+#
+# Do NOT lower this below ~16 while the fields use `InputBorder.OUTLINE`,
+# and do NOT try to compensate for a too-small value with explicit heights,
+# extra row padding, or post-mount refresh hacks - all three were tried
+# and none of them fix it, because the label genuinely has nowhere to go.
+FIELD_CONTENT_PADDING_VERTICAL = 16
+
+# Horizontal content padding - slightly tighter when a leading icon is
+# present, matching M3's own spec (16dp normally, 12dp with an icon).
+FIELD_CONTENT_PADDING_HORIZONTAL = 16
+FIELD_CONTENT_PADDING_HORIZONTAL_WITH_ICON = 12
+
+
+def field_content_padding(has_icon: bool) -> ft.Padding:
+    """The shared content padding every form field type uses.
+
+    Centralized so a field type can't drift back to its own hardcoded
+    (and, historically, label-clipping) vertical value.
+    """
+    return ft.Padding.symmetric(
+        vertical=FIELD_CONTENT_PADDING_VERTICAL,
+        horizontal=(
+            FIELD_CONTENT_PADDING_HORIZONTAL_WITH_ICON
+            if has_icon
+            else FIELD_CONTENT_PADDING_HORIZONTAL
+        ),
+    )
+
+
+# Style for the supporting/helper text line under a field. Every field type
+# passes a helper string unconditionally (blank when it has nothing to say)
+# so Flutter reserves the same supporting-text line on every field, keeping
+# heights uniform without anyone having to force an explicit height.
+HELPER_TEXT_STYLE = ft.TextStyle(size=11, color=ft.Colors.ON_SURFACE_VARIANT)
+
+# Approximate rendered height of that reserved helper line. Only needed to
+# vertically centre a sibling control (the scan button) against the input
+# BOX rather than against the box-plus-helper-line: giving the sibling a
+# bottom margin of this size shifts it up by half of it, which lands it on
+# the box's own centre.
+HELPER_TEXT_LINE_HEIGHT = 20
 
 
 class InputForm:
@@ -21,33 +86,35 @@ class InputForm:
         self.read_only = field.get("read_only", False)
         self.value_size = field.get("value_size", 14)
         self.label_size = field.get("label_size", 13)
-        # M3 filled text field color roles (issue #53 follow-up, corrected
-        # against the real spec at m3.material.io/components/text-fields/specs
-        # after an initial custom PRIMARY_CONTAINER/TERTIARY_CONTAINER
-        # background-swap design was found to diverge from it): container
-        # fill is SURFACE_CONTAINER_HIGHEST and stays constant across
-        # states (M3 does NOT swap the fill on focus); input text is a
-        # constant ON_SURFACE; the label is ON_SURFACE_VARIANT at rest and
-        # turns PRIMARY on focus - only the label's color changes here.
-        # The field also keeps M3's "active indicator" bottom border (a
-        # further correction, same day): ON_SURFACE_VARIANT at rest,
-        # PRIMARY focused - `ft.InputBorder.UNDERLINE` plus
-        # `focused_border_color` handle this natively (Flutter's own
-        # underline decoration swaps it on focus without needing the
-        # manual on_focus/on_blur workaround `focused_bgcolor` needed).
+        # M3 outlined text field color roles (issue #79 - reverted from
+        # #53's filled design per direct user reconsideration): no
+        # container fill at all, a full border box around the field
+        # (`ft.InputBorder.OUTLINE`) instead of just a bottom underline.
+        # Input text is a constant ON_SURFACE. Focused-state colouring is
+        # left entirely to Flutter/M3: `focused_border_color` recolours the
+        # outline, and the theme's own `floatingLabelStyle` recolours the
+        # label. Swapping those from Python via on_focus/on_blur handlers
+        # was removed - see components/form/select.py's class docstring
+        # (issue #71) for the bug that pattern caused.
         self.value_color = field.get("color", ft.Colors.ON_SURFACE)
         self.label_color = field.get("label_color", ft.Colors.ON_SURFACE_VARIANT)
-        self.focused_label_color = field.get("focused_label_color", ft.Colors.PRIMARY)
         self.border_color = field.get("border_color", ft.Colors.ON_SURFACE_VARIANT)
         self.focused_border_color = field.get("focused_border_color", ft.Colors.PRIMARY)
         self.multiline = field.get("multiline", False)
         self.min_lines = field.get("min_lines", 1)
         self.max_lines = field.get("max_lines", 1)
         self.prefix_icon = None
-        self.filled = field.get("filled", True)
-        self.bgcolor = field.get("bgcolor", ft.Colors.SURFACE_CONTAINER_HIGHEST)
+        # Outlined fields have no container fill by default (issue #79) -
+        # still overridable per-field for a rare caller that wants one.
+        self.filled = field.get("filled", False)
+        self.bgcolor = field.get("bgcolor")
         self.password = field.get("password", False)
         self.can_reveal_password = field.get("can_reveal_password", self.password)
+        # Always present, even blank (issue #78) - an empty string still
+        # makes Flutter reserve the helper-text line's vertical space, so
+        # every field's total height stays identical whether or not it
+        # actually has supporting text to show. See HELPER_TEXT_STYLE.
+        self.helper_text = field.get("helper_text", "")
         # Opt-in barcode/QR scan button (issue #52 parity for plain text
         # inputs, added on request) - off unless the field dict says
         # `"qr": True`, so every existing input in the app is untouched.
@@ -66,7 +133,6 @@ class InputForm:
                 icon=self.icon,
                 color=ft.Colors.ON_SURFACE_VARIANT) if self.icon is not None else None
         )
-        is_focused = self.autofocus
         suffix_icon = None
         suffix_icon_size_constraints = None
         if self.qr:
@@ -93,22 +159,23 @@ class InputForm:
             prefix_icon=self.prefix_icon,
             suffix_icon=suffix_icon,
             suffix_icon_size_constraints=suffix_icon_size_constraints,
-            border_radius=10,
-            border=ft.InputBorder.UNDERLINE,
+            # No explicit `height` (issue #79) - every field type shares the
+            # same border, content padding, text size and an always-present
+            # helper line, so they all size to the same height naturally.
+            # Forcing a height instead squeezed the outlined border's
+            # floating label and caused it to be painted through.
+            helper=self.helper_text,
+            helper_style=HELPER_TEXT_STYLE,
+            border_radius=FIELD_BORDER_RADIUS,
+            border=ft.InputBorder.OUTLINE,
             border_color=self.border_color,
             focused_border_color=self.focused_border_color,
             autofocus=self.autofocus,
             text_size=self.value_size,
             read_only=self.read_only,
             color=self.value_color,
-            # M3 spec: 8dp top/bottom, 16dp left/right (12dp with an icon).
-            content_padding=ft.Padding.only(
-                left=12 if self.icon else 16, right=16, top=8, bottom=8
-            ),
-            label_style=ft.TextStyle(
-                size=self.label_size,
-                color=self.focused_label_color if is_focused else self.label_color,
-            ),
+            content_padding=field_content_padding(self.icon is not None),
+            label_style=ft.TextStyle(size=self.label_size, color=self.label_color),
             multiline=self.multiline,
             min_lines=self.min_lines,
             max_lines=self.max_lines,
@@ -121,21 +188,8 @@ class InputForm:
             # Material 3 uniformly, matching `SelectForm`'s Dropdown, which
             # has no Cupertino/adaptive variant at all.
             expand=True,
-            # Only the label's color needs a live swap on focus (per spec) -
-            # the border color is handled natively by
-            # `focused_border_color` above.
-            on_focus=self._on_focus,
-            on_blur=self._on_blur,
         )
         return self.field
-
-    def _on_focus(self, e=None) -> None:
-        self.field.label_style = ft.TextStyle(size=self.label_size, color=self.focused_label_color)
-        self._safe_update()
-
-    def _on_blur(self, e=None) -> None:
-        self.field.label_style = ft.TextStyle(size=self.label_size, color=self.label_color)
-        self._safe_update()
 
     def apply_scanned_code(self, code: str) -> None:
         """A scanned code is typed straight into the field - no option list
