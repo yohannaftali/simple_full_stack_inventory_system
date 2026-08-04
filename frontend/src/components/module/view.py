@@ -42,16 +42,20 @@ class ModuleView:
             if module_object:
                 module_label = module_object.get("label", module)
 
-        self.label = (
-            title
-            if title is not None
-            else f"{module_label} - {screen}"
-            if screen != "index"
-            else module_label
-        )
+        self.label = module_label
 
-        self.header = ModuleHeader(page)
-        self.header.set_title(self.label)
+        # The module name (subtitle line, issue #83) is set once here, at
+        # construction - individual screens only ever call
+        # `self.view.header.set_title(...)` afterward to set their own
+        # page-specific headline, never the module name itself. An index
+        # screen never calls set_title() at all, so its AppBar correctly
+        # falls back to the module name alone (see
+        # ModuleHeader._build_title_control()) instead of a redundant
+        # "Module / Module" two-line block the old `f"{module_label} -
+        # {screen}"` fallback would have produced.
+        self.header = ModuleHeader(page, module_label=module_label)
+        if title is not None:
+            self.header.set_title(title)
         self.controls = None
         self.footer = ModuleFooter(page, controls=footer_controls)
         self.toolbar = ModuleToolbar(page)
