@@ -117,7 +117,11 @@ class SearchBar:
             # Material 3 Styling mapping to your exact Theme values
             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
             color=ft.Colors.ON_SURFACE,
-            border_radius=10,  # Matches every other input in the app (form/input.py etc.)
+            # Full-round/stadium border (issue #84), not the 10dp corner
+            # radius regular form fields use (issue #79) - half the field's
+            # own fixed height so it renders as a true pill, matching M3's
+            # own SearchBar component shape rather than an outlined field.
+            border_radius=_FIELD_HEIGHT / 2,
             # Low opacity state-layer boundaries matching your architectural commentary
             border_color=ft.Colors.OUTLINE_VARIANT,
             focused_border_color=ft.Colors.TERTIARY,
