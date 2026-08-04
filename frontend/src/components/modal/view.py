@@ -29,21 +29,42 @@ class ModalView:
         if not hasattr(page, "banner"):
             page.banner = None
 
-    def build(self, body, padding: int = 20, bgcolor=ft.Colors.SURFACE):
-        """Build and return the module screen page UI"""
-        return ft.View(
-            route=f"/modals/{self.modal}/{self.screen}",
-            controls=[
-                self.header.build(),
-                ft.SafeArea(
+    def build(self, body, padding: int = 24, bgcolor=ft.Colors.SURFACE, show_divider: bool = False):
+        """Build and return the module screen page UI
+
+        `padding=24` (was 20) and the 560dp max-width wrapper below match
+        the M3 full-screen dialog spec's own container measurements
+        (issue #85) - "Top/left/right padding: 24dp",
+        "Container width; Max 560dp". `show_divider` is the spec's own
+        optional 1dp divider under the header, off by default.
+        """
+        controls = [self.header.build()]
+        if show_divider:
+            controls.append(ft.Divider(height=1, thickness=1, color=ft.Colors.OUTLINE_VARIANT))
+        # A fixed `width=560` would force horizontal overflow on any
+        # narrower (mobile) viewport - Flet's Container has no dedicated
+        # "max-width" property, so cap against the page's own live width
+        # instead: full width below 560, capped and centered above it.
+        page_width = getattr(self.page, "width", None) or 0
+        body_width = min(page_width, 560) if page_width else None
+        controls.append(
+            ft.SafeArea(
+                content=ft.Container(
                     content=ft.Container(
                         content=body,
                         padding=padding,
                         expand=True,
+                        width=body_width,
                     ),
+                    alignment=ft.Alignment.TOP_CENTER,
                     expand=True,
                 ),
-            ],
+                expand=True,
+            ),
+        )
+        return ft.View(
+            route=f"/modals/{self.modal}/{self.screen}",
+            controls=controls,
             spacing=0,
             padding=0,
             bgcolor=bgcolor,

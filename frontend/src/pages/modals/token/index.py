@@ -22,6 +22,7 @@ class ModalPage:
         self.title = "Change Token"
 
         self.view = ModalView(page, modal, screen, title=self.title)
+        self.view.header.set_action("Submit", self.on_click_submit)
 
         self.current_token = ft.TextField(
             label="Current Token",
@@ -71,24 +72,13 @@ class ModalPage:
         return self.view.build(self.body())
 
     def body(self):
+        # Submit lives in the header's own text button now (issue #85 -
+        # M3 full-screen dialog convention), not a body-level button.
         return ft.Column(
             controls=[
                 self.current_token,
                 self.new_token,
                 self.new_token_confirmation,
-                ft.Divider(height=5, color=ft.Colors.TRANSPARENT),
-                ft.Button(
-                    content="Submit",
-                    width=300,
-                    height=50,
-                    on_click=self.on_click_submit,
-                    icon=ft.Icons.SAVE,
-                    bgcolor=ft.Colors.SECONDARY,
-                    color=ft.Colors.ON_SECONDARY,
-                    style=ft.ButtonStyle(
-                        overlay_color=ft.Colors.TERTIARY
-                    )
-                )
             ],
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,

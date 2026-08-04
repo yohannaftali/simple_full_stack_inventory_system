@@ -22,6 +22,7 @@ class ModalPage:
         self.title = "Change Shift"
 
         self.view = ModalView(page, modal, screen, title=self.title)
+        self.view.header.set_action("Submit", self.on_click_submit)
 
         self.shift_options = []
         self.selected_shift_id = None
@@ -65,6 +66,8 @@ class ModalPage:
         return self.view.build(self.body())
 
     def body(self):
+        # Submit lives in the header's own text button now (issue #85 -
+        # M3 full-screen dialog convention), not a body-level button.
         return ft.Column(
             controls=[
                 ft.Container(
@@ -76,19 +79,6 @@ class ModalPage:
                     padding=ft.Padding.only(bottom=10),
                 ),
                 self.shift_dropdown,
-                ft.Divider(height=20, color=ft.Colors.TRANSPARENT),
-                ft.Button(
-                    content="Submit",
-                    width=300,
-                    height=50,
-                    on_click=self.on_click_submit,
-                    icon=ft.Icons.SAVE,
-                    bgcolor=ft.Colors.SECONDARY,
-                    color=ft.Colors.ON_SECONDARY,
-                    style=ft.ButtonStyle(
-                        overlay_color=ft.Colors.TERTIARY
-                    )
-                )
             ],
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             alignment=ft.MainAxisAlignment.START,

@@ -61,6 +61,8 @@ import flet as ft
 import flet_camera as fc
 from PIL import Image, UnidentifiedImageError
 
+from components.module.header import DIALOG_CLOSE_ICON_SIZE, DIALOG_HEADER_PADDING
+
 try:
     import flet_permission_handler as fph
 except ImportError:  # pragma: no cover - see _request_camera_permission
@@ -465,9 +467,16 @@ class ScanInput:
     def _overlay_icon_button(self, icon, tooltip: str, on_click) -> ft.IconButton:
         """A translucent circular icon button meant to float directly over
         the live camera feed - see `_OVERLAY_BUTTON_BG`'s own comment for
-        why a plain/opaque button doesn't work here."""
+        why a plain/opaque button doesn't work here.
+
+        `icon_size=DIALOG_CLOSE_ICON_SIZE` (issue #85) - this overlay is,
+        on principle, the same M3 Full-screen dialog as the modal header
+        (components/modal/header.py), just with a transparent/camera-feed
+        background instead of `SURFACE_CONTAINER_HIGH` - so its close
+        affordance matches that header's own 24dp icon sizing."""
         return ft.IconButton(
             icon=icon,
+            icon_size=DIALOG_CLOSE_ICON_SIZE,
             tooltip=tooltip,
             on_click=on_click,
             icon_color=_OVERLAY_BUTTON_ICON_COLOR,
@@ -588,7 +597,13 @@ class ScanInput:
                         top=0,
                         left=0,
                         right=0,
-                        padding=ft.Padding.only(top=24, left=12, right=12),
+                        # left/right match DIALOG_HEADER_PADDING (issue
+                        # #85) - top stays a separate, larger offset for
+                        # visual clearance over the camera feed, not the
+                        # dialog header's own vertical centering concern.
+                        padding=ft.Padding.only(
+                            top=24, left=DIALOG_HEADER_PADDING, right=DIALOG_HEADER_PADDING
+                        ),
                         content=self.camera_top_bar,
                     ),
                     # Bottom: status caption + Gallery, floating near the

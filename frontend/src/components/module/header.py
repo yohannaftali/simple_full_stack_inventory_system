@@ -18,6 +18,17 @@ APPBAR_HEIGHT_SMALL = 64
 # line, used whenever a page has both.
 APPBAR_HEIGHT_TWO_LINE = 88
 
+# M3 Full-screen dialog header height (issue #85) - a DIFFERENT component
+# from the Small top app bar above (56dp, not 64dp) - modals
+# (password/totp/shift/token) are M3 Full-screen dialogs, not module
+# drill-down screens, per https://m3.material.io/components/dialogs/specs.
+DIALOG_HEADER_HEIGHT = 56
+# M3 full-screen dialog close-affordance icon size and its own horizontal
+# padding, per spec - distinct from TOUCH_TARGET_SIZE (48dp, the Small
+# app bar's standard tap target).
+DIALOG_CLOSE_ICON_SIZE = 24
+DIALOG_HEADER_PADDING = 16
+
 
 class ModuleHeader:
     """Header AppBar component"""

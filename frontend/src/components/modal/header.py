@@ -4,12 +4,22 @@ Header component for the modal
 
 import flet as ft
 
-from components.button import TOUCH_TARGET_SIZE
-from components.module.header import APPBAR_HEIGHT_SMALL
+from components.module.header import (
+    DIALOG_CLOSE_ICON_SIZE,
+    DIALOG_HEADER_HEIGHT,
+    DIALOG_HEADER_PADDING,
+)
 
 
 class ModalHeader:
-    """Header AppBar component"""
+    """M3 Full-screen dialog header (issue #85) - modals
+    (password/totp/shift/token) are M3 Full-screen dialogs
+    (https://m3.material.io/components/dialogs/overview), not module
+    drill-down screens, so this is deliberately NOT `ModuleHeader`'s Small
+    top app bar shape (back arrow + trailing icon action, issue #83) - a
+    full-screen dialog's header is a close (X) affordance, an optional
+    headline, and the primary action as a trailing TEXT button, per
+    https://m3.material.io/components/dialogs/specs."""
 
     def __init__(self, page: ft.Page, screen_label: str = "Modal"):
         """
@@ -21,51 +31,56 @@ class ModalHeader:
         """
         self.page = page
         self.title = screen_label
+        self._action_label: str | None = None
+        self._action_on_click = None
+
+    def set_action(self, label: str, on_click) -> None:
+        """Register the dialog's primary action (e.g. "Save"/"Submit") as
+        the header's trailing text button - the M3 full-screen dialog's
+        own "Text button" element, replacing a body-level submit button.
+        A screen with no natural single primary action (e.g. totp's
+        two-step Generate-then-Save flow) simply never calls this, and
+        the header renders with no trailing action at all."""
+        self._action_label = label
+        self._action_on_click = on_click
 
     def build(self):
         """Build and return the AppBar"""
-        # Standard back arrow, not a Close (X) icon (issue #83) - modals
-        # already navigate back through the same module_history stack a
-        # module screen's own back button uses (see on_click below), so a
-        # back arrow reads correctly rather than implying a distinct
-        # "dismiss dialog" action. No subtitle line here (unlike
-        # ModuleHeader) - a modal's own identity (e.g. "password"/"totp")
-        # is just a raw route slug, not a resolved display name, and
-        # showing it above the existing title (e.g. "Change Password")
-        # would read as redundant rather than orienting.
-        actions = [
-            ft.IconButton(
-                icon=ft.Icons.HOME,
-                icon_color=ft.Colors.ON_SURFACE,
-                icon_size=24,
-                width=TOUCH_TARGET_SIZE,
-                height=TOUCH_TARGET_SIZE,
-                tooltip="Home",
-                on_click=self.on_home_click,
+        actions = []
+        if self._action_label is not None:
+            actions.append(
+                ft.TextButton(
+                    content=ft.Text(self._action_label, color=ft.Colors.PRIMARY),
+                    on_click=self._action_on_click,
+                )
             )
-        ]
 
         return ft.AppBar(
             leading=ft.IconButton(
-                icon=ft.Icons.ARROW_BACK,
+                icon=ft.Icons.CLOSE,
                 icon_color=ft.Colors.ON_SURFACE,
-                icon_size=24,
-                width=TOUCH_TARGET_SIZE,
-                height=TOUCH_TARGET_SIZE,
-                tooltip="Back",
+                icon_size=DIALOG_CLOSE_ICON_SIZE,
+                width=DIALOG_CLOSE_ICON_SIZE + DIALOG_HEADER_PADDING * 2,
+                height=DIALOG_HEADER_HEIGHT,
+                tooltip="Close",
                 on_click=self.on_click,
             ),
-            leading_width=TOUCH_TARGET_SIZE,
+            leading_width=DIALOG_CLOSE_ICON_SIZE + DIALOG_HEADER_PADDING * 2,
             title=ft.Text(
                 self.title,
                 color=ft.Colors.ON_SURFACE,
                 size=16,
                 weight=ft.FontWeight.W_500,
             ),
+            title_spacing=DIALOG_HEADER_PADDING,
             center_title=False,
-            toolbar_height=APPBAR_HEIGHT_SMALL,
-            bgcolor=ft.Colors.SURFACE,
+            toolbar_height=DIALOG_HEADER_HEIGHT,
+            # M3 full-screen dialog color mapping (issue #85) -
+            # surfaceContainerHigh, distinct from the Small top app bar's
+            # plain SURFACE (components/module/header.py).
+            bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
             actions=actions,
+            actions_padding=ft.Padding.only(right=DIALOG_HEADER_PADDING),
             elevation=0,
             elevation_on_scroll=0,
             shadow_color=ft.Colors.SHADOW,
@@ -74,15 +89,6 @@ class ModalHeader:
     def set_title(self, title: str):
         """Set the title of the AppBar"""
         self.title = title
-
-    def on_home_click(self, e):
-        """Navigate to home"""
-        if hasattr(self.page, "banner") and self.page.banner:
-            self.page.banner.open = False
-            self.page.update()
-
-        self.page.data["module_history"] = []
-        self.page.run_task(self.page.push_route, "/home")
 
     def on_click(self, e):
         """Navigate back within module screens or to home if history exhausted."""
