@@ -1,7 +1,7 @@
 import flet as ft
 
 from components.module.view import ModuleView
-from components.table.table import Table
+from components.module.view_toggle import ViewToggle
 
 
 class ModulePage:
@@ -53,21 +53,21 @@ class ModulePage:
 
         self.view = ModuleView(page, module, screen)
 
-        self.table = Table(
+        self.toggle = ViewToggle(
             page=page,
             parent=self,
             name="detail",
             fields=self.fields
         )
 
-        self.table.toolbar.add_new_button(callback=self.callback_add_new)
+        self.toggle.add_new_button(callback=self.callback_add_new)
 
     def build(self):
         """Build and return the module screen page UI"""
         return self.view.build(self.body(), padding=0)
 
     def body(self):
-        return self.table.build()
+        return self.toggle.build()
 
     def callback_add_new(self, e):
         self.page.run_task(self.page.push_route, f"/modules/{self.module}/new")

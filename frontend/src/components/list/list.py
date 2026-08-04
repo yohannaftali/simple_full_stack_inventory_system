@@ -29,6 +29,7 @@ class List:
         trailing=None,
         next_page="edit",
         qr: bool = True,
+        custom_param: dict | None = None,
     ):
         """
         Initialize List
@@ -39,6 +40,10 @@ class List:
             name (str): The name of the list tile
             fields (list): The list of fields for the list tile
             endpoint (str, optional): The API endpoint for data fetching. Defaults to None.
+            custom_param (dict, optional): Extra static query params merged into
+                every request (issue #81) - mirrors Table's own `custom_param`,
+                e.g. a sub-item list scoping every request to one header id, or
+                a screen-level date-range filter applied after construction.
         """
         self.page = page
         self.storage: Storage = page.data["storage"]
@@ -52,6 +57,7 @@ class List:
         self.is_inside_form = is_inside_form
 
         self.limit = limit
+        self.custom_param = custom_param or {}
         self.page_number = 1  # Current page
         self.total_pages = 1  # Total pages from API
         self.total_rows = 0  # Total rows from API
@@ -209,6 +215,8 @@ class List:
         client = HttpClient(self.page)
         param = f"table-keyword-filter={self.filter}" if self.filter else ""
         param = param + f"&limit={self.limit}&page={page_no}&offset={offset}"
+        for key, value in self.custom_param.items():
+            param = param + f"&{key}={value}"
         param = param + self.filter_row.serialize()
         response = client.get(f"{self.endpoint}?{param}" if param else self.endpoint)
         if isinstance(response, dict) and "error" in response:

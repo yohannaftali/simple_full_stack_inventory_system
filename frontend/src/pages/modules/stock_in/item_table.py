@@ -13,7 +13,7 @@ the shared component instead of a bespoke widget - row clicks go to
 
 import flet as ft
 
-from components.table.table import Table
+from components.module.view_toggle import ViewToggle
 
 
 class ItemTable:
@@ -65,27 +65,34 @@ class ItemTable:
             }
         ]
 
-        self.table = Table(
+        self.toggle = ViewToggle(
             page=page,
             parent=self,
             name="items",
             fields=self.fields,
-            endpoint=f"C_{module}/get_items",
-            custom_param={"header_id": header_id},
-            edit_screen="item_edit",
-            fill_available_space=False,
+            list_kwargs={
+                "endpoint": f"C_{module}/get_items",
+                "custom_param": {"header_id": header_id},
+                "next_page": "item_edit",
+            },
+            table_kwargs={
+                "endpoint": f"C_{module}/get_items",
+                "custom_param": {"header_id": header_id},
+                "edit_screen": "item_edit",
+                "fill_available_space": False,
+            },
         )
 
-        self.table.toolbar.add_new_button(callback=self.callback_add_new)
+        self.toggle.add_new_button(callback=self.callback_add_new)
 
     @property
     def view(self):
-        """Delegate to the header edit page's view - Table.get_data() calls
-        `self.parent.view.show_error(...)` on load failure."""
+        """Delegate to the header edit page's view - List/Table.get_data()
+        calls `self.parent.view.show_error(...)` on load failure."""
         return self.parent.view
 
     def build(self) -> ft.Control:
-        return self.table.build()
+        return self.toggle.build()
 
     def callback_add_new(self, e):
         self.page.run_task(

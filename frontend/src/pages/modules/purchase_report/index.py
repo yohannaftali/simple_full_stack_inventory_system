@@ -2,7 +2,7 @@ import flet as ft
 
 from components.form.date import DateForm
 from components.module.view import ModuleView
-from components.table.table import Table
+from components.module.view_toggle import ViewToggle
 from utils.http_client import HttpClient
 
 
@@ -63,13 +63,13 @@ class ModulePage:
             },
         ]
 
-        self.by_supplier_table = Table(
+        self.by_supplier_toggle = ViewToggle(
             page=page, parent=self, name="by_supplier", fields=by_supplier_fields,
-            fill_available_space=False,
+            table_kwargs={"fill_available_space": False},
         )
-        self.by_material_table = Table(
+        self.by_material_toggle = ViewToggle(
             page=page, parent=self, name="by_material", fields=by_material_fields,
-            fill_available_space=False,
+            table_kwargs={"fill_available_space": False},
         )
 
         self._load_filter_options()
@@ -131,7 +131,7 @@ class ModulePage:
                     content=self.supplier_dropdown,
                     padding=ft.Padding.symmetric(horizontal=20, vertical=10),
                 ),
-                ft.Container(content=self.by_supplier_table.build(), height=350),
+                ft.Container(content=self.by_supplier_toggle.build(), height=350),
                 ft.Container(
                     content=ft.Text("By Material", weight=ft.FontWeight.BOLD, size=16),
                     padding=ft.Padding.only(left=20, right=20, top=10),
@@ -140,7 +140,7 @@ class ModulePage:
                     content=self.material_dropdown,
                     padding=ft.Padding.symmetric(horizontal=20, vertical=10),
                 ),
-                ft.Container(content=self.by_material_table.build(), height=350),
+                ft.Container(content=self.by_material_toggle.build(), height=350),
             ],
             expand=True,
             scroll=ft.ScrollMode.AUTO,
@@ -161,17 +161,17 @@ class ModulePage:
         supplier_id = self.supplier_dropdown.value if self.supplier_dropdown else ""
         material_id = self.material_dropdown.value if self.material_dropdown else ""
 
-        self.by_supplier_table.custom_param = {
+        # apply_custom_param() (issue #81) tracks the filter on the
+        # ViewToggle itself, so it's reapplied automatically if either
+        # table is later switched to List/Table view - see
+        # usage_report/index.py's own callback for the same reasoning.
+        self.by_supplier_toggle.apply_custom_param({
             "start_date-filter": start_date,
             "end_date-filter": end_date,
             "supplier_id-filter": supplier_id or "",
-        }
-        self.by_material_table.custom_param = {
+        })
+        self.by_material_toggle.apply_custom_param({
             "start_date-filter": start_date,
             "end_date-filter": end_date,
             "material_id-filter": material_id or "",
-        }
-        self.by_supplier_table.page_number = 1
-        self.by_material_table.page_number = 1
-        self.by_supplier_table.get_data()
-        self.by_material_table.get_data()
+        })

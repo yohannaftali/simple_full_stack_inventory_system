@@ -2,7 +2,7 @@ import flet as ft
 
 from components.form.date import DateForm
 from components.module.view import ModuleView
-from components.table.table import Table
+from components.module.view_toggle import ViewToggle
 
 
 class ModulePage:
@@ -59,7 +59,7 @@ class ModulePage:
 
         self.view = ModuleView(page, module, screen)
 
-        self.table = Table(
+        self.toggle = ViewToggle(
             page=page,
             parent=self,
             name="detail",
@@ -92,15 +92,18 @@ class ModulePage:
                     ),
                     padding=ft.Padding.symmetric(horizontal=20, vertical=10),
                 ),
-                ft.Container(content=self.table.build(), expand=True),
+                ft.Container(content=self.toggle.build(), expand=True),
             ],
             expand=True,
         )
 
     def callback_apply_filters(self, e):
-        self.table.custom_param = {
+        # apply_custom_param() (issue #81) tracks the filter on the
+        # ViewToggle itself, not just the currently-active view, so it's
+        # reapplied automatically if the user later switches to Table/List
+        # - a plain `self.toggle.active.custom_param = ...` here would only
+        # ever affect whichever view happens to be active right now.
+        self.toggle.apply_custom_param({
             "start_date-filter": self.start_date_form.get_value(),
             "end_date-filter": self.end_date_form.get_value(),
-        }
-        self.table.page_number = 1
-        self.table.get_data()
+        })

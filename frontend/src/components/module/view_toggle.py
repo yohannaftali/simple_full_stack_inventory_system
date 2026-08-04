@@ -70,11 +70,35 @@ class ViewToggle:
         self._new_button_callback = None
         self._new_button_kwargs: dict = {}
 
+        # Structured filters (issue #81) - unlike free-text search
+        # (already carried across a switch via the shared
+        # storage.table_search key) or sort/pagination (a deliberate,
+        # documented scope limit - see this file's own docstring),
+        # `custom_param` is set dynamically, after construction, by a
+        # screen with its own filter controls (e.g. usage_report/
+        # purchase_report's date-range "Apply Filters" button,
+        # stock_browse's stock_by_material/stock_by_location screens).
+        # Without tracking it here, lazily building the other view on
+        # first toggle would silently drop whatever filter was applied,
+        # since a freshly-constructed List/Table always starts with
+        # custom_param=None.
+        self._custom_param: dict | None = None
+
         self._build_active()
 
     @property
     def active(self):
         return self.list_view if self.mode == MODE_LIST else self.table_view
+
+    def apply_custom_param(self, custom_param: dict, reset_page: bool = True) -> None:
+        """Screen-level filter controls should call this instead of
+        setting `toggle.active.custom_param` directly, so the filter
+        survives a later List/Table switch."""
+        self._custom_param = custom_param
+        self.active.custom_param = custom_param
+        if reset_page:
+            self.active.page_number = 1
+        self.active.get_data()
 
     def _build_active(self) -> None:
         # Toolbar buttons (toggle + "Add New") are only wired up the FIRST
@@ -94,6 +118,9 @@ class ViewToggle:
         if newly_built:
             self._apply_toggle_button()
             self._apply_new_button()
+            if self._custom_param is not None:
+                self.active.custom_param = self._custom_param
+                self.active.get_data()
 
     def _other_mode(self) -> str:
         return MODE_TABLE if self.mode == MODE_LIST else MODE_LIST

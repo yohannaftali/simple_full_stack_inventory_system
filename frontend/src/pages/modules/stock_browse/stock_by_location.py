@@ -1,7 +1,7 @@
 import flet as ft
 
 from components.module.view import ModuleView
-from components.table.table import Table
+from components.module.view_toggle import ViewToggle
 from utils.formatting import format_number
 from utils.http_client import HttpClient
 
@@ -53,13 +53,19 @@ class ModulePage:
         self.view = ModuleView(page, module, screen)
         self.view.header.set_title(self._build_title())
 
-        self.table = Table(
+        self.toggle = ViewToggle(
             page=page,
             parent=self,
             name="stock_by_location",
             fields=self.fields,
-            endpoint=f"C_{module}/get_stock_by_location",
-            custom_param={"location_id": record_id},
+            list_kwargs={
+                "endpoint": f"C_{module}/get_stock_by_location",
+                "custom_param": {"location_id": record_id},
+            },
+            table_kwargs={
+                "endpoint": f"C_{module}/get_stock_by_location",
+                "custom_param": {"location_id": record_id},
+            },
         )
 
         self.footer_text = ft.Text(self._summarize(), size=14, weight=ft.FontWeight.W_500)
@@ -88,7 +94,7 @@ class ModulePage:
         # is a different material with its own average_price, so there is
         # no single "the" average price to show - only the totals make
         # sense to aggregate across rows.
-        rows = self.table.data if isinstance(self.table.data, list) else []
+        rows = self.toggle.active.data if isinstance(self.toggle.active.data, list) else []
         total_qty = sum(self._to_number(row.get("qty")) for row in rows)
         total_value = sum(self._to_number(row.get("value")) for row in rows)
         return (
@@ -102,7 +108,7 @@ class ModulePage:
     def body(self):
         return ft.Column(
             controls=[
-                ft.Container(content=self.table.build(), expand=True),
+                ft.Container(content=self.toggle.build(), expand=True),
                 ft.Container(
                     content=self.footer_text,
                     padding=ft.Padding.symmetric(horizontal=20, vertical=12),

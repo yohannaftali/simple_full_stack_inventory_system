@@ -1,7 +1,7 @@
 import flet as ft
 
 from components.module.view import ModuleView
-from components.table.table import Table
+from components.module.view_toggle import ViewToggle
 
 
 class ModulePage:
@@ -24,44 +24,60 @@ class ModulePage:
             {
                 "name": "material_code", "label": "Material Code",
                 "type": "label", "sort": True,
-                "link_key_field": "material_id", "link_screen": "stock_by_material"
+                "link_key_field": "material_id", "link_screen": "stock_by_material",
+                # Explicit positions (issue #81) - this module has two
+                # independent drill-down targets (material/location) that
+                # both need to stay visible in the List view's primary
+                # leading/title/subtitle slots, so they can't be left to
+                # simple field-order auto-positioning (which would only
+                # keep 3 of these 4 linked fields up front and bury the
+                # 4th in the collapsed "extra" section, unreachable
+                # without an extra tap).
+                "position": "leading", "row": 0,
             },
             {
                 "name": "material_name", "label": "Material",
                 "type": "label", "sort": True,
-                "link_key_field": "material_id", "link_screen": "stock_by_material"
+                "link_key_field": "material_id", "link_screen": "stock_by_material",
+                "position": "title", "row": 0,
             },
             {
                 "name": "location_code", "label": "Location Code",
                 "type": "label", "sort": True,
-                "link_key_field": "location_id", "link_screen": "stock_by_location"
+                "link_key_field": "location_id", "link_screen": "stock_by_location",
+                "position": "subtitle", "row": 0,
             },
             {
                 "name": "location_name", "label": "Location",
                 "type": "label", "sort": True,
-                "link_key_field": "location_id", "link_screen": "stock_by_location"
+                "link_key_field": "location_id", "link_screen": "stock_by_location",
+                "position": "subtitle", "row": 1,
             },
             {
                 "name": "qty", "label": "Qty",
-                "type": "label", "format": "number", "sort": True
+                "type": "label", "format": "number", "sort": True,
+                "position": "extra",
             },
             {
                 "name": "unit_name", "label": "Unit",
-                "type": "label", "sort": True
+                "type": "label", "sort": True,
+                "position": "extra",
             },
             {
                 "name": "average_price", "label": "Avg Price",
-                "type": "label", "format": "number", "sort": True
+                "type": "label", "format": "number", "sort": True,
+                "position": "extra",
             },
             {
                 "name": "value", "label": "Value",
-                "type": "label", "format": "number", "sort": True
+                "type": "label", "format": "number", "sort": True,
+                "position": "extra",
             }
         ]
 
         self.view = ModuleView(page, module, screen)
 
-        self.table = Table(
+        self.toggle = ViewToggle(
             page=page,
             parent=self,
             name="detail",
@@ -72,4 +88,4 @@ class ModulePage:
         return self.view.build(self.body(), padding=0)
 
     def body(self):
-        return self.table.build()
+        return self.toggle.build()
