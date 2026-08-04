@@ -10,6 +10,7 @@ from components.form.table import TableForm
 from components.form.list import ListForm
 from components.form.button import ButtonForm
 from utils.http_client import HttpClient
+from utils.log_redact import redact_for_log
 
 
 class Form:
@@ -567,7 +568,7 @@ class Form:
             form_data.update(self.custom_param)
 
         print("form data:")
-        print(form_data)
+        print(redact_for_log(form_data))
 
         return form_data
 

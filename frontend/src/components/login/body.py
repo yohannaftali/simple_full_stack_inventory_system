@@ -6,6 +6,7 @@ import flet as ft
 
 from repository.storage import Storage
 from utils.http_client import HttpClient
+from utils.log_redact import redact_for_log
 
 from components.login.login_button import LoginButton
 from components.login.troubleshooting_button import TroubleshootingButton
@@ -129,8 +130,14 @@ class Body:
             self.totp_field,
             ft.Divider(height=5, color=ft.Colors.TRANSPARENT),
             self.login_button.build(),
-            self.troubleshooting_button.build(),
         ]
+
+        # Troubleshooting reads/clears local device storage and logs -
+        # meaningless on web, where that state is server-side and shared
+        # across sessions in the same container (issue #80, same is_web
+        # restriction issue #36 already applied to Server Configuration).
+        if not bool(getattr(self.page, "web", False)):
+            controls.append(self.troubleshooting_button.build())
         return ft.SafeArea(
             content=ft.Container(
                 content=ft.Column(
@@ -152,7 +159,7 @@ class Body:
         client = HttpClient(self.page)
         params = {"param": username}
         response = client.get("C_login/get_session", params)
-        print(response)
+        print(redact_for_log(response))
         if response is None or not isinstance(response, dict):
             self.error_text.value = "Failed to connect to server"
             self.error_text.visible = True
@@ -211,7 +218,10 @@ class Body:
         cookies = client.get_cookies()
         if cookies is not None:
             self.storage.http_cookies.set(cookies)
-            print(f"Set cookies: {cookies}")
+            # Cookie values (the signed session cookie especially) are
+            # credentials, not diagnostics - log which cookies were set,
+            # never their values.
+            print(f"Set cookies: {list(cookies.keys())}")
 
         # Handle login response based on status code
         if response is None:

@@ -108,12 +108,14 @@ class Body:
         )
 
     def on_show_logs_click(self, e):
-        """Toggle the log view and refresh its content"""
-        log_path = get_log_file_path()
+        """Toggle the log view and refresh its content - scoped to this
+        session's own log bucket only (see utils/app_logger.py)."""
+        client_id = self.page.data.get("client_id") if hasattr(self.page, "data") else None
+        log_path = get_log_file_path(client_id)
         header = (
             f"Log file: {log_path}\n\n" if log_path else "Log file: (not available)\n\n"
         )
-        self.log_text.value = header + get_recent_logs()
+        self.log_text.value = header + get_recent_logs(client_id)
         self.log_view.visible = True
         self.page.update()
 

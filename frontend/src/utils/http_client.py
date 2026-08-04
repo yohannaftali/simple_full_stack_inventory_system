@@ -6,6 +6,7 @@ import flet as ft
 
 from repository.server_url import ServerURL
 from repository.http_cookies import HttpCookies
+from utils.log_redact import redact_for_log
 
 
 class HttpClient:
@@ -34,7 +35,14 @@ class HttpClient:
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
     def get_cookies(self) -> dict | None:
-        print(f"Get cookies: {self.session.cookies}")
+        # Cookie values (session cookies especially) are credentials, not
+        # diagnostics - only log which cookies exist, never their values.
+        cookie_names = (
+            [c.name for c in self.session.cookies]
+            if self.session.cookies is not None
+            else None
+        )
+        print(f"Get cookies: {cookie_names}")
         if self.session.cookies is None:
             return None
         # Handle duplicate cookie names by using the latest one
@@ -44,7 +52,7 @@ class HttpClient:
             cookies_dict[cookie.name] = cookie.value
         return cookies_dict
 
-    def get(self, endpoint: str, params: dict = None):
+    def get(self, endpoint: str, params: dict = None, sensitive_keys: set = None):
         """Make a GET request
 
         `timeout` (below, and on `post()`) is in SECONDS, per `requests`'
@@ -57,11 +65,17 @@ class HttpClient:
         connecting client (e.g. the dev-mode QR-scan companion app)
         appearing permanently stuck on "Connecting..." whenever the
         persisted `server_url` pointed at a currently-unreachable backend.
+
+        `sensitive_keys`: extra field names (beyond
+        `utils/log_redact.py::DEFAULT_SENSITIVE_KEYS`) to mask in the
+        printed log for this call only - for endpoint-specific
+        short/cryptic field names (e.g. change-password's `c`/`n`/`f`) that
+        don't match any generic keyword.
         """
         try:
             url = f"{self.base_url}/{endpoint.lstrip('/')}"
             print(f"GET Request: {url}")
-            print(f"GET Params: {params}")
+            print(f"GET Params: {redact_for_log(params, sensitive_keys)}")
             response = self.session.get(
                 url, params=params, timeout=30, allow_redirects=False, verify=self.verify)
             print(f"GET Status Code: {response.status_code}")
@@ -79,7 +93,7 @@ class HttpClient:
 
             try:
                 result = response.json()
-                print(f"GET Response json: {result}")
+                print(f"GET Response json: {redact_for_log(result, sensitive_keys)}")
                 return result
             except json.JSONDecodeError:
                 # Not valid JSON, handle as text
@@ -123,12 +137,16 @@ class HttpClient:
             print(f"GET Error: {error}")
             return error
 
-    def post(self, endpoint: str, data: dict = None):
-        """Make a POST request"""
+    def post(self, endpoint: str, data: dict = None, sensitive_keys: set = None):
+        """Make a POST request
+
+        `sensitive_keys`: see `get()`'s own docstring - extra field names to
+        mask in the printed log for this call only.
+        """
         try:
             url = f"{self.base_url}/{endpoint.lstrip('/')}"
             print(f"POST Request: {url}")
-            print(f"POST Data: {data}")
+            print(f"POST Data: {redact_for_log(data, sensitive_keys)}")
             response = self.session.post(
                 url, data=data, timeout=30, allow_redirects=False, verify=self.verify)
             print(f"POST Status Code: {response.status_code}")
@@ -146,7 +164,7 @@ class HttpClient:
 
             try:
                 result = response.json()
-                print(f"POST Response (JSON): {result}")
+                print(f"POST Response (JSON): {redact_for_log(result, sensitive_keys)}")
                 return result
             except json.JSONDecodeError:
                 # Not valid JSON, handle as text

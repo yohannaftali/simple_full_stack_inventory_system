@@ -134,7 +134,11 @@ class ModalPage:
             "nt": new_token,
             "ft": new_token_confirmation
         }
-        response = client.post("C_home/call_change_token", data=form_data)
+        response = client.post(
+            "C_home/call_change_token",
+            data=form_data,
+            sensitive_keys={"ct", "nt", "ft"},
+        )
 
         if isinstance(response, dict) and "error" in response:
             self.view.show_error(response["error"])

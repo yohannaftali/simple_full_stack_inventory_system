@@ -134,7 +134,11 @@ class ModalPage:
             "n": new_password,
             "f": new_password_confirmation
         }
-        response = client.post("C_home/call_change_password", data=form_data)
+        response = client.post(
+            "C_home/call_change_password",
+            data=form_data,
+            sensitive_keys={"c", "n", "f"},
+        )
 
         if isinstance(response, dict) and "error" in response:
             self.view.show_error(response["error"])

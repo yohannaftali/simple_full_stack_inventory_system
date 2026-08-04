@@ -188,6 +188,16 @@ async def main(page: ft.Page):
             config_page = ServerConfigPage(page)
             page.views.append(config_page.build())
         elif page.route == "/troubleshooting":
+            # Troubleshooting reads/clears local device storage and logs -
+            # meaningless (and, for the process-global log buffer, a
+            # cross-session leak risk) on web, where the Flet process is
+            # shared server-side (see "Container networking gotcha" in
+            # AGENTS.md). No entry point links here on web (login page,
+            # user menu), but redirect a manually-typed/bookmarked URL
+            # away too, same as /server_config above (issue #80/#36).
+            if bool(getattr(page, "web", False)):
+                page.run_task(page.push_route, "/login")
+                return
             troubleshooting_page = TroubleshootingPage(page)
             page.views.append(troubleshooting_page.build())
         elif page.route.startswith("/modules/"):

@@ -5,6 +5,7 @@ User Menu component for displaying user configuration
 import flet as ft
 
 from repository.storage import Storage
+from utils.app_logger import clear_logs
 
 
 class UserMenu:
@@ -20,6 +21,12 @@ class UserMenu:
         self.page = page
         self.storage: Storage = page.data["storage"]
         self.icon_color = ft.Colors.ON_SURFACE
+        # Troubleshooting reads/clears local device storage and logs,
+        # which is meaningless (and, for the shared log buffer, actively
+        # misleading across sessions) on web - see issue #80, same
+        # is_web restriction issue #36 already applied to Server
+        # Configuration.
+        self.is_web = bool(getattr(page, "web", False))
 
         if self.storage.client_data:
             self.username = self.storage.client_data.get_username()
@@ -36,6 +43,54 @@ class UserMenu:
         )
         theme_text = "Dark Mode" if current_theme == "light" else "Light Mode"
 
+        items = [
+            ft.PopupMenuItem(icon=ft.Icons.PERSON, content=self.username),
+            ft.PopupMenuItem(),  # Divider
+            ft.PopupMenuItem(
+                icon=theme_icon,
+                content=theme_text,
+                on_click=self.on_toggle_theme_click,
+            ),
+            ft.PopupMenuItem(),  # Divider
+            ft.PopupMenuItem(
+                icon=ft.Icons.SETTINGS_SYSTEM_DAYDREAM,
+                content="Change Shift",
+                on_click=self.on_change_shift_click,
+            ),
+            ft.PopupMenuItem(
+                icon=ft.Icons.KEY,
+                content="Change Token",
+                on_click=self.on_change_token_click,
+            ),
+            ft.PopupMenuItem(
+                icon=ft.Icons.LOCK,
+                content="Change Password",
+                on_click=self.on_change_password_click,
+            ),
+            ft.PopupMenuItem(
+                icon=ft.Icons.SECURITY,
+                content="Setup TOTP",
+                on_click=self.on_setup_totp_click,
+            ),
+        ]
+        if not self.is_web:
+            items.append(ft.PopupMenuItem())  # Divider
+            items.append(
+                ft.PopupMenuItem(
+                    icon=ft.Icons.BUILD,
+                    content="Troubleshooting",
+                    on_click=self.on_troubleshooting_click,
+                )
+            )
+        items.append(ft.PopupMenuItem())  # Divider
+        items.append(
+            ft.PopupMenuItem(
+                icon=ft.Icons.LOGOUT,
+                content="Logout",
+                on_click=self.on_logout_click,
+            )
+        )
+
         self.menu_button = ft.PopupMenuButton(
             icon=ft.Icons.SETTINGS,
             icon_color=self.icon_color,
@@ -46,48 +101,7 @@ class UserMenu:
             icon_size=24,
             tooltip="Menu",
             menu_position=ft.PopupMenuPosition.UNDER,
-            items=[
-                ft.PopupMenuItem(icon=ft.Icons.PERSON, content=self.username),
-                ft.PopupMenuItem(),  # Divider
-                ft.PopupMenuItem(
-                    icon=theme_icon,
-                    content=theme_text,
-                    on_click=self.on_toggle_theme_click,
-                ),
-                ft.PopupMenuItem(),  # Divider
-                ft.PopupMenuItem(
-                    icon=ft.Icons.SETTINGS_SYSTEM_DAYDREAM,
-                    content="Change Shift",
-                    on_click=self.on_change_shift_click,
-                ),
-                ft.PopupMenuItem(
-                    icon=ft.Icons.KEY,
-                    content="Change Token",
-                    on_click=self.on_change_token_click,
-                ),
-                ft.PopupMenuItem(
-                    icon=ft.Icons.LOCK,
-                    content="Change Password",
-                    on_click=self.on_change_password_click,
-                ),
-                ft.PopupMenuItem(
-                    icon=ft.Icons.SECURITY,
-                    content="Setup TOTP",
-                    on_click=self.on_setup_totp_click,
-                ),
-                ft.PopupMenuItem(),  # Divider
-                ft.PopupMenuItem(
-                    icon=ft.Icons.BUILD,
-                    content="Troubleshooting",
-                    on_click=self.on_troubleshooting_click,
-                ),
-                ft.PopupMenuItem(),  # Divider
-                ft.PopupMenuItem(
-                    icon=ft.Icons.LOGOUT,
-                    content="Logout",
-                    on_click=self.on_logout_click,
-                ),
-            ],
+            items=items,
         )
         return self.menu_button
 
@@ -132,5 +146,17 @@ class UserMenu:
         """Logout user and redirect to login"""
         if self.storage:
             self.storage.clear()
+
+        # Troubleshooting logs don't outlive a session on the device/
+        # browser they were captured on - see issue #80. Safe on every
+        # platform now: utils/app_logger.py buckets each web session's
+        # logs by its own client_id (never a process-wide shared buffer,
+        # see that module's docstring), so clearing here can never touch
+        # another user's diagnostics, even though the Troubleshooting page
+        # itself stays desktop/mobile-only (this file's `is_web` gate
+        # above) - a web user still gets this session's own log data
+        # wiped from the container's disk on logout.
+        client_id = self.page.data.get("client_id") if hasattr(self.page, "data") else None
+        clear_logs(client_id)
 
         self.page.run_task(self.page.push_route, "/login")
