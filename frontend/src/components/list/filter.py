@@ -17,13 +17,18 @@ Wire format matches Table's exactly, so the shared backend
 per filter field and `sort-fields[{index}][{field}]={ASC|DESC}` per active
 sort column, in priority order.
 
-Opt-in via `"filter": True` / `"sort": True` on a field - the reverse of
-Table's opt-out-by-default (`TableFilter`'s `field.get("filter", True) is
-not False`). Table's fields are already a fixed column set the user always
-sees in full; List's fields are a curated subset picked for a card's
-leading/title/subtitle/trailing slots, so defaulting every field into the
-filter/sort panel here would surface fields the screen author never
-intended as filterable/sortable.
+Filter is opt-out-by-default (issue #82), matching `TableFilter`'s own
+convention exactly (`field.get("filter", True) is not False`) - a field
+gets a filter row unless it explicitly sets `"filter": False`. Originally
+opt-in (issues #55/#56), back when List was a small, curated pilot with
+its own hand-picked field subset; issue #81 made `ViewToggle`/List the
+app-wide default view reusing the very same `fields` list `Table` already
+uses everywhere, so an opt-in default here just meant most fields never
+got a filter row at all (nobody had gone back to add `"filter": True` to
+field lists only ever written for Table's own opt-out convention).
+**Sort stays opt-in** (`"sort": True` required) - deliberately not
+flipped alongside filter, since a sort icon on every field is a bigger
+visual/UX change than a text filter and wasn't asked for.
 """
 
 import flet as ft
@@ -53,11 +58,19 @@ class ListFilter:
         self._panel_rows: list[str] = [
             f["name"]
             for f in self.fields
-            if f.get("name") and (f.get("filter") or f.get("sort"))
+            if f.get("name")
+            and f.get("type", "text") != "hidden"
+            and (self._is_filterable(f) or f.get("sort"))
         ]
 
     def has_filters(self) -> bool:
         return bool(self._panel_rows)
+
+    @staticmethod
+    def _is_filterable(field: dict) -> bool:
+        """Matches `TableFilter`'s own opt-out-by-default rule exactly -
+        on unless the field explicitly sets `"filter": False`."""
+        return field.get("filter", True) is not False
 
     def _field_by_name(self, name: str) -> dict:
         for f in self.fields:
@@ -72,7 +85,7 @@ class ListFilter:
             field = self._field_by_name(name)
             row_controls: list = []
 
-            if field.get("filter"):
+            if self._is_filterable(field):
                 row_controls.append(self._build_filter_field(field))
 
             if field.get("sort"):
