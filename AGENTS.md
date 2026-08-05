@@ -2919,78 +2919,21 @@ Stack: Python ≥3.10, Flet 0.86.4 (issue #68, upgraded from 0.85.3),
 `requests` for HTTP, `flet-datatable2==0.86.4`; managed via
 `pyproject.toml` (uv/Poetry).
 
-**Flet 0.85.3 → 0.86.4 upgrade (issue #68)**: `frontend/pyproject.toml`
-(`flet`/`flet[all]`) and `flet-datatable2` bumped in lockstep — confirmed
-on PyPI before starting that `flet-datatable2`'s own `0.86.4` release
-requires `flet==0.86.4` exactly, the same pattern already seen for
-`flet-camera` while investigating issue #64. `uv lock` resolved cleanly
-with no conflicts; `uv sync --group dev` and a full `podman compose build
-frontend` both completed cleanly. **Verified working**: `uv run flet
---version` reports `Flet: 0.86.4` / `Flutter: 3.44.8`; `main.py` imports
-cleanly under the new version; the rebuilt container starts and reports
-healthy; a direct in-container request (`podman exec sfsis-frontend
-python3 -c "urllib.request.urlopen('http://localhost:8000/login')"`)
-returns `200` with real page content (3928 bytes) — the app itself is
-confirmed working end-to-end under 0.86.4.
-**Browser-based click-through verification was blocked by an unrelated
-host-networking issue**, not a Flet 0.86 bug: after extensive testing
-this session (many `flet run`/`flet serve` invocations, ~50 stray
-`python.exe` processes accumulated and killed), the Windows host's
-`localhost:8000`/`localhost:5000` ports built up a large `TIME_WAIT`
-backlog (>12,000 entries on port 8000 alone) that didn't clear even after
-a 90s wait, blocking `curl`/`Invoke-WebRequest`/the browser from
-connecting — while a brand-new, never-used port on the same machine
-connected instantly, and the previously rock-solid backend port (5000)
-started failing the same way at the same time, confirming this is
-session-specific host-socket exhaustion on those two specific ports, not
-a regression in the containers themselves (both remained `healthy` via
-their own internal healthchecks throughout).
-
-**Full browser regression pass completed** (same-day follow-up, once host
-networking recovered): login -> home -> deep-link direct load (confirms
-issue #51's fix survives 0.86) -> `master_location` table (sort icon
-toggle, per-column filter row show/live-filter/clear, row hover/zebra
-striping, footer pagination) -> row click into edit screen (M3
-borderless/underline field styling from issue #53, QR-scan icon, delete/
-save buttons) -> QR/barcode "Scan to Search" dialog (issue #52/#64,
-autofocused manual entry + "Scan with Photo") -> TOTP setup modal (issue
-#58's PyPNG QR-generation fix, secret key/copy, verification code field)
--> Dark Mode toggle from the user menu (applies instantly app-wide). No
-regressions found under 0.86.4 in any of these.
-
-**A separate, real issue was hit and resolved along the way, worth
-recording since it will recur**: after the extensive session-long
-networking troubleshooting above (many container/Podman-machine/Windows
-restarts), the browser got stuck on Flet 0.86's new boot screen
-("Working..." with a spinner) and never rendered past it, even though the
-container served every asset/websocket request with a real `200` and no
-error anywhere in its logs. Root-caused by reading
-`flet_web/fastapi/flet_app.py` directly: Flet's own session-recovery logic
-(distinct from this app's `sfsis_client_id` cookie in `asgi.py`) resolves
-a `session_id` the browser sends (via its own client-side storage) against
-a server-side session cache, and reuses a matching `candidate` session
-instead of creating a fresh one whenever `candidate.connection is None` -
-skipping `before_main()` entirely (see `asgi.py`'s own `before_main` note
-above), which is what left the boot screen hanging. The candidate here was
-stale, left over from before the round of restarts. **Fix: clear the
-browser's site storage for the app's origin (or open a fresh/incognito
-window) - not a container restart**, which forces the browser to request a
-genuinely new session. Confirmed via container logs: a fresh browser
-context shows a clean `route to: /home from: None` with no boot-screen
-hang, while a browser retaining the stale `session_id` hangs indefinitely
-with no `before_main` log line at all. Not itself a 0.86 regression (the
-session-recovery mechanism itself is unchanged, confirmed via
-`flet/app.py`'s `run()` signature), but worth knowing: a dev session with
-many restarts in a row can leave a browser tab pointed at a
-now-unrecoverable server-side session with no visible error to explain it.
-
-Not yet re-verified: `frontend/run.ps1`/`run.sh` (issue #66/#67) against
-a real 0.86 `flet build`/`flet run` (Android packaging was redesigned in
-0.86 - output paths may have changed) and the dev-mode QR-scan companion
-app's own protocol compatibility - both flagged as open follow-up work
-in issue #68's own acceptance criteria, deferred as lower-priority given
-the primary containerized web deployment (this app's main supported path)
-is now fully verified working end-to-end under 0.86.4.
+**Flet 0.85.3 → 0.86.4 upgrade (issue #68)**: verified working end-to-end
+under 0.86.4, including a full browser regression pass (login, home,
+deep links, tables, forms, QR scan, TOTP setup, Dark Mode) with no
+regressions found. **A stale Flet session can hang on the 0.86 boot
+screen indefinitely** — Flet's own session-recovery logic reuses a
+matching server-side `session_id` from the browser's client-side storage
+instead of creating a fresh one, skipping `before_main()` entirely if
+that session is stale (e.g. left over from a round of container
+restarts); fix is to clear the browser's site storage or use a fresh/
+incognito window, not a container restart. Not itself a 0.86 regression.
+Not yet re-verified: `frontend/run.ps1`/`run.sh` against a real 0.86
+`flet build`/`flet run`, and the dev-mode QR-scan companion app's
+protocol compatibility. Full investigation (including an unrelated
+host-networking TIME_WAIT issue that blocked the first regression-pass
+attempt) is in CHANGE_HISTORY.md (2026-07-29/30).
 
 - **Entry & routing** (`src/main.py`): `ft.run(main)` bootstraps an async
   `main(page)`. Shows `SplashScreen`, loads persisted state via
@@ -3033,14 +2976,9 @@ is now fully verified working end-to-end under 0.86.4.
     and reads `page.route` itself) instead of pushing - which is what
     Flet's own `push_route` docstring example does to build the initial
     view, so it's the documented way to render the starting route rather
-    than a workaround. Confirmed live before fixing: reloading at `/home`
-    logged `page.route` already `/home`, a push that fired no route change,
-    and `views=2` - the previous run's home view with a fresh splash
-    stacked on top, never cleared (a websocket reconnect re-runs `main()`,
-    which unconditionally appends another splash). Verified after fixing:
-    direct loads of `/home` and `/modules/master_location/index` both
-    render immediately, a container restart + reload recovers with no
-    address-bar workaround, and in-app navigation is unaffected.
+    than a workaround. Verified: direct loads of a deep link now render
+    immediately and a container restart + reload recovers with no
+    address-bar workaround needed.
   - **A logged-in boot stays on the current screen instead of bouncing to
     `/home`** (#51 follow-up, same day): `_boot_navigate()` only ever
     targeted `/server_config`/`/home`/`/login`, so reloading at e.g.
@@ -3124,19 +3062,10 @@ is now fully verified working end-to-end under 0.86.4.
     referenced them); `UserModulePermissionRepository.get_module_ids_for_user`/
     `set_modules_for_user` themselves were left in place as still-generic,
     reusable repository methods even though nothing currently calls them.
-    Verified against the real containerized backend (not just SQLite):
-    granting two new modules to a test user via `submit_permission_new`
-    correctly left that user's two pre-existing grants untouched, moved
-    those two modules from the ungranted list to the granted list,
-    keyword search (`stock`) and a column filter (`name-filter=purchase`)
-    both correctly scoped the ungranted table, and submitting with no
-    `module_ids` returned `{"error": "Select at least one module"}`
-    without granting anything. Frontend preload log confirmed both new
-    files (`permission_table`, `permission_new`) import cleanly with no
-    traceback. **Not yet clicked through in a live browser** — before
-    relying on this further, open a user's edit screen, click "Add
-    Permission", check a few modules, submit, and confirm the granted
-    table updates.
+    Verified against the real containerized backend: grant/ungrant lists
+    update correctly, existing grants stay untouched, and an empty
+    submission is rejected cleanly. Not yet clicked through in a live
+    browser. Full verification detail in CHANGE_HISTORY.md (2026-07-21).
   - **Single/bulk row-remove column** (issue #42, 2026-07-21, ported from
     senar's `y.panel.js`'s `buttonRemove` cell and `y.form.js`'s
     `listenerClickClassRowRemove`/`listenerClickClassHeaderRemove` and
@@ -3181,70 +3110,28 @@ is now fully verified working end-to-end under 0.86.4.
       used to enter multiple mode).
       `TableRemove.reset_for_reload()` is called from `Table.get_data()`
       specifically — **not** from `TableRows.load()` — right when a
-      genuinely new server response lands (`not append`, i.e. a real
-      search/sort/filter/page-nav fetch). This distinction was a real,
-      user-caught bug in the first pass: `TableRows.load()` runs on
-      *every* `Table.load()` call, including the ones `TableRemove` itself
-      triggers to re-render the SAME local data after a mode toggle or a
-      row-selection toggle (`_rerender()` → `Table.load(self.table.data,
-      append=False)`) — resetting there meant clicking the header button
-      set `mode = MULTIPLE`, and the very re-render meant to *display*
-      that immediately reset it straight back to `SINGLE` before it ever
-      rendered, making the header button look completely inert (reported
-      live: "the header functionality not yet function"). Root-caused by
-      writing a regression test that, unlike the original test suite,
-      exercises the real `TableRows.load()` chain (the original suite's
-      `FakeTable.load()` was a call-recording stub that never actually
-      invoked `reset_for_reload()`, so it couldn't have caught this).
-      Fixed by moving the call to `Table.get_data()`'s fresh-fetch branch;
-      `on_page_resize()` and `_handle_resize_commit()` (which also call
-      `self.load(...)`/`self.rows.load(...)` directly on the *existing*
-      `self.data`, not a new fetch) correctly never reset remove state
-      either, by the same reasoning.
-    - **Why Shift+click was abandoned entirely (not just a registration
-      bug)**: the original design mirrored senar's single header button
-      that toggled behavior on a held Shift key, tracked via
-      `Page.on_keyboard_event`. Two live-tested fix attempts both failed:
-      (1) registering the handler lazily inside `TableRemove.__init__`
-      (mid-navigation, well after the page's initial client connection) -
-      confirmed broken, Shift+click behaved exactly like a plain click;
-      (2) moving registration to `main.py::main()` at page boot, alongside
-      every other page-level handler (`on_route_change`/`on_view_pop`/
-      `on_resized`) - **also confirmed broken**, identically. Added
-      temporary `[shift-debug]` print diagnostics to both the keyboard
-      handler and the click handler and had the user retest; `podman logs`
-      showed the click handler's diagnostic firing every time (`shift=
-      False`) but **zero** `on_keyboard_event` diagnostic lines at all
-      across every test pass - the browser was not delivering a single
-      keyboard event to the server, regardless of registration timing.
-      Also checked whether any click/tap/gesture event in this Flet 0.85.3
-      build carries a modifier-key flag as a fallback (`TapEvent`,
-      `GestureDetector`'s pointer events, both inspected directly in the
-      installed package) - neither does; `KeyboardEvent.shift` is the
-      *only* modifier signal Flet exposes at all, and it isn't reaching
-      the server in this deployment (most likely because a click-only
-      interaction flow never gives the Flutter canvas actual DOM keyboard
-      focus, which browsers require before forwarding key events to it).
-      With no way to make the keyboard channel work, and no way to verify
-      any further fix without live browser access, replaced the
-      single-button-plus-modifier design with the two-buttons-per-mode
-      design described above - functionally identical outcomes (every
-      scenario in issue #42's user-specified state matrix), zero
-      dependency on a channel that doesn't work here. All debug prints and
-      the shift-tracking code (`_ensure_shift_tracking`/`_is_shift_down`,
-      `main.py`'s keyboard handler) were removed as dead code.
-    - **Live user verification, in order**: (1) single-row remove with
-      confirm - confirmed working. (2) Select All (State 1 -> State 2, all
-      checked) -> Remove Selected -> bulk delete - confirmed working.
-      (3) Select All -> uncheck a few rows -> Remove Selected -> only the
-      still-checked rows removed - confirmed working. (4) Shift+click from
-      single mode (the original, abandoned design) - confirmed broken
-      twice, leading to the button-based redesign above. (5) Select None
-      (State 1 -> State 2, all unchecked) and Cancel (State 2 -> State 1,
-      no delete) - **confirmed working** after the redesign, closing out
-      every scenario in issue #42's spec. All five scenarios (0-4) are now
-      live-verified in the actual browser; the earlier gap ("button
-      redesign not yet visually confirmed") is resolved.
+      genuinely new server response lands (`not append`). `TableRows.load()`
+      also runs on `TableRemove`'s own local re-renders (a mode toggle or
+      row-selection toggle), so resetting there would wipe out the very
+      state change the re-render exists to display; only a real fetch may
+      reset remove state.
+    - **The header button design (two always-visible buttons per mode,
+      not a Shift-modifier toggle) exists because Shift+click genuinely
+      doesn't work in this Flet/browser deployment**: the original design
+      mirrored senar's single header button toggling on a held Shift key
+      via `Page.on_keyboard_event`, but live diagnostics confirmed the
+      browser never delivers a keyboard event to the server at all on
+      this click-only interaction path (most likely because it never
+      gives the Flutter canvas actual DOM keyboard focus) — no Flet event
+      of any kind carries a modifier-key flag as a fallback either. Fixed
+      by replacing the Shift-modifier design with two always-visible
+      buttons per mode instead — functionally identical outcomes, zero
+      dependency on the non-working keyboard channel. Full investigation
+      (including the two registration-timing attempts tried and ruled out
+      first) is in CHANGE_HISTORY.md (2026-07-21).
+    - **Live-verified**: all five user-specified scenarios (single-row
+      remove, select-all/select-none entry, bulk remove, cancel) confirmed
+      working in the actual browser.
     - **Column/row wiring in `components/table/columns.py`/`rows.py`**:
       `TableColumns._build_data_columns()` special-cases `field.get("type")
       == "remove"` to swap in `self.remove.build_header_cell(w)` instead of
@@ -3284,13 +3171,10 @@ is now fully verified working end-to-end under 0.86.4.
       `"option"` gets width-only treatment - its header still renders as a
       plain text label via the normal (non-`"remove"`) path in
       `_build_data_columns()`, no icon-based header content. Verified via
-      dedicated scripts (real containerized flet 0.85.3, not stubbed):
-      remove column alone stays exactly 80px at both 1400px and 350px
-      screen widths; a table with both a `"checkbox"` and an `"option"`
-      column simultaneously holds both at their fixed widths (50px/120px)
-      at both screen widths too, with zero resize handles when every
-      column boundary touches a fixed-width column; a table with no
-      fixed-width column at all is unaffected.
+      dedicated scripts: fixed-width columns hold their width at any
+      screen size with zero resize handles on their boundaries; a table
+      with no fixed-width column is unaffected. Full detail in
+      CHANGE_HISTORY.md (2026-07-22).
     - **Checked/unchecked icon style for generic `"checkbox"`-type cells**
       (issue #44): `components/table/rows.py::_build_editable_cell()`'s
       `"checkbox"` branch now renders the same checked/unchecked icon pair
@@ -3303,10 +3187,9 @@ is now fully verified working end-to-end under 0.86.4.
       actual `ft.IconButton` control, toggling both `.value` (a plain
       `bool`, same read-back contract as before - no changes needed in any
       existing consumer like `permission_new.py`'s `row.get("selected")`)
-      and the icon/color on every click. Verified via a dedicated script:
-      initial icon/value matches the row's starting value, a simulated
-      click toggles both, and `get_input_values()` still returns a plain
-      `bool` unchanged.
+      and the icon/color on every click. Verified: initial icon/value
+      matches the row's starting value, a click toggles both, and
+      `get_input_values()` still returns a plain `bool` unchanged.
     - **Application**: `ap_master_user/edit.py`'s granted-modules table
       (`permission_table.py`, from #41) is the first consumer —
       `_revoke_module`/`_revoke_modules` both post to the new
@@ -3330,28 +3213,13 @@ is now fully verified working end-to-end under 0.86.4.
       outline), row-selected is also `ft.Icons.CHECK_BOX`, row-unselected
       is `ft.Icons.CHECK_BOX_OUTLINE_BLANK`, and both the header-in-
       multiple-mode and every row's single-mode icon are `ft.Icons.DELETE`.
-    - Verified beyond the live pass above: `TableRemove`'s full state
-      machine (single-row remove with confirm, bulk remove with confirm
-      and count, zero-selected silent cancel, both shift+click branches,
-      an `on_remove_row`/`on_remove_rows` error aborting without mutating
-      data, `reset_for_reload()`) and a dedicated regression test
-      reproducing the exact reset-stomping bug (header/row click must
-      survive its *own* re-render; a genuine new fetch must still reset)
-      were run inside the real containerized frontend's own venv (real
-      `flet` 0.85.3, not stubbed) — all scenarios pass post-fix. A
-      separate script verified the `TableColumns`/`TableRows` wiring
-      itself (synthetic `_remove` field lands as the trailing column,
-      `interactive=True` header build calls `TableRemove.build_header_cell`
-      exactly once, `interactive=False` never does, `TableRows.load()`
-      calls `build_row_cell` once per row with the correct row
-      index/width). Backend `revoke_permission` verified against the real
-      containerized backend: granting then revoking a module left every
-      other grant untouched, and an empty-selection request returned a
-      clean error with no mutation. **The Shift+click fix (registration
-      moved to `main.py`) has not yet been re-verified live** — no
-      browser automation tool was available to the agent this session;
-      next manual pass should re-check Shift+click from both single and
-      multiple mode.
+    - Verified: `TableRemove`'s full state machine, the fixed-width/
+      header-gating wiring in `TableColumns`/`TableRows`, and the backend
+      `revoke_permission` endpoint were all confirmed working, including
+      a regression test reproducing the reset-stomping bug (a re-render
+      triggered by `TableRemove` itself must not reset its own state,
+      only a genuine new fetch should). Full detail in CHANGE_HISTORY.md
+      (2026-07-21).
 
 - **Components** (`src/components/`): reusable, presentational Flet control
   builders grouped by domain — `form/`, `home/`, `login/`, `server_config/`
@@ -3420,23 +3288,11 @@ is now fully verified working end-to-end under 0.86.4.
     message for the no-decode/unreadable cases, silently for a plain
     cancel (same as clicking Cancel directly) — so the user can retry the
     photo or fall back to typing/scanning with the hardware gun.
-    Verified: `decode_image_bytes()` tested directly inside the
-    containerized frontend (`uv run python3`, real `libzbar0`) against a
-    generated QR image (correct round-trip) and a blank image (correctly
-    returns `None`); full container rebuild picked up `pyzbar`/`pillow`/
-    `libzbar0` with a clean `uv sync` and no import errors across all 65
-    preloaded screens. Verified live in the browser (`master_location`):
-    clicking the search bar's scan button shows the manual-entry field
-    plus a "Scan with Photo" button; clicking it opens the OS/browser
-    native file picker; cancelling that picker correctly reopens the
-    manual-entry dialog with no error (the same code path a real
-    no-decode result also reopens through) — an actual photo containing a
-    barcode was not decoded through this exact click path in-browser this
-    session (no camera/photo available to the automated browser), but the
-    identical decode function was already confirmed correct against a
-    real image via the container test above, and every consumer receives
-    the result through the same unmodified `on_scan(code)` callback
-    issue #52's existing consumers already use.
+    Verified: `decode_image_bytes()` confirmed correct against a real
+    generated QR image inside the containerized frontend; live in the
+    browser, the "Scan with Photo" button opens the native file picker
+    and a cancel correctly reopens the manual-entry dialog with no error.
+    Full verification detail in CHANGE_HISTORY.md (2026-07-28).
   - **Barcode/QR scan affordance** (`components/scan_input.py::ScanInput`,
     issue #52, 2026-07-27). The scanner is a **hardware gun acting as a
     keyboard wedge** — it types the scanned code plus Enter into whatever
@@ -3466,11 +3322,10 @@ is now fully verified working end-to-end under 0.86.4.
       sized (`SCAN_BUTTON_SIZE`/`SCAN_ICON_SIZE`, public so
       `stock_out/item_new` shares one definition): an unconstrained
       `IconButton` in that slot carries Flutter's ~48dp tap target and
-      visibly grows the field's height. Verified live that the arrow still
-      opens the menu, flips to the up state, and that clicking the scan
-      button opens the dialog *without* also opening the menu — the two
-      targets are independent. Enabled on `stock_in/item_new`'s Material
-      and Location.
+      visibly grows the field's height. Verified live that the arrow and
+      scan button act independently (clicking scan doesn't also open the
+      dropdown menu). Enabled on `stock_in/item_new`'s Material and
+      Location.
     - `stock_out/item_new`'s hand-built raw `ft.Dropdown` (that screen uses
       no `Form`) gets the same in-field treatment via its own
       `_build_scan_trailing()`. Its scan handler **must call
@@ -3507,44 +3362,17 @@ is now fully verified working end-to-end under 0.86.4.
     applying the standard `apply_keyword_filter` against the location's
     code/name. Optional and defaulted, so `stock_movement` — which reuses
     that same repository method — is unaffected.
-    **Follow-up fix — shared hover highlight between the scan button and the
-    dropdown's own arrow** (2026-07-28, user-reported, confirmed live):
-    hovering the QR button on a `"qr": True` select also lit up the whole
-    Dropdown field (including its arrow), and vice versa. Root cause (found
-    by direct pixel comparison in a live browser, not by reasoning about
-    `IconButton` alone — an earlier `size_constraints` fix on `ScanInput`
-    was a real but secondary issue, see below): the scan button lived
-    *inside* the Dropdown's own `trailing_icon` slot, i.e. inside its
-    decoration box. Flutter's hover `MouseRegion` detection doesn't stop at
-    a nested child's bounds the way tap hit-testing does, so hovering
-    *anywhere* in the decoration - the label, blank space, either icon - lit
-    the field's own field-wide hover overlay, and that overlay visually
-    covered both icons regardless of which one the mouse was actually over.
-    Confirmed directly: hovering dead-center blank space in the middle of
-    the field (nowhere near either icon) still lit the same overlay,
-    proving it was never about the two icons sharing state with each
-    other - it was the field's own hover applying to its whole box, of
-    which the trailing icons were just one part. Fixed by moving the scan
-    button **out of** the Dropdown's `trailing_icon`/`selected_trailing_icon`
-    slots entirely - `SelectForm.build()` now wraps the plain, unmodified
-    `ft.Dropdown` (native single arrow, no custom trailing composite) and a
-    sibling `ScanInput` button in an `ft.Row`, so the two are independent
-    controls with independent hover regions, not one nested inside the
-    other's decoration. Verified live: hovering the QR button no longer
-    lights the Dropdown at all, and hovering anywhere in the Dropdown
-    (including directly over its own arrow) no longer lights the QR button.
-    The earlier, narrower `size_constraints=ft.BoxConstraints(...)` fix to
-    `ScanInput.build()` (clamping its `IconButton`'s internal tap-target/ink
-    region to its own visible bounds, since Flutter's default minimum
-    tap-target ignores `width`/`height` alone) is still correct and kept -
-    it fixes the QR button's own ripple being oversized relative to its
-    icon, a separate, real issue from the shared-field-hover one above -
-    and the identical fix was also applied to the table search bar's
-    `clear_button` (`components/table/search_bar.py`) for the same latent
-    risk next to its own scan button (that button's scan+clear pair is
-    still nested inside one `TextField.suffix_icon` slot, unlike the select
-    fix above - not yet reported as an issue there, so left as-is rather
-    than restructured speculatively).
+    **A select field's scan button must not live inside the Dropdown's own
+    `trailing_icon` slot**: Flutter's hover `MouseRegion` doesn't stop at a
+    nested child's bounds the way tap hit-testing does, so a scan button
+    nested there shared a hover overlay with the whole field (hovering the
+    button lit the Dropdown, and vice versa). `SelectForm.build()` instead
+    wraps a plain, unmodified `ft.Dropdown` and a sibling `ScanInput`
+    button in an `ft.Row` — independent controls, independent hover
+    regions. `ScanInput.build()` also clamps its `IconButton`'s tap-target/
+    ink region to its own visible bounds (a separate fix, for an oversized
+    ripple), applied identically to the table search bar's clear button.
+    Full investigation in CHANGE_HISTORY.md (2026-07-28).
     **Live in-browser camera scan** (issue #64, unblocked by the
     `flet==0.86.4` upgrade — issue #68): the scan button's click target
     tries a real live camera scan first via `flet_camera.Camera`
@@ -3631,12 +3459,9 @@ is now fully verified working end-to-end under 0.86.4.
     user's manual drag-resize) for a new purpose: giving a dialog-embedded
     table small, fixed, known-to-fit widths instead of letting it size
     itself against the whole page.
-    Verified live end-to-end in the browser (`ap_module/edit/4`,
-    "Materials" module): the picker shows the full catalog with correct
-    preview glyphs and the current value pre-checked; picking a different
-    icon correctly unchecks the previous one first (by-column exclusivity);
-    Confirm updates both the field's text and its leading icon glyph;
-    Close discards an unconfirmed in-progress change.
+    Verified live end-to-end in the browser: the picker shows the full
+    catalog with correct preview glyphs, exclusivity/Confirm/Close all
+    behave correctly. Full detail in CHANGE_HISTORY.md (2026-07-27).
   - **Standalone form fields' fill/border styling (issue #53) was later
     superseded by issue #79** — #53 gave every field a constant
     `SURFACE_CONTAINER_HIGHEST` filled, borderless (then underlined)
@@ -3747,22 +3572,13 @@ is now fully verified working end-to-end under 0.86.4.
     other behavior (styling, `storage.table_search` persistence, QR scan
     via `components/scan_input.py::ScanInput`) is unchanged from
     `TableSearchBar`'s implementation, which was the more complete of the
-    two. Verified live in the browser: `master_location` (Table) and
-    `stock_in/index` (List) both filter/clear correctly through the
-    shared component.
-    **QR scan is ON by default for every search bar** (same-day
-    follow-up, direct user request) — `SearchBar`'s own `qr` param
-    defaults to `True` (was `False`), and both `Table.__init__`/
-    `List.__init__` gained/kept their own `qr: bool = True` parameter
-    threaded straight through, so every existing Table/List screen picked
-    this up automatically with no per-screen changes needed (the one
-    prior explicit `qr=True` call site, `stock_out/item_new.py`, is now
-    redundant but harmless). Pass `qr=False` explicitly on a `Table`/
-    `List` construction to opt a specific screen out. Verified live: both
-    `master_location` (Table) and `stock_in/index` (List) now show the QR
-    icon next to the clear icon with no `qr=True` argument passed by
-    either screen, and clicking it opens the same "Scan to Search" dialog
-    on both.
+    two. **QR scan is ON by default for every search bar** — `SearchBar`'s
+    own `qr` param defaults to `True`, and both `Table.__init__`/
+    `List.__init__` thread their own `qr: bool = True` param straight
+    through, so every existing Table/List screen picked this up
+    automatically with no per-screen changes needed; pass `qr=False`
+    explicitly to opt a specific screen out. Verified live in the browser
+    on both a Table and a List screen.
   - **Compact 32dp/24px sizing reverted to M3's 48dp minimum touch target
     app-wide (issue #76, 2026-08-03)**: every compact-sizing decision
     documented below this point (`Button`'s `size=32, radius=16`
@@ -3871,13 +3687,10 @@ is now fully verified working end-to-end under 0.86.4.
     `master_module_group/edit.py`, `master_supplier/edit.py` all pass
     `bgcolor=ft.Colors.ERROR`/`icon_color=ft.Colors.ON_ERROR` explicitly
     and are unaffected — that's the toolbar's one legitimate filled/tonal
-    (danger) button. Verified by constructing `ModuleToolbar` directly and
-    calling `add_new_button`/`add_submit_button`/an explicit red delete
-    `add_button`/a bare "Apply Filters"-style `add_button`: the first
-    three now resolve `bgcolor=None`/`ON_SURFACE_VARIANT` as expected, the
-    delete button still resolves `bgcolor=Colors.ERROR`/`icon_color=
-    Colors.ON_ERROR` unchanged, and the bare call now also resolves
-    `bgcolor=None` instead of `PRIMARY`.
+    (danger) button. Verified by constructing `ModuleToolbar` directly:
+    every non-danger button now correctly resolves `bgcolor=None`/
+    `ON_SURFACE_VARIANT`, the delete button is unaffected. Full detail in
+    CHANGE_HISTORY.md (2026-07-28).
   - `components/table/menu.py::TableMenu`'s hamburger `ft.PopupMenuButton` is
     now explicitly sized to the same compact metrics as `Button`'s 32dp
     buttons (`height=32, width=32, padding=0,

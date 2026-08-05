@@ -2149,6 +2149,14 @@ ready-for-review - DateForm/LabelForm/IconPickerForm now set the shared `FIELD_H
 - Labels: bug, frontend
 - Follow-up on #53: user reported padding/border still visible in table input cells after the collapsed=True fix, despite a fresh-tab verification showing it flush. Filed as a deprioritized/pending bug rather than continuing to chase live, since the discrepancy between "verified flush" and "still shows padding" needs a clean repro first.
 
+## [2026-07-28] — fix(frontend): shared hover highlight between a select field's scan button and its dropdown arrow (issue #52 follow-up)
+- User-reported: hovering the QR scan button on a `"qr": True` select field also lit up the whole Dropdown field (including its arrow), and vice versa
+- Root cause, found by direct pixel comparison in a live browser (not by reasoning about `IconButton` alone): the scan button lived *inside* the Dropdown's own `trailing_icon` slot, i.e. inside its decoration box. Flutter's hover `MouseRegion` detection doesn't stop at a nested child's bounds the way tap hit-testing does, so hovering anywhere in the decoration - the label, blank space, either icon - lit the field's own field-wide hover overlay, which visually covered both icons regardless of which one the mouse was actually over. Confirmed directly: hovering dead-center blank space in the middle of the field (nowhere near either icon) still lit the same overlay, proving it was never about the two icons sharing state with each other
+- Fixed by moving the scan button out of the Dropdown's `trailing_icon`/`selected_trailing_icon` slots entirely - `SelectForm.build()` now wraps the plain, unmodified `ft.Dropdown` (native single arrow, no custom trailing composite) and a sibling `ScanInput` button in an `ft.Row`, so the two are independent controls with independent hover regions
+- Verified live: hovering the QR button no longer lights the Dropdown at all, and hovering anywhere in the Dropdown (including directly over its own arrow) no longer lights the QR button
+- A separate, narrower `size_constraints=ft.BoxConstraints(...)` fix to `ScanInput.build()` (clamping its `IconButton`'s internal tap-target/ink region to its own visible bounds, since Flutter's default minimum tap-target ignores `width`/`height` alone) was kept as a distinct, still-correct fix for the QR button's own ripple being oversized relative to its icon - a separate issue from the shared-field-hover bug above. The identical fix was also applied to the table search bar's `clear_button` (`components/table/search_bar.py`) for the same latent risk
+- Files: frontend/src/components/form/select.py, frontend/src/components/scan_input.py, frontend/src/components/table/search_bar.py, AGENTS.md
+
 ## [2026-07-28] — feat(frontend): bring List to feature parity with Table
 - Issue #55 created on GitHub
 - Scope: frontend (components/list/)
