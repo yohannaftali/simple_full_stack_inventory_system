@@ -30,7 +30,10 @@ department usage/cost reporting.
 14. [Filtering and searching table data](#14-filtering-and-searching-table-data)
 15. [Download and Upload Features](#15-download-and-upload-features)
 16. [Paging through table data (lazy-load vs. pagination)](#16-paging-through-table-data-lazy-load-vs-pagination)
-17. [Choosing a module's icon](#17-choosing-a-modules-icon)
+17. [Ports reference](#18-ports-reference)
+18. [Running database migrations](#19-running-database-migrations)
+19. [Building/running the frontend outside Docker](#20-buildingrunning-the-frontend-outside-docker-frontendrunps1--runsh)
+20. [Choosing a module's icon](#21-choosing-a-modules-icon)
 
 ## 1. Deploying the application
 
@@ -585,7 +588,79 @@ Click the toggle again to switch back to lazy-load scrolling at any time.
 currently on. Navigating away and back (or reloading the page) always
 starts fresh in lazy-load mode.
 
-## 17. Choosing a module's icon
+## 18. Ports reference
+
+All four services are defined in `compose.yml`. Defaults (all overridable
+via `.env`):
+
+| Port | Service | Purpose |
+|------|---------|---------|
+| `5000` | backend | Plain HTTP API (direct, local debugging) |
+| `5443` | backend | HTTPS API, self-signed cert (direct) |
+| `8000` | frontend | Plain HTTP web app (direct) |
+| `8443` | frontend | HTTPS web app, self-signed cert (direct) |
+| `5001` | nginx → backend | Plain HTTP passthrough (for LAN/external access) |
+| `5444` | nginx → backend | HTTPS passthrough (raw TCP, backend terminates TLS) |
+| `8001` | nginx → frontend | Plain HTTP passthrough (for LAN/external access) |
+| `8444` | nginx → frontend | HTTPS passthrough (raw TCP, frontend terminates TLS) |
+
+The direct ports (`5000`/`5443`/`8000`/`8443`) always stay published for
+local debugging. The nginx ports (`5001`/`5444`/`8001`/`8444`) are the
+ones meant for LAN/external access — use `expose-lan.ps1`/`expose-lan.sh`
+(see [Sharing the app on your LAN](#accessing-from-another-device-on-your-lan))
+to forward them to other devices on your network. MariaDB has no
+published port by default — only the backend talks to it, over the
+internal Podman/Docker network.
+
+## 19. Running database migrations
+
+Migrations run automatically on every backend container start/restart
+(`backend/entrypoint.sh` runs `alembic upgrade head` before starting
+Uvicorn), so in normal use you never need to run them by hand — see
+[Updating (`git pull`)](#15-updating-git-pull) above. If you want to
+check for or apply pending migrations without restarting the container:
+
+```bash
+podman exec sfsis-backend uv run alembic upgrade head
+```
+
+To create a new migration after changing a model (development only):
+
+```bash
+podman exec sfsis-backend bash -c "cd /usr/src/app && uv run alembic revision --autogenerate -m \"your message\""
+```
+
+## 20. Building/running the frontend outside Docker (`frontend/run.ps1` / `run.sh`)
+
+The containerized web app (started via `start.ps1`/`start.sh`, above) is
+the primary supported way to run this app. `frontend/run.ps1` (Windows)
+and `frontend/run.sh` (Linux/macOS) are a separate, optional path for
+producing a native mobile/desktop build, previewing one, or running the
+app directly from source with hot reload. They require
+[`uv`](https://docs.astral.sh/uv/) on your `PATH`.
+
+Run with no arguments for an interactive menu (loops back after every
+action; `0` or blank input exits), or pass a target directly for
+one-shot/CI use, e.g. `./run.sh apk` or `.\run.ps1 web`. The menu has
+four sections:
+
+- **Build** (options 1–10): `flet build <target>` for APK (release,
+  debug, or split-per-ABI), AAB, iOS (IPA/Simulator), Windows/macOS/Linux
+  desktop, and Web. Output lands in `frontend/build/<target>/`.
+- **Preview** (options 11–16): runs/serves an already-built artifact
+  (`flet serve` for web, launches the built desktop binary, `adb install`
+  + launch for a connected Android device). Doesn't build anything itself.
+- **Dev mode** (options 17–20): `flet run -r` — runs directly from source
+  with hot reload, optionally `--web`/`--android`/`--ios`. The
+  Android/iOS options print a QR code you can scan with the free "Flet"
+  companion app (no SDK/Xcode/build step needed at all).
+- **Signing** (option 21): one-time generation of an Android upload
+  keystore (`frontend/key/upload-keystore.jks`, gitignored) for a real,
+  publishable release APK/AAB — required before Play Console will accept
+  a build. The store/key password lives in the repo-root `.env`
+  (`FLET_ANDROID_SIGNING_KEY_STORE_PASSWORD`), never in a committed file.
+
+## 21. Choosing a module's icon
 
 On the **Modules** screen (Application Configuration → Modules), the
 Add/Edit form's **Icon** field shows the module's current home-tile icon

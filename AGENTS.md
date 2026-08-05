@@ -205,7 +205,7 @@ hasn't seen this section.
 | #47 | feat(backend): app-wide configurable timezone (IANA via zoneinfo) with UTC storage | closed | 2026-07-27 |
 | #48 | fix(frontend): table column widths don't respond to browser window resize/maximize (web) | closed | 2026-07-27 |
 | #49 | fix(frontend): add top padding to master_config/mail_config singleton Form screens | closed | 2026-07-27 |
-| #50 | fix(table): column resize handle stops working on the second drag | open (2026-08-03: instrumented + one confirmed cause fixed, symptom NOT reproduced) - per the issue's own first AC, the pan handlers were instrumented and the live logs read before changing anything. That **confirmed the documented prime suspect**: `_build_header_with_resize_overlay()` returned a brand-new `ft.Stack` on every call, so the Stack's control id changed on *every drag tick* (1814 -> 2391 -> 2553 -> 2703 ...) - the cached handles were being re-parented under the user's pointer, and caching them cannot prevent that because a widget's place in the tree is part of its client-side identity, not just its id. Fixed by reusing ONE Stack for the table's lifetime and swapping only `controls[0]` (the header DataTable) per tick; logs confirm the Stack id is now stable across rebuilds. Also moved `manually_resized = True` out of `_on_pan_end` and into `handle_drag()` where the widths actually change - if a rebuild ever costs us the closing pan_end, the flag would never be set and the next `load()` would silently discard the resize by recomputing auto-fit widths. **Deliberately NOT closed**: the second-drag failure itself was never reproduced here - synthetic/CDP drags succeeded both before and after the fix - and visual verification was blocked by the browser window being backgrounded (Flutter does not paint a hidden tab; `document.visibilityState === 'hidden'` with zero canvases, which also explains a run of blank screenshots that initially looked like an app hang). Two dead ends now ruled out for the next pass: pan-event counts cannot be measured with CDP drags (the count tracks how many `mouseMoved` events CDP emits, not how many the gesture survives - an early reading of mine to the contrary was wrong), and no server-side exception is involved. Needs one real physical-drag confirmation | 2026-08-03 |
+| #50 | fix(table): column resize handle stops working on the second drag | open (partial fix landed, symptom not reproduced) (see CHANGE_HISTORY.md for details) | 2026-08-03 |
 | #51 | fix(frontend): web app hangs on splash when loaded directly at /home or a deep route | closed | 2026-07-27 |
 | #52 | feat(frontend): scan barcode/QR into Material and Location pickers on stock item screens | closed | 2026-07-30 |
 | #53 | feat(frontend): borderless filled inputs with focus-color swap (PRIMARY_CONTAINER / TERTIARY_CONTAINER) | done | 2026-07-28 |
@@ -224,22 +224,21 @@ hasn't seen this section.
 | #66 | feat(infra): interactive frontend build script (apk/aab/ios/desktop/web) | closed | 2026-07-29 |
 | #67 | feat(infra): test/preview script for build.ps1/build.sh output | closed (fulfilled by run.ps1/run.sh's merged Preview section, not standalone test.ps1/test.sh) | 2026-07-30 |
 | #68 | chore(frontend): upgrade Flet 0.85.3 -> 0.86.4 | closed | 2026-07-30 |
-| #69 | feat(infra): add nginx reverse proxy in front of backend/frontend | closed (auto-closed via "Closes #69" commit trailer on push to main - implemented as an additive passthrough layer per user decision, not a replacement of existing ports - verified live end-to-end) | 2026-07-30 |
-| #71 | fix(frontend): select dropdown first click via text region doesn't populate value | **closed 2026-08-03** (confirmed working live by the user with real physical clicks) - **the earlier "unfixable upstream limitation" verdict was incomplete**: it is a Flutter behavior, but one triggered by a combination of two options *this app itself sets*, and disabling one resolves it at no cost. `editable=True` (Flutter's `requestFocusOnTap: true`, needed for issue #26's type-to-filter) makes the TEXT FIELD request focus when the text region is tapped, while `enable_search=True` (Flet's own default, never set explicitly here - which is why it was never suspected) makes Flutter compute a `currentHighlight` and hand focus to the HIGHLIGHTED MENU ITEM. Opening via the text region requests both at once and the first tap on an option is consumed resolving the contention instead of selecting - exactly matching the live finding that `on_select` never fired on the failing click, and exactly why opening via the trailing arrow (which never focuses the text field) always worked. Fixed by passing `enable_search=False` (per-field overridable) at both Dropdown construction sites (`components/form/select.py`, `components/table/rows.py`): Flutter then sets `currentHighlight` to null so no menu item grabs focus. Costs nothing - `enable_search` only auto-highlights the entry matching typed text, a different feature from `enable_filter`, which does the real type-to-filter narrowing and stays on. **That `enable_search` explanation was still not the cause** - the user reported the bug persisting and correctly suspected `SelectForm`'s own `_on_focus`/`_on_blur` handlers. ACTUAL root cause: `_on_focus` mutated `label_style` and called `update()`, pushing a control patch to the client *while the menu overlay was still opening*; the client rebuilt the Dropdown, the half-built overlay went with it, and the pending tap was lost - exactly why `on_select` never fired. The arrow path never focuses the text field so no patch was sent, and the second attempt worked because the field was already focused. Fixed by deleting `_on_focus`/`_on_blur` from `select.py` (and from `input.py`/`date.py`/`label.py` for consistency - same needless per-focus round-trip); Flutter/M3 already recolours the focused outline via `focused_border_color` and the floating label via its own theme, so nothing was lost. `enable_search=False` was kept as a second, genuine focus competitor that costs nothing. Also removed as confirmed dead code: `depends_on`/`depends_param`/`refresh_with_values()` + `Form.setup_cascading_selects()` and both `depends_on` loops (a cascading-select mechanism **no screen in this app has ever used**), and `SelectForm._safe_update()` with it. Also fixed: the QR scan button beside a select now carries a bottom margin of `HELPER_TEXT_LINE_HEIGHT` so it centres on the input BOX rather than on box-plus-helper-line. Verified live on `ap_master_user/edit/1` and `stock_in/item_new/1`; synthetic clicks never reproduced #71, so one real physical-click confirmation is still needed before closing | 2026-08-03 |
-| #73 | fix(frontend): multiple UI misalignment/rendering bugs on mobile web browsers (Safari/Chrome) | ready-for-review - findings #1/#3(nav buttons)/#6 fixed via `components/button.py` size_constraints; findings #2/#4/#5 root-caused to `page.adaptive = True` (removed) + a missing `text_vertical_align` on the footer's rows-per-page input (fixed) - not yet verified on a real mobile device | 2026-07-31 |
+| #69 | feat(infra): add nginx reverse proxy in front of backend/frontend | closed (see CHANGE_HISTORY.md for details) | 2026-07-30 |
+| #71 | fix(frontend): select dropdown first click via text region doesn't populate value | closed (see CHANGE_HISTORY.md for details) | 2026-08-03 |
+| #73 | fix(frontend): multiple UI misalignment/rendering bugs on mobile web browsers (Safari/Chrome) | ready-for-review (see CHANGE_HISTORY.md for details) | 2026-07-31 |
 | #74 | fix(frontend): APK crashes on launch - sys.stdout.reconfigure() unsupported by Android's _TeeWriter stdout | ready-for-review - fix landed, not yet verified on a real Android device | 2026-07-30 |
-| #75 | fix(infra): nginx LAN exposure unreliable under Podman/WSL - evaluate docker compose | open (LAN access confirmed working) - user confirmed live that `192.168.16.170:8001` opens successfully from a real iPad/iPhone; exact deciding factor (Hyper-V vs Podman/WSL2 NAT, vs simply having correct adapter/IP + healthy backend after two unrelated bugs were fixed) not fully isolated. Two new findings from this real-device test session filed separately as #76 (mobile touch-target sizing) and #77 (camera scan not working on real device) | 2026-07-31 |
-| #76 | fix(frontend): compact toolbar/search-bar/button/input sizing too small for real mobile touch use - restore M3 standard sizing | ready-for-review - reverted every compact 32dp/24px sizing decision from #19/#21/#53/#63 back to M3's 48dp minimum app-wide (not a platform-conditional scheme); input/select height mismatch fixed via a shared explicit `FIELD_HEIGHT=48`; not yet verified live (container build blocked by an unrelated pre-existing Podman/Docker-Desktop registry config conflict on this dev machine) | 2026-08-03 |
-| #77 | fix(frontend): camera scan button does nothing on real iPad/iPhone - no permission prompt, no preview | ready-for-review - HTTPS fix confirmed working live (permission prompt + camera open now work); follow-up fixes also confirmed/applied: camera-switch button moved beside Gallery, `StackFit.EXPAND` fix for camera filling the full screen (confirmed working), Gallery-picker-does-nothing-from-camera-view fix (user-gesture-chain ordering, not yet confirmed). "Live scanning not supported, use Gallery" on Safari/iOS and camera-switch zoom flicker are documented as expected platform limitations, not bugs | 2026-07-31 |
-| #85 | fix(frontend): correct ModalHeader to M3 Full-screen dialog spec (close X + text button, not back+home) | ready-for-review - `ModalHeader` now close (X) leading + optional trailing `TextButton` via new `set_action()`, 56dp height, `SURFACE_CONTAINER_HIGH` bg; `ModalView` body padding 24dp + 560dp max-width centered (mobile-safe, capped against live `page.width` not a fixed width) + opt-in 1dp divider; password/shift/token's bottom Submit button moved into the header action; totp deliberately unchanged (both Generate/Save stay in body, per user decision); barcode-scanner overlay's close icon/padding standardized to the same constants. Discard-confirmation dialog explicitly deferred (per user decision) - not built, would need its own follow-up issue if wanted. Verified live in the browser (password: X + headline + Submit text button + centered body; totp: X only, no text button, both body buttons intact) | 2026-08-04 |
-| #84 | style(frontend): full-rounded (pill) border on every search bar | ready-for-review - `components/search_bar.py`'s `border_radius` changed 10 -> `_FIELD_HEIGHT / 2` (24); `components/home/search_bar.py`'s native `ft.SearchBar` confirmed live already fully-rounded by M3 default, no code change needed there. Verified live in the browser on both a Table screen (master_location) and Home - both search bars render as a true pill, zoomed screenshot confirmed. Per-column filter inputs left untouched (different affordance, keeps issue #79's outlined-field radius) | 2026-08-04 |
-| #83 | feat(frontend): standardize AppBar to M3 Small app bar spec (sizing, icons, back button, two-line title/subtitle) | ready-for-review - `ModuleHeader` (module screens) gets a two-line module-name/page-title block (single line on index screens with no page title), `ModalHeader` gets a back arrow + Home action (replacing Close), `Header`/`server_config`/`troubleshooting` headers get `center_title=False`/`toolbar_height=64`/standard 48dp icon sizing; scroll-color-fill and flexible Medium/Large app bar deliberately skipped (confirmed Flet's `ft.AppBar` has no support for either) per user's own resolved decision. Verified live in the browser: index (single-line "Locations"), edit (two-line "Locations"/"Edit Location"), and a modal ("Change Password" with back arrow + Home icon) all render correctly | 2026-08-04 |
-| #82 | fix(frontend): default List per-field filter to on, matching Table's opt-out convention | ready-for-review - `components/list/filter.py::ListFilter` now uses `field.get("filter", True) is not False` (same rule as `TableFilter`), with hidden fields explicitly excluded (a gap `ListFilter` had that `TableFilter` didn't); sort left opt-in, unchanged, per the issue's own explicit scope. Verified via unit tests (default-on, explicit `"filter": False` opt-out preserved, hidden-field exclusion, `stock_in`'s existing explicit fields unaffected, a sort-only field also now getting a default filter); container restarted cleanly, all 65 screens preloaded with zero import errors. **Not yet verified in a live browser** - no working login credentials available this session, same gap as issue #81 | 2026-08-04 |
-| #81 | feat(frontend): make List/ViewToggle the app-wide default table view, with field auto-position + M3 expand/collapse for overflow fields | ready-for-review - both phases implemented: `Layout`/`Tiles` auto-position + M3 expand/collapse for overflow fields, `List` gained `custom_param` support (previously Table-only), `ViewToggle` gained `apply_custom_param()` so a screen-level filter survives a List<->Table switch, `Tiles` gained per-field `link_key_field`/`link_screen` drill-down navigation (previously Table-only, needed for `stock_browse`'s dual material/location links). 19 screens rolled over from bare `Table(...)` to `ViewToggle`; user confirmed sub-item tables (`stock_in`/`stock_out`/`stock_movement`'s `item_table.py`) are in scope. Verified via unit-level tests (real `flet`, stubbed `HttpClient`/page) covering auto-position, backward-compat with `stock_in`'s existing explicit-position fields, expand/collapse toggling, per-field link navigation, and `custom_param` query merging; container restarted cleanly with all 65 screens preloading with zero import errors. **Not yet verified in a live browser** - browser automation hit this repo's own documented Flet splash/navigation flakiness and no working login credentials were available this session; next pass should click through: a plain module (e.g. `master_location`), `stock_browse`'s dual drill-down links + expand/collapse, an item sub-table (e.g. `stock_in/edit/<id>`), and `usage_report`/`purchase_report`'s Apply-Filters-then-toggle-view flow | 2026-08-04 |
-| #80 | feat(frontend): restrict Troubleshooting page to desktop/mobile (local data only); auto-clear logs on logout | **closed 2026-08-04** (commit 71b5316, pushed to main) - fully live-verified with a real logged-in session: user menu shows no Troubleshooting item; logout correctly truncated only that session's own `storage/data/sessions/<client_id>.log` (23015 -> 45 bytes, the 45 being one line logged after the clear) while two other concurrent sessions' log files were confirmed untouched at their original sizes - the one previously-open gap (the logout-clear round trip) is now closed | 2026-08-04 |
-| #79 | feat(frontend): switch form fields from filled to outlined M3 style | **closed 2026-08-03** (confirmed working live by the user) - every field type (`input`/`select`/`date`/`label`/`icon_picker`) reverted from #53's filled design to `filled=False`/`border=OUTLINE`/no bgcolor, via a new shared `FIELD_BORDER_RADIUS` constant (replacing each file's own hardcoded radius, including select.py's now-obsolete square-corner special case); #78's height/spacing standardization and select.py's fill-color fix were preserved/adapted, not reverted - an unfilled outlined Dropdown structurally can't leak fill into its reserved helper-text slot; verified live on stock_in/new and ap_master_user/edit/1 with correct focused-border coloring and no regressions; follow-up (user-caught, same day) - select fields on rows after the first had their outlined floating label's top sliced off by the border stroke (text inputs unaffected) - root cause: each row's Container used `expand=True` inside `Form.build()`'s scrolling outer Column, an invalid combination (a scrollable axis has no fixed space to expand into) that squeezed every row's height allocation shorter than needed - TextField tolerated the shortfall invisibly, Dropdown's outlined label didn't - fixed by removing `expand=True` from each row Container (sizes to natural height now) and adding `horizontal_alignment=STRETCH` to the outer Column to keep full row width instead; verified live via zoomed screenshot on ap_master_user/edit/1 (labels now intact) with stock_out/edit/1 re-confirmed unaffected; ACTUAL root cause found on further user investigation (the layout fix above only shuffled which field showed the bug, confirmed live when stock_out/edit's previously-fine Department became clipped instead) - user pointed to Flet's own official Dropdown docs example, which never sets `height` on the control; direct A/B test confirmed setting `height=` on `ft.Dropdown` itself desyncs its OutlineInputBorder's label notch from the label's painted position for any pre-populated select, causing the border stroke to paint through the label - fixed by moving the fixed height off the Dropdown and onto its wrapping Container instead (external BoxConstraints, not the Dropdown's own internal height field), preserving #78's uniform-height guarantee without the notch desync; verified live on stock_out/edit/1 and ap_master_user/edit/1 with zoomed screenshots confirming every label fully intact; user then reported the same fields STILL clipped on their end despite this session's own repeated testing showing them correct - confirming the bug is a genuine intermittent client-side render race (not deterministic) that no static property/layout fix can reliably win, since every prior attempt only ever changed what's sent to the client at first mount - fixed via `SelectForm.schedule_notch_refresh()`, called from `Form.load()` right after a select's value is populated: schedules a short `asyncio.sleep(0.3)` then a genuine second `update()` patch on an already-mounted select, forcing Flutter to redo layout rather than trust first paint - explicitly documented as a workaround for an upstream race, not a root-cause fix; verified live across 3 consecutive fresh-tab reloads of ap_master_user/edit/1 with every label intact each time; **ALL OF THE ABOVE CLIPPING DIAGNOSES WERE WRONG** - four fixes in a row (row `expand=True` removal, extra row top padding, moving `height` onto a wrapping Container, and the delayed post-mount `update()` nudge) each only shuffled *which* field showed the bug, which is why it kept looking "intermittent"; the ACTUAL root cause is that `content_padding` vertical was hardcoded to `8` on every field type, while Flutter's `InputDecorator` reserves the floating label's room on an OUTLINE border out of that very padding (its own default for a non-dense outlined field is `20`) - at `8` the label had nowhere to go and the border stroke painted through it; invisible under #53's filled/UNDERLINE style, surfaced only when #79 switched to OUTLINE, and the clincher was that `icon_picker.py` - the one field type that never set `content_padding` at all - was also the one never reported as clipping. Fixed via a shared `field_content_padding()`/`FIELD_CONTENT_PADDING_VERTICAL=16`/`HELPER_TEXT_STYLE` in `input.py`, plus removing every explicit `height=` (fields now size naturally and uniformly from shared padding/border/text-size/helper line; `FIELD_HEIGHT`/`HELPER_TEXT_HEIGHT`/`FIELD_TOTAL_HEIGHT` deleted). Also stripped every accumulated workaround per user direction: `select.py` is now a thin wrapper over a stock `ft.Dropdown` - `_build_dropdown()`, `_on_select()`, the wrapping `Container`, `_safe_container_update()` and `schedule_notch_refresh()`/`_notch_refresh()` all deleted, `leading_icon` moved to `__init__`, `build()` the only construction path; `_safe_update()` was checked and KEPT (flet 0.86's `BaseControl.update()` genuinely raises `RuntimeError` when unmounted, which `refresh_with_values()` hits during initial `Form.build()`). Verified live on ap_master_user/edit/1 and stock_in/new | 2026-08-03 |
-| #78 | fix(frontend): standardize form field heights/spacing and add date assistive text | ready-for-review - DateForm/LabelForm/IconPickerForm now set the shared `FIELD_HEIGHT` (input.py/select.py already had it from #76); DateForm gained a "Format: dd Mon yyyy" assistive text (via `helper=`, not `helper_text=` - TextField's FormFieldControl names this property differently than Dropdown's); Form.build()'s row spacing widened 10->22 for the added helper text; follow-up fix (same day, user-caught against the real M3 spec) - `height=FIELD_HEIGHT` was squeezing DateForm's input box shorter to fit the helper text inside one fixed 48px, instead of the box staying full height with the control growing taller - fixed via `height=None if self.helper_text else FIELD_HEIGHT`; verified live via pixel-level screenshot comparison that Date's box now matches Supplier's box height exactly, with the helper text below it; second follow-up (user-caught on stock_out/edit/1) - the item-table Container below Form in stock_in/stock_out/stock_movement's edit.py bodies lives in a separate outer Column outside Form's own rows, so Form's row-spacing fix never reached the gap between the whole form and the item table - fixed by adding spacing=24 to all three edit screens' outer Column; verified live on both stock_out/edit/1 and stock_in/edit/1; third follow-up (user's own concern, preempting a future bug) - the row-spacing fixes only add room BETWEEN rows, so a future helper-text field ending up as a form's very LAST row with nothing appended after it would still have zero guaranteed clearance - fixed by giving Form.build()'s own form_container a permanent bottom padding (20px) so every Form guarantees its own clearance below the last row regardless of what follows it; fourth follow-up (user-requested standardization) - the spacing=24/height=400 fix had been copy-pasted as a literal into three edit.py files instead of centralized, and a 4th identical consumer (ap_master_user/edit.py's permission_table) had been missed and was still on the old unfixed default - fixed by adding `components/module/detail_body.py::build_form_with_detail()` as the one shared "Form + bounded-height sub-table(s)" composition (owning DETAIL_TABLE_HEIGHT=400/FORM_DETAIL_SPACING=24 as the single source of truth) and switching all four consumers (stock_in/stock_out/stock_movement/ap_master_user edit.py) to call it instead of hand-building their own Column; verified live on stock_out/edit/1 (unchanged) and ap_master_user/edit/1 (previously-unfixed screen now consistent); fifth follow-up (user-requested correction of the design itself) - the two prior follow-ups only fixed spacing AROUND fields from the page/composition-helper level, which doesn't stop a future page from reintroducing the same bug - reverted both (deleted `components/module/detail_body.py`, reverted all four edit.py bodies back to plain `ft.Column` with no custom spacing, reverted Form.build()'s spacing/padding to standard 16) and instead made every field type reserve a fixed `FIELD_TOTAL_HEIGHT` (`FIELD_HEIGHT` + a new `HELPER_TEXT_HEIGHT=20`) unconditionally, always passing a helper string even when blank - an empty string still makes Flutter reserve the helper line's space, so every field (with or without real supporting text) renders at one identical total height everywhere in the app; verified live via a pixel-level zoomed screenshot that Supplier's box+blank-helper-slot now matches Date's box+"Format: dd Mon yyyy" exactly, with zero page-level spacing customization needed anywhere; sixth follow-up (user-caught visual regression from the fifth) - SelectForm's fill color was applied via a wrapping `ft.Container(bgcolor=...)` (a leftover from when the fill needed to live-swap on focus, pre-#53) with the Dropdown itself `fill_color=TRANSPARENT` - that Container shrink-wraps to the Dropdown, so once the Dropdown grew to `FIELD_TOTAL_HEIGHT` its bgcolor painted the entire taller area including the blank reserved helper slot, unlike `ft.TextField`'s own internal decoration fill which never paints its helper line - fixed by setting `fill_color=self.bgcolor` directly on the Dropdown (matching TextField) and removing the Container's bgcolor entirely; verified live via zoomed screenshot that the reserved slot now renders transparent, matching every other field type | 2026-08-03 |
-
+| #75 | fix(infra): nginx LAN exposure unreliable under Podman/WSL - evaluate docker compose | open (LAN access confirmed working) (see CHANGE_HISTORY.md for details) | 2026-07-31 |
+| #76 | fix(frontend): compact toolbar/search-bar/button/input sizing too small for real mobile touch use - restore M3 standard sizing | ready-for-review (see CHANGE_HISTORY.md for details) | 2026-08-03 |
+| #77 | fix(frontend): camera scan button does nothing on real iPad/iPhone - no permission prompt, no preview | ready-for-review (see CHANGE_HISTORY.md for details) | 2026-07-31 |
+| #85 | fix(frontend): correct ModalHeader to M3 Full-screen dialog spec (close X + text button, not back+home) | ready-for-review (see CHANGE_HISTORY.md for details) | 2026-08-04 |
+| #84 | style(frontend): full-rounded (pill) border on every search bar | ready-for-review (see CHANGE_HISTORY.md for details) | 2026-08-04 |
+| #83 | feat(frontend): standardize AppBar to M3 Small app bar spec (sizing, icons, back button, two-line title/subtitle) | ready-for-review (see CHANGE_HISTORY.md for details) | 2026-08-04 |
+| #82 | fix(frontend): default List per-field filter to on, matching Table's opt-out convention | ready-for-review (see CHANGE_HISTORY.md for details) | 2026-08-04 |
+| #81 | feat(frontend): make List/ViewToggle the app-wide default table view, with field auto-position + M3 expand/collapse for overflow fields | ready-for-review (see CHANGE_HISTORY.md for details) | 2026-08-04 |
+| #80 | feat(frontend): restrict Troubleshooting page to desktop/mobile (local data only); auto-clear logs on logout | closed (see CHANGE_HISTORY.md for details) | 2026-08-04 |
+| #79 | feat(frontend): switch form fields from filled to outlined M3 style | closed (see CHANGE_HISTORY.md for details) | 2026-08-03 |
+| #78 | fix(frontend): standardize form field heights/spacing and add date assistive text | ready-for-review (see CHANGE_HISTORY.md for details) | 2026-08-03 |
 ## Big Picture
 
 **SFSIS** is a full-stack inventory system with four services, orchestrated
@@ -313,53 +312,14 @@ locally via Podman:
   - `depends_on` both `backend`/`frontend` with `condition:
     service_healthy` — nginx only starts once both real upstreams are
     already serving.
-  - **Windows/Podman: nginx's own published ports can silently stop
-    forwarding after heavy container-restart churn, independently of
-    everything inside the container** (found live, 2026-07-30, on this
-    Windows/WSL dev machine — same session already carrying the resolver
-    fix above). Symptom: `curl http://localhost:8001/`/`:5001` (nginx's
-    own exposed ports) hangs or returns "Empty reply from server"/a
-    dropped connection, while `curl http://localhost:8000/` (frontend's
-    *own* directly-published port, unrelated to nginx) works fine at the
-    same moment — nginx and every container report `healthy` throughout,
-    and nginx's own internal healthcheck (`wget` from `127.0.0.1` inside
-    the container) keeps succeeding the whole time, so this is purely a
-    **host-to-container port-forwarding gap**, not an application bug.
-    Root cause, confirmed via `netstat -ano` on the Windows host: after
-    several `frontend` restarts, an `nginx --force-recreate`, a `podman
-    machine stop`/`start`, and even a full `wsl --shutdown`, Podman's
-    WSL-backed port-forwarder re-established a real `LISTENING` socket
-    for `frontend`'s port (8000) but never re-registered one for
-    `nginx`'s ports (8001/5001) at all — `netstat` showed no listener
-    whatsoever on those two, not a stale/wrong one. **Fix: a plain
-    `podman compose restart nginx`** (not `frontend`, not the whole
-    stack, not the Podman machine) — this alone made Podman re-bind the
-    host-side forwards for nginx's specific ports correctly.
-    **Two real, ruled-out red herrings from this same investigation**,
-    worth knowing so they're not chased again first:
-    1. `netsh interface portproxy` rules (from `expose-lan.ps1`, for
-       LAN/phone access) run under a `svchost` process that LOOKS
-       identical in `netstat` to what you'd expect from Podman's own
-       forwarder (a generic `svchost` PID holding the listening socket)
-       — genuinely worth checking (`netsh interface portproxy show
-       all`) and removing (`expose-lan.ps1 -Remove`) as a first
-       diagnostic step, but in this specific incident the ports were
-       broken with or without those rules present — the portproxy layer
-       was not the actual cause this time, just a plausible-looking
-       coincidence sharing the same OS mechanism.
-    2. Nothing about nginx's own config, `nginx.conf.template`, or the
-       resolver fix above was implicated — this failure mode is entirely
-       about the Windows-host/WSL port-forwarding layer between the
-       Podman machine and the Windows host, one level below anything
-       this repo's own nginx config controls.
-    **Fastest diagnosis next time**: `netstat -ano | findstr ":8001 "`
-    (swap the port) — if there's no `LISTENING` line at all for it (only
-    `TIME_WAIT` entries or nothing), it's this exact gap; restart just
-    the affected container(s) via `podman compose restart <service>`
-    before reaching for anything more disruptive (portproxy removal,
-    Podman machine restart, `wsl --shutdown` — all were tried this
-    session and none were the actual fix, restarting the specific
-    container was).
+  - **Windows/Podman gotcha**: nginx's own published ports (8001/5001/etc.)
+    can silently stop forwarding after heavy container-restart churn — a
+    host-to-container WSL port-forwarding gap, not an application bug.
+    Fix: `podman compose restart nginx` (not the whole stack). Fastest
+    diagnosis: `netstat -ano | findstr ":8001 "` — no `LISTENING` line
+    means this exact gap. Full investigation, ruled-out red herrings
+    (`netsh portproxy`, nginx config itself), and every tried remedy are
+    in CHANGE_HISTORY.md (2026-07-30).
 
 All four services are defined in `compose.yml` and run together with:
 
@@ -598,149 +558,36 @@ separate real issues, neither a bug in this project's own code:
    only the *name* needed to match for cross-script muscle memory,
    the entire stated point of giving both scripts the same slug set).
 
-**Flet upgrade 0.85.3 -> 0.86.4** (issue #68, 2026-07-29): bumped
-`flet`/`flet[all]`/`flet-datatable2` to `0.86.4` in `frontend/pyproject.toml`
-(both the bare runtime dependency and the dev group), regenerated
-`frontend/uv.lock`. A real, pre-existing bug found and fixed along the way:
-`frontend/.gitignore` had a blanket `*.lock` rule (uncommented boilerplate
-left over from the generic Python `.gitignore` template) that had been
-silently keeping `frontend/uv.lock` out of git since this project's very
-first commit - `backend/.gitignore` has no such rule and `backend/uv.lock`
-has always been tracked, so this was a real asymmetry, not intentional.
-Commented out; `frontend/uv.lock` is now tracked for the first time.
-- **Verified, containerized web deployment (this app's primary supported
-  path)**: `uv lock`/`uv sync` resolved cleanly with no conflicts; a full,
-  clean `podman compose build --no-cache frontend` succeeded; all three
-  containers (`mariadb`/`backend`/`frontend`) reached healthy; frontend
-  container logs show all 65 module/modal screens preloading with zero
-  import errors; the ASGI `ClientIdMiddleware` still sets the
-  `sfsis_client_id` cookie correctly on both the plain-HTTP and the
-  `socat`-relayed HTTPS port; backend is unaffected (still correctly 401s
-  when unauthenticated). Every Python-level API this app's own documented
-  0.85.3-era workarounds depend on was confirmed unchanged by reading the
-  installed 0.86.4 package source directly (not assumed): `Page.on_resize`/
-  `PageResizeEvent`, `DataRow.color: Optional[ControlStateValue[ColorValue]]`,
-  `DataColumn.on_sort` (this app already routes header clicks through
-  `Container.on_click` instead, so its presence/absence doesn't matter
-  either way), `Container.on_click`/`on_hover`, `ListTile.bgcolor`,
-  `FormFieldControl.collapsed`, `FilePicker` still a `Service` (still
-  resolves via `page.services`), `GestureDetector.drag_interval`. The
-  `--flutter-build-args` argparse shape (`action="append", nargs="*"`) is
-  unchanged in `flet-cli` 0.86.4's own `build_base.py` - the documented
-  `=`-form requirement for `--flutter-build-args=--debug` still holds.
-  APK/AAB/IPA/desktop/web output-path globs (`build/app/outputs/
-  flutter-apk/*`, etc.) and the `build/`/`build/flutter/` directory
-  structure `run.ps1`/`run.sh`'s preview functions search are unchanged in
-  `flet-cli`'s own platform table - the "redesigned Android packaging"
-  release note turned out to refer to internal native-lib bundling inside
-  the APK, not `flet-cli`'s own output directory layout. Dev-mode QR-scan
-  (`flet run --android`/`--ios`, `print_qr_code`) is unchanged at the CLI
-  level - the remaining risk (whether the separately-versioned "Flet"
-  companion phone app has caught up to 0.86's wire protocol) still can't
-  be verified without a real phone in this environment, same gap as before.
-- **New, real finding: `flet-cli` 0.86 now manages its own pinned Flutter/
-  Android SDK version** (confirmed via `flutter_base.py` source and live
-  reproduction) independently of whatever `flutter`/`adb` is on `PATH` -
-  the first build on a machine whose Flutter doesn't match (this dev
-  machine's system Flutter was `3.16.4`; `flet-cli` 0.86.4 requires
-  `3.44.8`) prints `"Flutter SDK X is required. It will be installed now.
-  Proceed? [y/n]"` and, with no TTY attached (this script's own
-  non-interactive build path), that prompt `EOFError`s and crashes instead
-  of hanging. `flutter_base.py` documents its own bypass
-  ("Re-run with --yes to install automatically") - both `run.ps1`'s
-  `Invoke-BuildTarget` and `run.sh`'s `run_build_target` now pass
-  `--yes` to every `flet build` invocation. Confirmed this resolves the
-  crash: a retry with `--yes` correctly auto-downloaded and used Flutter
-  `3.44.8` without any further prompt.
-- **A second, separate, genuinely NOT-a-flet-bug failure found on this
-  same machine**: even with `--yes` fixing the SDK-bootstrap crash, a real
-  `apk` build still fails with `Building with plugins requires symlink
-  support. Please enable Developer Mode in your system settings.` -
-  Windows' own long-standing requirement for Flutter to create symlinks
-  when a build includes native plugins, unrelated to anything in this
-  repo or to the flet version bump itself (this is a Windows OS setting -
-  Settings > For Developers > Developer Mode - not a project file).
-  `flutter doctor` on this same machine also separately reported an
-  Android SDK version mismatch (SDK 37 installed, Flutter wants SDK 36 +
-  BuildTools 28.0.3) and an incomplete Visual Studio C++ desktop workload
-  - both pre-existing gaps on this dev machine, not caused by this
-  upgrade. **Not fixed here** - enabling Windows Developer Mode is a
-  system-level setting change outside this repo's own files, left for the
-  user to enable directly (`start ms-settings:developers`) rather than
-  scripted; a follow-up build attempt should be re-tried once that's on.
-  This session's own containerized web verification above (clean
-  `podman compose build`, all screens preloading, ASGI cookie/relay
-  behavior intact) went through a completely different code path (the
-  ASGI app on top of `flet-web`, not `flet-cli`'s Flutter/Gradle/APK
-  toolchain at all), so it was never at risk from this Windows-specific
-  plugin/symlink gate either way - this is a machine-environment blocker
-  for the native APK build path specifically, not a regression in the
-  containerized web app this project actually ships.
-- **Not verified this session**: a real `flet build apk`/desktop build
-  completing end-to-end (blocked by the Developer Mode gap above, not
-  re-attempted after finding the root cause), and the dev-mode Android/iOS
-  QR-scan companion-app connect flow (no phone available).
+**Flet upgrade 0.85.3 -> 0.86.4** (issue #68, 2026-07-29): `flet`/
+`flet[all]`/`flet-datatable2` pinned to `0.86.4` in
+`frontend/pyproject.toml`; `frontend/uv.lock` is now tracked in git for
+the first time (a stale blanket `*.lock` `.gitignore` rule had silently
+kept it untracked since the first commit — fixed). Verified end-to-end
+against the containerized web deployment (this app's primary path): clean
+build, all 65 screens preload, ASGI cookie bridging/HTTPS relay intact,
+every Python-level API this app's 0.85.3-era workarounds depend on
+confirmed unchanged in 0.86.4 by reading the installed package source.
+Native `flet build apk`/desktop builds on this dev machine hit two
+separate, pre-existing, non-Flet machine-environment blockers (Flutter/
+Android SDK auto-bootstrap needing `--yes`, now added to `run.ps1`/
+`run.sh`; Windows Developer Mode required for symlink support) — neither
+is a regression in the containerized web app this project ships. Full
+investigation detail in CHANGE_HISTORY.md (2026-07-29).
 
-**`expose-lan.ps1`/`expose-lan.sh`** (repo root, same-day follow-up to a
-direct user question, not tied to a filed issue): exposes ports to the
-rest of the LAN, so a phone/tablet on the same WiFi can reach them - the
-same real address a test/preview device needs, whether that's the
-containerized frontend's own URL or the Server Config screen inside a
-dev-mode (`test.ps1`/`test.sh`) or built app. **Default port set updated
-by issue #69** (2026-07-30) to only the nginx passthrough ports (backend
-5001/5444, frontend 8001/8444) - the original direct backend/frontend
-ports (5000/5443/8000/8443) were dropped from this script's default set
-by explicit user decision, since those stay local-debugging-only and
-nginx's ports are the ones meant for LAN/external exposure going forward.
-- **Root cause diagnosed live on this dev machine, not assumed**:
-  `compose.yml` already binds every service to `0.0.0.0` inside its
-  container and publishes the port (`podman ps` shows
-  `0.0.0.0:5000->5000/tcp`), but this machine's `podman-machine-default`
-  is WSL-backed with `UserModeNetworking: false` (`podman machine
-  inspect`) - on Windows that combination only forwards published ports
-  to `127.0.0.1` on the Windows host itself, confirmed via `netstat -ano`
-  showing a `127.0.0.1:5000` listener, not `0.0.0.0:5000`, regardless of
-  what `podman ps` claims. A Windows dev machine also commonly has
-  several IPv4 adapters (Ethernet, WiFi, WSL's own vEthernet, podman's
-  virtual switch, ...) - picking the wrong one silently fails with no
-  useful error (hit live: `192.168.18.111` was Ethernet, the phone needed
-  the WiFi adapter's `192.168.16.170` instead) - both scripts list every
-  real candidate address, filtered to exclude loopback/virtual adapters,
-  rather than guessing at "the" IP.
-- **`expose-lan.ps1`** (must run as Administrator - checked and refused
-  otherwise): idempotent `netsh interface portproxy` rules (delete-then-
-  add, so re-running never fails on an "already exists" error) forwarding
-  `0.0.0.0:<port> -> 127.0.0.1:<port>` for each port, plus one
-  `New-NetFirewallRule` allowing them all inbound. `-Remove` undoes both.
-- **`expose-lan.sh`** (Linux/macOS - **not verified against a real
-  Linux/macOS host in this session**, none available; the Windows/WSL
-  root cause above is genuinely Windows-specific, so this script instead
-  diagnoses first via `ss`/`netstat`/`ifconfig` output parsing and only
-  acts if a port genuinely isn't already listening on all interfaces -
-  common on native Linux podman, less likely to be needed at all):
-  falls back to a `socat TCP-LISTEN:<port>,fork` relay when a port is
-  127.0.0.1-only and `socat` is available, and opens the port via `ufw`
-  when present (macOS gets an informational note about its Application
-  Firewall's own connection-time prompt instead, since scripting `pfctl`
-  changes safely is out of scope). An unrecognized host OS (e.g. this
-  session's own Windows/Git-Bash test environment - not a real target)
-  prints a pointer to `expose-lan.ps1` and exits cleanly rather than
-  crashing via a Linux-only command failing under `set -e` - a real bug
-  caught and fixed live during testing (the original version invoked `ip
-  addr show` unconditionally regardless of detected OS).
-- Verified live on this Windows machine: `expose-lan.ps1` correctly
-  refuses to run when not elevated; its LAN-address listing (isolated
-  from the privileged portproxy/firewall calls) correctly shows exactly
-  `192.168.18.111 (Ethernet)` / `192.168.16.170 (Wi-Fi)`, filtering out
-  every WSL/vEthernet/loopback adapter. `expose-lan.sh`'s OS-detection
-  guard, socat-missing fallback message, and `--remove` no-op path all
-  verified; its `ss`/`netstat` all-interfaces-listening check was tested
-  against a real `python3 -m http.server --bind 0.0.0.0` locally but
-  **did not correctly detect it** on this Windows/Git-Bash environment -
-  expected, since Git-Bash's `netstat` is Windows' own tool with a
-  different output format than the Linux/macOS tools this script's regex
-  targets, not evidence of a real Linux/macOS bug; re-verify this specific
-  check the first time the script runs on an actual Linux or macOS host.
+**`expose-lan.ps1`/`expose-lan.sh`** (repo root): exposes ports to the
+LAN so a phone/tablet on the same WiFi can reach the app. Default port
+set is the four nginx passthrough ports only (5001/5444/8001/8444, per
+issue #69) — the direct backend/frontend ports stay local-debugging-only.
+`expose-lan.ps1` (Windows, run as Administrator) manages idempotent
+`netsh interface portproxy` rules + a firewall rule, and lists real LAN
+addresses (filtering out loopback/virtual adapters — a Windows machine
+with several IPv4 adapters can silently expose the wrong one otherwise);
+`-Remove` undoes it. `expose-lan.sh` (Linux/macOS) diagnoses first via
+`ss`/`netstat` and only relays via `socat` when a port is genuinely
+`127.0.0.1`-only, opening it via `ufw` when present. Full root-cause
+diagnosis (WSL-backed Podman's `UserModeNetworking: false` only forwards
+published ports to `127.0.0.1` on the Windows host, not `0.0.0.0`) and
+verification detail are in CHANGE_HISTORY.md (2026-07-29/30).
 
 ## Backend Architecture (FastAPI — `backend/src`)
 
@@ -1345,187 +1192,37 @@ audit timestamps were in scope.
       in-memory `this.orderBy[table]` there too), so it resets whenever a
       `Table`/`TableColumns` instance itself is torn down and rebuilt (e.g.
       navigating away and back).
-    - **`TableBody`'s hidden header row never gets sort icons** (fixed
-      alongside the #27 rollout above): `TableBody` builds its own,
-      separate `ft.DataTable` purely for structural column-width alignment
-      (`heading_row_height=0` hides it — the real, visible header is a
-      different `DataTable` in `TableHeader`). Before this fix, that hidden
-      row was built identically to the real header (same
-      `TableColumns.build()` call, complete with sort icons and `on_sort`
-      handlers), and Flutter's `DataTable` doesn't fully clip a
-      zero-height heading row's content — a sort icon there could visibly
-      bleed into the first data row once any column was marked
-      `"sort": True`, which went unnoticed until #27 turned sort on
-      everywhere. `TableColumns.build(interactive: bool = True)` /
-      `_build_data_columns(interactive)` now gate `is_sortable` on
-      `interactive` as well as the field's own `"sort"` flag;
-      `TableBody.build()` calls `self.columns.build(interactive=False)`
-      (also fixed in the otherwise-dead `TableBody.update()`, so a future
-      caller of that method doesn't reintroduce the same bug), guaranteeing
-      no `ft.Icon`/`on_sort` control ever exists in the body's hidden
-      header row, regardless of Flutter's exact zero-height clipping
-      behavior — verified directly by walking the built `DataColumn.label`
-      control tree for both `interactive=True`/`False` and asserting zero
-      `ft.Icon` instances in the latter.
-    - **Small horizontal table padding by default** (#27): `Table.build()`'s
-      `padding` parameter default changed from `0` to
-      `ft.Padding.symmetric(horizontal=TABLE_OUTER_HORIZONTAL_PADDING)`
-      (12px, `components/table/columns.py`) — every module's `index.py`
-      calls `self.table.build()` with no override, so this is the app-wide
-      default now, giving every table a small left/right clear space
-      instead of sitting flush against the screen edge.
-    - **Two follow-up layout bugs found once sort was actually turned on
-      broadly** (user-reported after #27 landed, fixed same day):
-      1. **Sort icon positioned too far from its label on any column wider
-         than a narrow reference one.** The original layout put the icon at
-         the column's far-right edge (`ft.Row(..., alignment=SPACE_BETWEEN)`
-         filling the whole fixed-width header `Container`) — barely
-         noticeable on `master_location`'s two narrow `code`/`name` columns
-         (the only sortable columns that existed before #27), but glaringly
-         disconnected from the label on any wider column (e.g. `stock_in`'s
-         `description`), since SPACE_BETWEEN had the *entire* column width
-         to stretch across. Changed to a tight `ft.Row(spacing=4,
-         tight=True)` (default `START` alignment) so the icon always sits
-         immediately next to the label regardless of the column's width —
-         verified directly against `TableColumns.build()`'s output for both
-         a narrow and a ~700px-wide column.
-      2. **A column could render off-screen entirely** (reported as
-         "supplier is missing from screen" on `stock_in`). Root cause: the
-         table-padding default above (`Table.build()`) shrinks the *actual*
-         rendering width by `TABLE_OUTER_HORIZONTAL_PADDING * 2` (24px), but
-         `Columns.get_usable_width()` — the budget every column width is
-         computed from — didn't know about it and kept handing out the full
-         `page.width`. With no horizontal scroll (this table only scrolls
-         vertically), a column-width sum that fits the *stale, too-generous*
-         budget but exceeds the *real* visible area doesn't clip visibly —
-         it just renders past the right edge, invisible. Fixed by exporting
-         `TABLE_OUTER_HORIZONTAL_PADDING` from `columns.py`, having
-         `Table.build()`'s own default padding reference it (so the two
-         can't silently drift apart again), and subtracting
-         `TABLE_OUTER_HORIZONTAL_PADDING * 2` in `get_usable_width()`'s
-         budget calculation — verified with a reproduction at `page.width=1000`
-         (stock_in's 3 sortable columns + realistic content: summed column
-         width 925px against a corrected 976px real visible area — no
-         overflow — versus 925px against the old, uncorrected 1000px "budget"
-         that still left only 976px of *actual* room once padding was
-         subtracted, i.e. a confirmed real overflow before this fix).
-      Both bugs were introduced in the same #27 change (table padding landed
-      alongside the broad sort rollout, and #27's own reference
-      implementation only ever exercised two narrow columns), which is why
-      neither surfaced until sort was live on a wider, more realistic table.
-    - **Third round: the `tight=True` fix above (point 1) itself broke
-      header/body column-width sync**, reported as the icon now sitting
-      right after the label but the label+icon group no longer reading as
-      anchored to the column, *and* the header cell's rendered width no
-      longer matching its body column's width. Root cause: a `tight=True`
-      `ft.Row` reports a *smaller* intrinsic width than the fixed-width
-      `Container` wrapping it, and Flutter's `DataTable` sizes each column
-      from the header cell's own intrinsic content width when that content
-      is allowed to shrink — not strictly from the wrapping Container's
-      explicit `width` — while the body's plain-`Text` `DataCell` Container
-      (nothing tight-sized inside it) kept reporting the full computed
-      width. The two columns' rendered widths diverged. Fixed by keeping
-      the Row **non-tight** (so it fills the fixed-width Container, same
-      intrinsic-width behavior as every other/non-sortable column) and
-      using `alignment=ft.MainAxisAlignment.END` instead of `tight=True`'s
-      implicit `START` — this keeps the label and its sort icon adjacent
-      to each other (same `[left_content, sort_icon]` grouping,
-      `spacing=4`) while anchoring that whole group to the column's right
-      edge as a unit, restoring header/body width parity. Verified
-      directly against `TableColumns.build()`'s output: `row.tight is
-      False`, `alignment is END`, and the header `Container`'s explicit
-      `width` matches `self.widths[i]` for both a narrow and a ~700px
-      column; the icon-stripping-for-body fix re-verified intact again.
-    - **Fourth round — the actual root cause**: header/body width still
-      didn't match, and the user's originally-desired layout all along was
-      just label-left/icon-right (`SPACE_BETWEEN`) — the very first design,
-      which three rounds of icon-layout tweaks never should have needed to
-      leave. The real bug had nothing to do with the icon's `Row`:
-      **`DataColumn.onSort`, whenever non-null, makes Flutter's `DataTable`
-      reserve space for its own native sort-arrow indicator — even though
-      nothing ever paints there** (confirmed via Flutter's own
-      `DataColumn.onSort` API docs; this table never sets
-      `sort_column_index`, and draws its own icon separately, so Flutter's
-      native arrow is always invisible, but the *space* for it was still
-      being reserved on every sortable header cell). That hidden
-      reservation inflated every sortable header cell wider than its own
-      `Container(width=w)`, while the body's plain `DataCell` (never given
-      `on_sort`) had no such reservation — a mismatch entirely independent
-      of how the icon `Row` inside was laid out, which is why nothing in
-      rounds one through three could have fixed it. (This is adjacent to,
-      but a different finding than, the earlier "phantom icon" guess noted
-      above under Multi-column sort's reference-implementation section —
-      that one was about whether Flutter draws its own arrow, correctly
-      concluded no; this one is about whether Flutter still reserves the
-      *space* for it regardless, which it does.) Fixed by never setting
-      `DataColumn.on_sort` at all (`parse_field()`/`_build_data_columns()`
-      both always pass `on_sort=None` now) and instead wiring
-      `Container.on_click` directly on each sortable header cell's own
-      fixed-width Container — `TableColumns._on_header_click(field_name)`
-      replaces the old `on_sort(self, e)` (same none→ASC→DESC→none
-      cycling logic, just driven by a closure-captured field name instead
-      of `e.column_index`), and every header `Container` is now
-      unconditionally built (previously skipped when `w is None`, e.g. a
-      pre-first-load render) so a sortable column always has something to
-      attach `on_click` to (`ft.Row` has no `on_click` of its own). With
-      Flutter's native reservation gone, label-left/icon-right
-      (`SPACE_BETWEEN`) was restored as the final layout — the label
-      correctly stays on the left and the icon correctly pins to the
-      column's true right edge, since that edge now actually matches the
-      body's. Verified directly: every `DataColumn.on_sort is None`;
-      every sortable header `Container.on_click` is set (non-sortable:
-      `None`); simulated clicks through the new `on_click` closures
-      correctly cycle `sort_order` (single column ASC→DESC→removed,
-      multi-column append-while-another-active) and fire
-      `on_sort_change` each time; the icon-stripping-for-body fix and
-      `on_sort` full removal (no dangling `parse_field()` reference)
-      re-verified. Still not confirmed in a live browser.
-    - **Fifth round — sort rolled out to every remaining table**
-      (2026-07-17, user-reported per-page: `stock_in`/`stock_out` item
-      tables, `stock_browse`, `usage_report`, `purchase_report` (both
-      tables), `master_material`, `ap_module`, `ap_master_user`): closed
-      every remaining join-derived-field gap (see "Known gap — closed
-      2026-07-17" above) and extended sort to the three aggregate report
-      repositories, which #27's original rollout had left out of scope
-      alongside the per-column *filter* rollout — but sorting an
-      aggregate/grouped query doesn't need `HAVING`-aware routing the way
-      filtering one does (`ORDER BY` on a grouped column or an aggregate
-      expression like `func.sum(...)` is ordinary SQL), so there was no
-      structural reason to leave it out once actually requested.
-      `stock_repository.py::list_stock_summary` needed a real restructure,
-      not just a join: `average_price`/`value` used to be resolved in a
-      *separate*, post-pagination Python lookup (one extra query per page,
-      keyed by `material_id`), so neither was ever a SQL expression
-      `ORDER BY` could reference. Rewrote it to outer-join
-      `InventoryValueModel` directly into the main grouped query
-      (`func.coalesce(InventoryValueModel.average_price, 0)`, with `value`
-      computed in SQL as `qty_expr * average_price_expr`), added to
-      `group_by` alongside `MaterialModel.id`/`LocationModel.id` (safe -
-      one `InventoryValueModel` row per material, so it's functionally
-      dependent on the group) - `average_price`/`value` are now real,
-      sortable expressions with no separate post-query step at all.
-      `usage_report_repository.py`/`purchase_report_repository.py`
-      (`list_by_supplier`/`list_by_material`) needed no restructuring -
-      every field was already a real SQL column or `func.sum(...)`
-      expression in the query, just missing a `column_map`/`apply_sort`
-      call; the aggregate `func.sum(...)` expressions are bound to local
-      variables (`total_qty_expr`, etc.) so the same expression object can
-      be reused for both the `SELECT`/label and the `column_map` entry
-      `apply_sort` orders by. `stock_browse.py`/`usage_report.py`/
-      `purchase_report.py` routers each needed a `request: Request`
-      param added (none had one before, unlike every router #27 already
-      touched) purely to reach `parse_sort_fields(request.query_params)`.
-      Verified against real SQLite sessions: `stock_browse` sorted by
-      `value` DESC correctly ranks a smaller-qty/higher-price row above a
-      larger-qty/lower-price one (100×50=5000 before 10×5=50); `material_repository`/
-      `module_repository`/`user_repository` each correctly order by their
-      newly-joined `category_name`/`module_group_name`/`department_name`;
-      `receiving_repository::list_items_by_header` correctly orders by the
-      newly-joined `material_code`/`location_code`; `purchase_report_repository`
-      correctly orders `by_supplier` by both `supplier_name` and the
-      aggregate `total_qty`. All touched backend files also verified via a
-      full `main.py` app-wiring import (24 routes, same as before). Still
-      not confirmed in a live browser.
+    - **`TableBody`'s hidden structural header row never gets sort icons**:
+      `TableColumns.build(interactive: bool = True)` gates icon/`on_sort`
+      rendering on `interactive`, and `TableBody.build()` always calls it
+      with `interactive=False` — Flutter doesn't fully clip a zero-height
+      heading row's content, so an icon there would otherwise bleed into
+      the first data row.
+    - `Table.build()` defaults to `TABLE_OUTER_HORIZONTAL_PADDING` (12px)
+      horizontal padding app-wide instead of flush-to-edge.
+    - **Final sort-icon layout, after four rounds of fixes each targeting
+      the wrong layer** (label-right-edge `SPACE_BETWEEN` → tight
+      icon-next-to-label → non-tight `END`-aligned → the actual fix):
+      `DataColumn.on_sort`, whenever non-null, makes Flutter's `DataTable`
+      reserve space for its own native (never-painted, since
+      `sort_column_index` is never set) sort-arrow indicator on that
+      header cell — inflating a sortable header wider than its own
+      `Container(width=w)` and desyncing it from the body's column width,
+      regardless of how the icon's own `Row` was laid out. Fixed by never
+      setting `DataColumn.on_sort` (always `None`) and instead wiring
+      `Container.on_click` directly on each sortable header cell
+      (`TableColumns._on_header_click(field_name)`) — restores
+      label-left/icon-right with header/body widths now genuinely in
+      sync. Full round-by-round investigation in CHANGE_HISTORY.md
+      (2026-07-17).
+    - **Sort rolled out to every remaining table** (2026-07-17), including
+      the three aggregate/grouped report repositories (ordinary `ORDER BY`
+      on a grouped column or `func.sum(...)` expression needs no
+      `HAVING`-aware routing the way filtering does) — `stock_repository.py
+      ::list_stock_summary` was restructured to outer-join
+      `InventoryValueModel` directly into the grouped query so
+      `average_price`/`value` are real, sortable SQL expressions instead
+      of a separate post-pagination Python lookup.
 
   **Sticky table footer + lazy-load/pagination toggle** (issue #30,
   2026-07-17, ported from senar's `y.panel.js`'s
@@ -2433,16 +2130,11 @@ writes route through the service).
   multi-material bulk).
   **Stock movement items are immutable** (create-only, no edit/delete),
   same rationale as stock out items.
-  Verified end-to-end (SQLite, `StaticPool` in-memory + `TestClient` against
-  the real FastAPI routes, `dependency_overrides` on the router's own
-  `_require_access` object): a 100-unit receipt at MAP 10 into location A,
-  then a 25-unit movement A→B via the actual HTTP endpoints — material's
-  `qty`/`average_price` unchanged (100 / 10) before and after, location A
-  drops to 75, location B gains 25 as a lot with `receiving_item_id=None`/
-  `stock_movement_item_id` set, a same-location submission and an
-  insufficient-stock submission both correctly rejected with no partial
-  mutation, `call_material_id_select`/`call_location_id_select` both return
-  the expected options. **Not yet confirmed in a live browser.**
+  Verified via SQLite/`TestClient` against the real FastAPI routes: MAP/qty
+  totals correctly unaffected by a movement, FIFO deduction and lot
+  creation correct, same-location and insufficient-stock submissions
+  both correctly rejected with no partial mutation. Not yet confirmed in
+  a live browser. Full test detail in CHANGE_HISTORY.md (2026-07-17).
 - Deleting a location/material that has any receiving/stock/issue history
   fails with a friendly `{"error": "Cannot delete: ..."}` (catches the
   FK `IntegrityError`) rather than a raw 500 or a silent cascade.
@@ -2624,43 +2316,20 @@ no add/edit/delete. It does two things a plain sub-table screen doesn't:
   straight off any one row rather than recomputed; `total_value` is the
   simple sum of each row's own already-correct `value`.
   **Numeric fields must be converted before arithmetic, not just before
-  display**: a real bug found live (2026-07-17) — every numeric value
-  arrives over the wire as a JSON *string* (SQLAlchemy `Decimal` columns,
-  e.g. `"958.0000"`), which `components/table/rows.py`'s own
-  `"format": "number"` cell display already tolerates via
-  `utils/formatting.py::format_number()`'s internal `str(value)->float()`
-  conversion — but that only formats *for display*, it doesn't help code
-  that does its own arithmetic on the raw value first. The footer's
-  original `sum(row.get("qty", 0) ...)` summed raw strings directly,
-  raising `TypeError: unsupported operand type(s) for +: 'int' and 'str'`.
-  Fixed with a small `_to_number()` helper (`float(value)`, `0.0` on
-  `TypeError`/`ValueError`) applied to every field *before* summing, only
-  formatting the final totals for display. **Why this was hard to
-  diagnose from the logs alone**: the `TypeError` was raised inside
-  `ModulePage.__init__` (the footer is built during construction, right
-  after the `Table`), and `utils/module_loader.py::ModuleLoader.build()`
-  used to wrap the `PageClass(self.page, item, screen, record_id)` call in
-  a bare `try: ... except TypeError:` meant to detect "this ModulePage's
-  constructor doesn't accept `record_id`" (retrying without it) — but a
-  `TypeError` raised from *inside* the constructor body is
-  indistinguishable from one raised by Python's own argument-binding, so
-  the except clause caught it and silently **reran the entire
-  construction a second time, this time without `record_id`** (only
-  patched back on via `setattr` afterward, too late to affect the HTTP
-  calls already fired inside `__init__`) — producing a confusing HTTP 422
-  from `get_material`/`get_stock_by_material` being called with
-  `material_id=None`, two network calls removed from the actual bug, with
-  no trace of the original `TypeError` anywhere in the logs. Fixed
-  `module_loader.py` itself alongside the footer bug: replaced the
-  `except TypeError` dispatch with `"record_id" in
-  inspect.signature(PageClass).parameters` — a real signature check, not
-  exception-driven control flow, so an internal `TypeError` from any
-  future `ModulePage.__init__` now propagates to `build()`'s outer
-  `except Exception` (which already renders a real `ErrorPage` with the
-  actual exception message) instead of being silently swallowed and
-  retried. Verified against all 51 `ModulePage` classes and all
-  importable `ModalPage` classes in the app — `inspect.signature()`
-  correctly detects `record_id` acceptance for every one, no regressions.
+  display**: every numeric value arrives over the wire as a JSON string
+  (SQLAlchemy `Decimal` columns), which cell *display* formatting already
+  tolerates but raw Python arithmetic does not — a `_to_number()` helper
+  (`float(value)`, `0.0` fallback) is applied before summing. Finding this
+  also surfaced a real bug in `utils/module_loader.py::ModuleLoader.build()`:
+  it used to detect "this `ModulePage` doesn't accept `record_id`" via a
+  bare `except TypeError`, which also silently caught (and masked) a real
+  `TypeError` raised from inside a constructor's own body, causing a
+  confusing retry-without-`record_id` two network calls removed from the
+  actual bug. Fixed with a real signature check
+  (`"record_id" in inspect.signature(PageClass).parameters`) instead of
+  exception-driven dispatch — an internal constructor `TypeError` now
+  correctly propagates to a visible `ErrorPage`. Full investigation in
+  CHANGE_HISTORY.md (2026-07-17).
 
 Backend: `stock_repository.py::list_stock_by_material(material_id,
 sort_fields=None)` (pre-existing, previously only feeding `stock_out`'s
@@ -2675,10 +2344,7 @@ unconditionally) — backward compatible, since the parameter defaults to
 (`request: Request` + `parse_sort_fields`, mirroring every other sortable
 list endpoint), `export_stock_by_material` (same "every list gets an
 export twin" convention as everywhere else in this app), and `get_material`.
-Verified against a real SQLite session (qty/average_price/value computed
-correctly per location, sort by `qty` DESC correct) and via
-`starlette.testclient.TestClient` hitting the actual FastAPI routes
-end-to-end (not just the repository directly).
+Verified via SQLite and `TestClient` against the real FastAPI routes.
 
 **Stock-by-location drill-down** (issue #40, 2026-07-20): the mirror image
 of the stock-by-material drill-down above, scoped the opposite way —
@@ -2711,8 +2377,7 @@ through two different mechanisms once the more general one exists.
 override at all - every clickable column (`material_code`/`material_name`,
 `location_code`/`location_name`) goes through `link_key_field`/
 `link_screen` uniformly, and every other column (`qty`, `unit_name`, etc.)
-has no navigation, same as before - verified live that both drill-downs
-still work independently and a non-linked cell click does nothing.
+has no navigation.
 `pages/modules/stock_browse/stock_by_location.py` is the same shape as
 `stock_by_material.py` (a `record_id`-accepting, read-only `ModulePage`,
 heading fetched via a small dedicated GET — `get_location` — before the
@@ -2727,11 +2392,7 @@ sort_fields=None)` mirrors `list_stock_by_material()` (same
 `InventoryValueModel` outer-join technique, same qty > 0 filter), and
 `routers/stock_browse.py` gained `get_stock_by_location`/
 `export_stock_by_location`/`get_location`, same shape as their
-by-material equivalents. Verified live in the containerized web app:
-clicking Location on the index navigates and shows the correct
-per-material breakdown with correct totals; clicking Material Code on the
-same row still navigates to the existing by-material page unaffected;
-sorting by Qty on the new page reorders correctly.
+by-material equivalents. Verified live in the containerized web app.
 
 `master_config` and `mail_config` are a **different, simpler shape**: a
 **singleton settings screen**, not list+CRUD. Each is just one
@@ -2979,9 +2640,8 @@ itself grew two small hooks so a sub-table *can* reuse it:
     mechanism entirely (`_LAST_COLUMN_RIGHT_PADDING` constant and both call
     sites) - the outer Container's own padding is now the sole source of
     left/right breathing room, and it's symmetric by construction.
-    Verified: computed column widths now sum to within a couple pixels of
-    `get_usable_width()`'s budget (only integer-rounding slack), with no
-    artificial bonus on the last column.
+    Verified: column widths now sum correctly with no artificial bonus on
+    the last column.
     - **`scrollbar_width`/`safety_buffer` fudge factors also removed, same
       day**: user reported the header/body still had a visibly bigger right
       gap than the (correctly symmetric, plain `expand=True`) toolbar even
@@ -2998,11 +2658,8 @@ itself grew two small hooks so a sub-table *can* reuse it:
       `header.py`/`body.py`'s real `horizontal_margin=TABLE_HORIZONTAL_MARGIN`),
       `TABLE_OUTER_HORIZONTAL_PADDING` (both sides), and inter-column
       spacing - every deduction now traces to something actually rendered.
-      Verified by reconstructing the DataTable's expected rendered
-      footprint (`margin*2 + sum(column widths) + spacing*(n-1)`) against
-      the true available space inside the padded outer container
-      (`page.width - outer_padding*2`): 1px of slack, versus ~20px before
-      this fix.
+      Verified: the reconstructed rendered footprint now matches the
+      real available space within 1px, versus ~20px before this fix.
   - **Manual column resize** (Excel/Sheets-style, ported from a
     plain-HTML/CSS reference implementation the same project already uses
     elsewhere): every column boundary except the very last one gets a
@@ -3015,51 +2672,28 @@ itself grew two small hooks so a sub-table *can* reuse it:
     dragging (hovering/dragging anywhere in the wider hit zone counts, not
     just over the thin line itself); double-tap resets that pair back to
     auto-fit.
-    - **Stale handles from a previously-visited screen keep receiving
-      pointer events - guard every handler with `TableColumns._is_live()`**
-      (2026-07-27). Navigating between module screens clears
-      `page.data["active_tables"]` (`main.py`'s `route_change`) and builds a
-      fresh `Table`, but the *client* keeps the old screen's
-      `GestureDetector` widgets alive and keeps dispatching pointer events
-      to them; those events reach the old `TableColumns` instance because
-      the handler closures hold a reference to it. Confirmed live with
-      diagnostics: hovering the single resize handle of a 2-column table
-      produced handler calls from BOTH the live instance (`bars=[0]`) and a
-      stale 3-column one (`bars=[0, 1]`) still mounted from an earlier
-      screen. This produced every reported resize-highlight symptom -
-      "hovering shows no color" (the stale instance handled the event and
-      painted a bar that isn't on screen) and "the color stays after moving
-      away" (the live instance was lit while the matching exit went to the
-      stale one). **Three earlier rounds of fixes all targeted the
-      highlight bookkeeping itself, which was never the problem** - the
-      lesson is that a handler misbehaving "only after navigating/after the
-      first interaction" should be suspected of running on a stale instance
-      before its own logic is rewritten. `_is_live()` checks membership in
-      `page.data["active_tables"]` (already maintained, and authoritative:
-      route change empties it), via a `TableColumns.owner` back-reference
-      set by `Table.__init__`.
-    - **Known open bug - the second drag on a screen fails** (issue #50,
-      deferred deliberately): after the `_is_live()` fix above, the *first*
-      drag on a screen works end to end (hover highlights, drag resizes,
-      release clears, re-hover highlights), but a second drag does not.
-      Failure mode not yet characterised. Prime suspect is that every drag
-      *tick* rebuilds the header (`on_resize_commit(False)`) around the
-      cached handle controls, leaving stale `_drag_index`/`_drag_last_x` or
-      a confused client-side gesture arena once the Stack has been replaced
-      many times. Start by instrumenting the pan handlers and reading
-      `podman logs sfsis-frontend` - that is what found the stale-instance
-      cause; abstract reasoning about the bookkeeping repeatedly did not.
+    - **Every handler is guarded by `TableColumns._is_live()`**: a stale
+      handle from a previously-visited screen keeps receiving client-side
+      pointer events after navigating away (the client keeps old
+      `GestureDetector`s alive even though `page.data["active_tables"]` was
+      cleared), which used to cause phantom/stuck highlight states.
+      `_is_live()` checks membership in `page.data["active_tables"]` via a
+      `TableColumns.owner` back-reference. Full investigation (three
+      earlier rounds of fixes wrongly targeted the highlight bookkeeping
+      itself before the stale-instance cause was found) in
+      CHANGE_HISTORY.md (2026-07-27).
+    - **Known open bug — issue #50, deferred**: after the fix above, the
+      *first* drag on a screen works end to end, but a second drag does
+      not; root cause not fully characterized (prime suspect: every drag
+      tick rebuilding the header around the cached handle controls leaves
+      stale drag state or a confused client-side gesture arena). See
+      CHANGE_HISTORY.md for the confirmed-so-far diagnosis.
     - **Highlight state is one flag, not per-handle bookkeeping**:
-      `TableColumns._highlighted_index` is the single source of truth for
-      which handle (if any) renders highlighted - hover and active drag
-      both just set it, and `_refresh_resize_handle_colors()` is the only
-      place any bar's color is ever assigned, as a pure function of it.
-      Colors are flushed with a targeted `bar.update()` per bar, **not**
-      `page.update()` - a whole-page update was confirmed live not to flush
-      this nested `bgcolor` change at all (handlers ran with correct state
-      while the bar stayed unhighlighted on screen), and **not** a full
-      header rebuild via `on_resize_commit` either, which was tried and
-      broke hover wiring for subsequent interactions.
+      `TableColumns._highlighted_index` is the single source of truth,
+      resolved by `_refresh_resize_handle_colors()`, flushed via a
+      targeted `bar.update()` per bar (not `page.update()`, which was
+      confirmed not to flush this nested `bgcolor` change; not a full
+      header rebuild either, which broke hover wiring).
     - **Handles live outside the `DataTable` entirely**, in an
       absolutely-positioned overlay `ft.Stack` on top of the header
       (`TableColumns.get_resize_overlay()`, built once and cached - reused as
@@ -3131,13 +2765,9 @@ itself grew two small hooks so a sub-table *can* reuse it:
       new screen width (fixed-width columns - `"remove"`/`"checkbox"`/
       `"option"`/`"radio"` - are excluded, same as the normal auto-fit
       path). A normal, non-resize reload (`rescale=False`, the default)
-      keeps the exact old behavior - manual widths untouched. Verified via
-      a dedicated logic test exercising the real `TableColumns.load()`/
-      `_rescale_manual_widths()` code path: a non-resize reload at a
-      different screen width leaves manually-set widths completely
-      unchanged; a resize reload rescales them proportionally (ratio
-      preserved to within rounding) both when shrinking and growing the
-      window, while the fixed-width column never changes. Manual
+      keeps the exact old behavior - manual widths untouched. Verified: a
+      non-resize reload leaves manually-set widths unchanged; a resize
+      reload rescales them proportionally in both directions. Manual
       drag-resize itself re-confirmed live in the browser (still works
       unchanged).
 
@@ -3242,89 +2872,28 @@ itself grew two small hooks so a sub-table *can* reuse it:
     color in this codebase, so both light/dark theme are expected to
     hold up the same way `SURFACE_CONTAINER_HIGH`/`_HIGHEST` already do
     elsewhere (issue #53).
-    Verified live in the browser (light theme): `master_location`
-    (2 rows) and `stock_in`'s Table view (30 rows, both via direct
-    lazy-load-triggered fetch and by dragging the scrollbar) both show
-    clean alternating row backgrounds with no border/divider lines
-    anywhere and no two adjacent rows sharing a color, including across
-    the page-1/page-2 lazy-load append boundary (row 20 "f" -> row 21
-    "e" correctly alternates, confirmed by reading the full 30-row
-    sequence off screen after the scrollbar drag triggered the append
-    fetch - `Table._handle_scroll_end`'s real `on_scroll` event never
-    fired from the automation tool's synthetic wheel-scroll actions this
-    session, a known class of interaction the mouse-wheel-emulating
-    click/scroll tool doesn't always reproduce faithfully against a
-    Flutter canvas; dragging the native scrollbar thumb did trigger it
-    correctly). **Dark theme not independently re-confirmed this
-    session** - the in-app Dark Mode toggle lives in `home`'s user menu
-    only (`components/home/user_menu.py`), and the browser automation
-    hit the same splash/blank-page flakiness this repo's own
-    `_push_route_safe` comments already document repeatedly, blocking a
-    clean toggle-then-navigate round trip; the color choice itself
-    relies on the same semantic-token mechanism already verified to
-    adapt correctly elsewhere in this app, but a direct dark-theme
-    screenshot of the striped table specifically should still be taken
-    next time the environment cooperates.
-  - **Row hover M3 state layer** (issue #60, 2026-07-28, same-day
-    follow-up): the user asked for full M3 hover/focus/selected
-    highlighting on rows, columns, AND individual cells. `ft.DataTable`
-    has no per-column background property at all (a column stripe would
-    need a NEW scroll-aware overlay `Stack` - unlike the existing
-    resize-handle overlay, which is anchored to the static header and
-    never needs to track the body's scroll position, a live column
-    stripe spanning scrolling rows would), and `ft.DataCell` has no
-    `color` property at all (per-cell highlighting needs per-cell
-    `on_hover` wiring across every column). Both were scoped OUT of this
-    issue as separate, materially higher-risk stretch work - recommended
-    to the user before filing, who agreed to the narrowed row-only scope.
-    **First attempt (dead code, superseded same day after the user
-    reported "still see no difference")**: `DataRow.color` is typed
-    `Optional[ControlStateValue[ColorValue]]`, i.e. it accepts a dict
-    keyed by `ft.ControlState`, and its own docstring implies a
-    `HOVERED` entry is composited by Flutter on top of `DEFAULT` like
-    Flutter's own M3 `DataTable` state layers. In practice, Flutter's
-    actual `DataTable` row-building code only ever resolves
-    `WidgetState.selected` when calling `DataRow.color.resolve(states)`
-    - `hovered`/`focused` are never included in the states set the
-    widget builds, so a `HOVERED`/`FOCUSED` entry in that dict is
-    silently never looked up, contrary to what the docstring implies.
-    **Working fix**: the same pattern this codebase's own resize-handle
-    hover (`components/table/columns.py`) already uses - never rely on
-    a `ControlState` dict for hover, manually detect it via a real
-    Container property and mutate color directly. `TableRows.load()`
-    keeps `DataRow.color` as a flat per-row zebra base
-    (`_ROW_COLOR_EVEN`/`_ODD` from issue #57, unchanged) and every
-    read-only cell's wrapping `ft.Container` gets `on_hover` (a genuine,
-    always-supported `Container` property - its event `.data` is `True`
-    on enter/`False` on exit) wired to one shared closure per row (a
-    `row_holder: list = [None]` captures the real `ft.DataRow` right
-    after it's constructed, since cells are built before the row that
-    contains them). Hovering any cell in a row swaps that row's
-    `DataRow.color` to `_ROW_HOVER_COLOR` (`ft.Colors.SURFACE_CONTAINER_HIGH`,
-    a solid M3 tonal surface step - not a translucent overlay, since a
-    directly-swapped value isn't layered by Flutter the way a resolved
-    state color would be) and calls `.update()`; leaving reverts to that
-    row's own base. Editable cells are left unwired - their own constant
-    fill from issue #53 already reads as distinct, matching the issue's
-    own "editable-cell rows unaffected" acceptance criterion.
-    Verified live in the browser (dark theme, `master_location`):
-    hovering a row now produces an unambiguous, solid highlight clearly
-    distinct from every unhovered zebra-striped neighbor, confirmed via
-    a zoomed screenshot comparison; moving the mouse away correctly
-    reverts to that row's zebra base color. Light theme not
-    independently re-confirmed this session (no theme-toggle control is
-    reachable from a plain Table screen - only `home`'s user menu has
-    it) - `_ROW_HOVER_COLOR` is a semantic token like every other themed
-    color here, so it's expected to adapt, but should still be
-    screenshotted in light theme next time the environment cooperates.
-    **Per-cell highlight, same-day follow-up** (2026-07-28): the user
-    asked for the specific hovered cell to highlight too, on top of the
-    row - this was the exact stretch item originally scoped out of #60,
-    revisited once the row mechanism was proven working. Reused the
-    identical `e.control` (the hovered cell's own `Container`, standard
-    Flet convention) direct-mutate-and-`.update()` pattern - no new
-    mechanism needed, since `ControlState` was already confirmed dead
-    and there was never a `DataCell.color` to even try it on. New
+    Verified live in the browser (light theme): clean alternating row
+    backgrounds with no border/divider lines and no two adjacent rows
+    sharing a color, including across the lazy-load append page boundary.
+    Dark theme relies on the same semantic-token mechanism, not
+    independently re-screenshotted. Full verification detail in
+    CHANGE_HISTORY.md (2026-07-28).
+  - **Row + cell hover M3 state layer** (issue #60): per-row and per-cell
+    hover highlighting, scoped down from a broader row/column/cell request
+    (a per-column stripe would need its own scroll-aware overlay `Stack`,
+    scoped out as separate stretch work). `DataRow.color`'s
+    `ControlStateValue`/`HOVERED` dict looked like the natural mechanism
+    (its docstring implies Flutter composites a `HOVERED` entry over
+    `DEFAULT`) but turned out to be dead code — Flutter's `DataTable` only
+    ever resolves `WidgetState.selected` for `DataRow.color`, never
+    `hovered`/`focused`, so that entry is silently never read. Fixed the
+    same way this codebase's resize-handle hover already does: never rely
+    on `ControlState` for hover, manually detect it via a real
+    `Container.on_hover` and mutate color directly, `.update()`-ing just
+    that row/cell. `TableRows.load()` keeps `DataRow.color` as the flat
+    per-row zebra base (issue #57) and swaps it to `_ROW_HOVER_COLOR`
+    (`SURFACE_CONTAINER_HIGH`) on hover via a shared per-row closure;
+    the specific hovered cell additionally brightens to
     `_CELL_HOVER_COLOR = ft.Colors.SURFACE_CONTAINER_HIGHEST` (one M3
     tonal step brighter than `_ROW_HOVER_COLOR`, continuing the same
     ladder issue #53 already established), set/cleared in the same
@@ -3976,165 +3545,43 @@ is now fully verified working end-to-end under 0.86.4.
     still nested inside one `TextField.suffix_icon` slot, unlike the select
     fix above - not yet reported as an issue there, so left as-is rather
     than restructured speculatively).
-    **Live in-browser camera scan added** (issue #64 follow-up,
-    2026-07-29, unblocked by the `flet==0.86.4` upgrade - issue #68): the
-    scan button's click target (`ScanInput._open`, now `async`) tries a
-    real live camera scan first via `flet_camera.Camera` (added to
-    `frontend/pyproject.toml` as `flet-camera==0.86.4` - its stable
-    releases only ever matched `flet==0.86.4`, never this app's previous
-    `0.85.3` pin, exactly the blocker this file previously documented
-    under issue #64's original v1 note), falling back to the existing
-    manual-entry dialog (`ScanInput._open_manual`, the pre-existing `_open`
-    renamed) on any failure. `flet-camera` wraps Flutter's own `camera`
-    plugin (confirmed Web/iOS/Android support via its PyPI platform-support
-    table - Windows/macOS/Linux desktop unsupported, matching this app's
-    real deployment target). **Not the same thing as reading a camera from
-    Python** (e.g. `cv2.VideoCapture`) - on the web deployment the
-    *browser* captures frames client-side via `getUserMedia` under the
-    hood; a server-side OpenCV read would see the *container's* camera
-    (none exists) rather than the end user's, per this file's own
-    "Container networking gotcha" - a real point of confusion raised
-    directly by the user citing a plain-OpenCV example, corrected here.
-    - **UX**: `_open_camera()` builds one dialog with a 300×300 preview
-      area (`fc.Camera(expand=True, preview_enabled=True)`) overlaid
-      (via the Camera control's own `content=` param, the same slot
-      flet's own docs use for a placeholder icon) with a 220×220
-      viewfinder: four corner-bracket `ft.Container`s (only two
-      `ft.BorderSide`s each, a camera-reticle look, not a full square
-      border) plus a green `ft.Container` scan-line bounced top↔bottom
-      by an `asyncio.sleep` loop (`_animate_scan_line`, started via
-      `page.run_task` - Flet has no built-in repeating-animation
-      primitive, so the repetition is just a loop toggling `top` with
-      `animate_position` set once to interpolate each jump). Below the
-      preview, a low-opacity bar (`ft.Colors.with_opacity(0.06,
-      ON_SURFACE)`) holds a camera-switch `IconButton` (only added when
-      `len(cameras) > 1`, cycling via `Camera.set_description`... no,
-      via a fresh `initialize()` call per switch, matching flet-camera's
-      own dropdown-switch example) plus two always-present fallbacks -
-      "Enter Manually" and "Gallery" - satisfying the issue's explicit
-      "both exist or not exist, there's a gallery button" requirement.
-      `get_available_cameras()` returning empty swaps the preview area to
-      a "No camera detected" placeholder and skips straight to the same
-      two fallback buttons - the one gap senar's own reference
-      implementation (`handleScanCamera()`) never handles.
-    - **Decode path reuses issue #64 v1's own `decode_image_bytes()`
-      unchanged**: `CameraImageEvent.bytes` is already-encoded image
-      bytes (JPEG, since `initialize(..., image_format_group=
-      fc.ImageFormatGroup.JPEG)`), not raw YUV/BGRA pixel planes - so the
-      exact same `pyzbar`-based decode function the gallery-photo path
-      already used works against a live frame with zero new image-format
-      handling. `on_stream_image` (a sync handler, matching flet-camera's
-      own documented pattern) throttles decode attempts to once per
-      `_STREAM_DECODE_INTERVAL_S` (0.4s) rather than every streamed frame
-      (~15-30fps) - `pyzbar` is a blocking call, and a barcode held in
-      frame for even one attempt per few hundred ms is plenty responsive.
-      A successful decode hands off to `_handle_scanned_code` via
-      `page.run_task` (the sync handler itself can't `await` the async
-      teardown), which stops the stream, closes the dialog, and calls
-      `on_scan(code)` - every existing `on_scan` consumer (issue #52's
-      item pickers, table search bars) is unaffected, unmodified.
-    - **CR/LF stripping** (explicit user request): `decode_image_bytes()`
-      now `.rstrip("\r\n")`s the decoded payload - some barcode
-      symbologies embed a trailing CR/LF as an end-of-data marker, the
-      same character a hardware wedge's terminating Enter represents,
-      and it should never end up inside the value a form field receives.
-      `_submit()` (the manual-entry path) does the same defensively,
-      though a wedge's Enter shouldn't reach `.value` at all since
-      `on_submit` fires on that keypress.
-    - **Opt-in "tab to next field" hook, not a blanket auto-focus-advance
-      mechanism**: `ScanInput(..., focus_next: ft.Control | None = None)`
-      - after a successful scan via any path (manual submit, live camera,
-      gallery photo), if `focus_next` was given, `.focus()` is called on
-      it. `ScanInput` has no visibility into a form's own field order (and
-      Flet has no DOM-tab-order concept to hook into instead), so this
-      stays an explicit per-instance opt-in rather than a guessed "next"
-      control - not yet wired into any existing screen's field list in
-      this pass, intentionally scoped to the component itself.
-    - **Camera permission**: `flet-permission-handler==0.86.4` (same
-      version-lockstep pin as `flet-camera`) is requested best-effort
-      before `initialize()`, skipped entirely on `page.web` (a browser's
-      own `getUserMedia` permission prompt already covers this app's
-      primary deployment) and wrapped so any failure just surfaces later
-      as a normal camera-init error (falls through to the existing
-      fallback buttons), never a crash.
-    - **Verified**: the new dependencies resolve cleanly (`uv lock`/
-      `uv sync`, no conflicts), `flet_camera`/`flet_permission_handler`
-      import correctly and their real method signatures (`initialize`,
-      `get_available_cameras`, `start_image_stream`/`on_stream_image`,
-      `CameraImageEvent.bytes` as ready-to-decode encoded bytes) were
-      confirmed directly against the installed 0.86.4 packages before
-      writing this component (not assumed from memory) - matches Flet's
-      own documented example exactly. A full, clean, non-cached
-      `podman compose build`+`up` of the frontend image succeeded, all
-      three containers reached healthy, and all 65 module/modal screens
-      preloaded with zero import errors in the real container logs
-      (this file is imported transitively by nearly every form/table
-      screen). **Not verified**: any actual live rendering or interaction
-      - no browser automation tool and no physical/virtual camera were
-      available in this session, so the viewfinder overlay, scan-line
-      animation, camera-switch cycling, and a real barcode/QR decode off
-      a live stream were never exercised end-to-end in a real browser.
-      Next manual pass should open any `"qr": True` field or the table
-      search bar's scan button on a phone (or a desktop browser with a
-      webcam) and confirm: the live preview actually appears, the
-      viewfinder/scan-line render as expected, switching cameras (if more
-      than one) works, and scanning a real barcode/QR populates the
-      target field.
-    - **Full-screen redesign + scan-line jitter fix** (issue #64
-      follow-up, 2026-07-30, explicit user request after trying the
-      original small-dialog version): the live-camera view is no longer
-      an `ft.AlertDialog` (title bar, card chrome, a small ~300x300 boxed
-      preview with a below-camera button row) - it's now a full-screen,
-      borderless `page.overlay` entry (the same mechanism
-      `components/loading_overlay.py` already established for a
-      full-screen control, not a dialog), matching a conventional native
-      QR/barcode scanner app: the camera feed fills the entire screen and
-      every control floats directly on top of it as a translucent
-      (`with_opacity(0.35, BLACK)`) circular icon button
-      (`ScanInput._overlay_icon_button()`) - close (X, top-left),
-      camera-switch (top-right, only when `len(cameras) > 1` - the user
-      specifically called out that this control should always be present
-      when more than one camera exists, not an easy-to-miss afterthought),
-      and Gallery (bottom-center). **"Enter Manually" is deliberately
-      absent from this overlay while a camera is active** (explicit user
-      request - a working scanner doesn't need a manual-entry escape
-      hatch, the close button is the only way out, same as backing out of
-      any native scanner) - it still appears (`_add_manual_entry_fallback()`)
-      in the no-camera/error fallback screens, where typing really is the
-      only real alternative to Gallery.
-      **Root-caused the reported scan-line "glitch, stop, or not smooth"
-      as a genuine timing-desync bug, not just a constant to retune**: the
-      previous implementation drove the bounce loop with a Python
-      `asyncio.sleep(_SCAN_LINE_ANIM_MS / 1000)` loop, assuming Python's
-      own timer fires in lockstep with the client's actual Flutter-side
-      `animate_position` transition - any event-loop scheduling jitter
-      (a `page.update()` round trip taking a little longer some ticks, a
-      stream-image callback landing at an inconvenient moment) desyncs
-      the two, reading as stutter/stalling. Fixed by driving the flip off
-      `ft.Container.on_animation_end` instead (confirmed present on
-      `LayoutControl`, `Container`'s own base class, by reading the
-      installed `flet==0.86.4` package source directly) - a real, native
-      Flutter event fired when a transition genuinely finishes on the
-      client, so the next flip is scheduled from a client-confirmed
-      completion rather than a Python-side guess, self-correcting
-      regardless of any event-loop jitter. `_animate_scan_line()`'s
-      separate `asyncio` task and its `self._scan_line_future`
-      cancel-on-teardown bookkeeping were removed entirely - the loop is
-      now just `_on_scan_line_animation_end()` re-triggering itself via
-      the animation's own completion callback, gated on `self._scan_active`
-      (no task to cancel in `_teardown_camera()` anymore, just letting
-      that flag go false stops further flips).
-      **Verified**: `py_compile` clean; `podman compose restart frontend`
-      reached healthy with all 65 screens preloading with zero import/
-      construction errors (this file is imported transitively by nearly
-      every form/table screen, so a real regression here would have shown
-      up immediately). **Not verified**: no camera/mobile device was
-      available in this environment (same gap as the original 2026-07-29
-      entry above) - the full-screen layout, overlay button positioning,
-      "Enter Manually" conditionally appearing only in the no-camera/error
-      states, and the scan-line's actual smoothness on a real device all
-      still need a live pass on an actual phone before this is considered
-      fully confirmed.
+    **Live in-browser camera scan** (issue #64, unblocked by the
+    `flet==0.86.4` upgrade — issue #68): the scan button's click target
+    tries a real live camera scan first via `flet_camera.Camera`
+    (`flet-camera==0.86.4`, wraps Flutter's own `camera` plugin —
+    Web/iOS/Android only, no desktop), falling back to the manual-entry
+    dialog on any failure. On the web deployment the *browser* captures
+    frames client-side via `getUserMedia`; this is not equivalent to
+    reading a camera from Python (e.g. `cv2.VideoCapture`), which would
+    see the *container's* camera, not the end user's.
+    - **Current UI**: a full-screen, borderless `page.overlay` entry
+      (not a dialog) — the camera feed fills the whole screen with
+      translucent circular icon buttons floating on top: close (top-left),
+      camera-switch (top-right, only when `len(cameras) > 1`), and Gallery
+      (bottom-center). "Enter Manually" is deliberately absent while a
+      camera is active (only appears in the no-camera/error fallback
+      screens) — a working scanner doesn't need a manual-entry escape
+      hatch. A 220×220 corner-bracket viewfinder with a bouncing scan-line
+      overlays the preview.
+    - **Decode path** reuses the same `pyzbar`-based `decode_image_bytes()`
+      the gallery-photo path uses (camera frames arrive as ready-to-decode
+      JPEG bytes via `CameraImageEvent.bytes`), throttled to one decode
+      attempt per `_STREAM_DECODE_INTERVAL_S` (0.4s) rather than every
+      streamed frame. Decoded payloads are `.rstrip("\r\n")`'d (some
+      barcode symbologies embed a trailing CR/LF).
+    - The scan-line animation is driven off `ft.Container.on_animation_end`
+      (a real client-confirmed Flutter event), not a Python-side
+      `asyncio.sleep` loop — an earlier sleep-based version desynced from
+      the client's actual transition timing under event-loop jitter,
+      reading as stutter.
+    - Camera permission is requested best-effort via
+      `flet-permission-handler==0.86.4` before `initialize()` (skipped on
+      `page.web`, where the browser's own prompt covers it).
+    - **Not verified on a real device/camera** in this environment — no
+      phone or webcam was available; verification so far is limited to
+      clean imports/container health checks. Full development history
+      (including a small-dialog version superseded by the current
+      full-screen design) is in CHANGE_HISTORY.md (2026-07-28/29/30).
   - **`icon_picker`** (`components/form/icon_picker.py::IconPickerForm`,
     2026-07-27 — a sample consumer of issue #45's `"radio"`/by-column
     column type, not itself a filed issue): same read-only-tap-to-open
@@ -4190,200 +3637,39 @@ is now fully verified working end-to-end under 0.86.4.
     icon correctly unchecks the previous one first (by-column exclusivity);
     Confirm updates both the field's text and its leading icon glyph;
     Close discards an unconfirmed in-progress change.
-  - **Borderless filled inputs, M3-spec-accurate colors** (issue #53,
-    2026-07-28, corrected same day after checking the real spec at
-    m3.material.io/components/text-fields/specs): every form field type
-    (`input`, `textarea`, `select`, `date`, `label` —
-    `components/form/{input,date,label,select}.py`) renders with
-    `border=ft.InputBorder.NONE`, `filled=True`,
-    `bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST` — **constant across
-    every state**, matching the real M3 filled-text-field spec, which
-    does NOT swap the fill color on focus. Input text is a constant
-    `ft.Colors.ON_SURFACE`; hint text and leading icons are
-    `ft.Colors.ON_SURFACE_VARIANT`; only the **label** swaps live,
-    `ON_SURFACE_VARIANT` at rest → `PRIMARY` on focus.
-    `content_padding` matches the spec table (`top`/`bottom=8`,
-    `left`/`right=16`, or `12` on the left when a leading icon is
-    present).
-    - **First implementation attempt (same day, superseded) used a custom
-      `PRIMARY_CONTAINER`→`TERTIARY_CONTAINER` full-background swap on
-      focus** instead — a deliberate design at the time (explicitly
-      requested), but a genuine divergence from M3 once actually checked
-      against the spec, not a bug. Kept here as a pointer in case a
-      similar "let's swap the whole fill on focus" idea comes up again -
-      check the real spec first, since M3 filled fields intentionally
-      don't do that (the *bordered/outlined* variant's active-indicator
-      line is what recolors on focus there, not the fill).
-    - **`ft.TextField`'s own `focused_bgcolor`/focus-state props are
-      unreliable** — confirmed live earlier the same session: a color
-      set only via `focused_bgcolor` painted correctly on an
-      *autofocused* field's very first render, but never repainted again
-      on any later focus/blur. Every field drives its swappable property
-      (now just `label_style`'s color, previously also `bgcolor`/`color`
-      under the superseded design) directly from `on_focus`/`on_blur`
-      handlers instead (reassign the property, then `.update()`,
-      swallowing `RuntimeError` the same way every other
-      `_safe_update()` in this codebase already does for a not-yet-
-      mounted control) — deterministic, the only mechanism confirmed to
-      actually work. **A same-day false alarm worth remembering**: right
-      after switching to the constant-fill design, a screenshot appeared
-      to show the label stuck on the old color and a label/hint overlap
-      on a freshly-focused field - both turned out to be Flutter's own
-      ~200ms label-float transition still mid-animation at the moment of
-      the screenshot, not a real regression; waiting ~1s before
-      re-screenshotting confirmed both were correct. Don't mistake an
-      animation-in-flight frame for a stuck-state bug - re-check after a
-      short settle before concluding the mechanism itself is broken.
-    - **`ft.Dropdown` has no per-state fill of its own at all** — its own
-      `bgcolor` property (`ControlStateValue[ColorValue]`, despite
-      looking exactly like what you'd want here) colors the *popup menu*
-      that opens below the field, not the field's own decoration. Even
-      with a constant fill (no swap needed for the background itself
-      anymore), the Dropdown is still wrapped in a plain `ft.Container`
-      (`SelectForm.container` / a per-cell `wrapper` in `rows.py`) holding
-      the actual `SURFACE_CONTAINER_HIGHEST` color, with the Dropdown
-      itself rendering `fill_color=ft.Colors.TRANSPARENT` so the
-      wrapper's color shows through - only `label_style` still needs a
-      live on_focus/on_blur swap. `Form.load()`/`serialize()` still read
-      `Form.select[name].select` (the raw Dropdown, unaffected by the
-      wrapper) and `TableRows.get_input_values()` still reads
-      `entry["control"].value` off the raw Dropdown `value_holder` (also
-      unaffected) — the wrapper only ever changes what
-      `_build_editable_cell()`/`SelectForm.build()` return as the
-      *display* control, never what holds the actual value.
-    - **`components/form/select.py`'s QR-enabled Row (Dropdown + scan
-      button, issue #52) needed its own right-side padding fix**: the
-      scan button is a sibling control outside the Dropdown's own
-      decoration (see issue #52's entry above for why), so it didn't
-      inherit the Dropdown's own right-side `content_padding` and sat
-      flush against the field's true right edge - `SelectForm.container`
-      gets `padding=ft.Padding.only(right=8)` specifically when `qr=True`
-      to match the inset every other trailing icon in the app has.
-    - **Table's editable cells (`components/table/rows.py`) deliberately
-      keep the earlier `PRIMARY_CONTAINER`/`TERTIARY_CONTAINER`
-      background-swap design, NOT the spec correction above** — a
-      dense table cell has no floating label to turn `PRIMARY`, so
-      removing its background swap would leave zero visual indication of
-      which cell is focused. The M3 spec correction was scoped to the
-      labeled form fields the user was actually referencing when they
-      checked the spec, not table cells generally.
-    - Table search bar (`components/table/search_bar.py`) and the
-      per-column filter row (`components/table/filter.py`) still keep
-      their existing `SURFACE_CONTAINER_HIGH` styling (issue #19/#20,
-      unaffected either way) — a different affordance (search/filter, not
-      data entry) from every field this issue touched.
-    - Verified live in the browser (light theme only this session): every
-      form field shows the constant `SURFACE_CONTAINER_HIGHEST` fill at
-      rest and while focused; focusing correctly turns only that field's
-      label `PRIMARY` (Material dropdown, Qty Received, Price all
-      confirmed); blurring correctly reverts the label color with no
-      stuck/stale state once Flutter's own transition settles.
-      **Dark theme not yet re-verified.**
-    - **Select fields get square corners, text fields keep rounded ones**
-      (same-day follow-up, explicit user request): `SelectForm`'s Dropdown
-      and its wrapping `Container` (`components/form/select.py`), plus the
-      wrapping `Container` for editable `"select"`/`"option"` table cells
-      (`components/table/rows.py`), all changed `border_radius` `10` → `0`.
-      Text-based fields (`input`/`textarea`/`date`/`label` and their table
-      cell equivalents) are unaffected — still `border_radius=10` — so a
-      screen with both field kinds now shows squared dropdowns next to
-      rounded text fields, deliberately.
-    - **M3's "active indicator" bottom border restored, plus two smaller
-      follow-ups** (same day, explicit user request): the fully borderless
-      look from earlier in issue #53 turned out to omit a real part of the
-      M3 filled-field spec - a colored bottom border/indicator line, not
-      just a filled background. Every input type (`input`/`textarea`/
-      `date`/`label`/`select`, both `components/form/` and
-      `components/table/rows.py`'s editable cells) now sets
-      `border=ft.InputBorder.UNDERLINE`, `border_color=ON_SURFACE_VARIANT`
-      at rest, `focused_border_color=PRIMARY`. Unlike the label-color swap
-      elsewhere in this issue, `focused_border_color` is a native Flutter
-      underline-decoration behavior and needed no manual on_focus/on_blur
-      workaround - it just worked. Two smaller same-day requests bundled
-      into this pass: (1) `DateForm`'s field gets
-      `mouse_cursor=ft.MouseCursor.CLICK` so the pointer cursor covers the
-      trailing calendar icon too, consistent with every other trailing
-      icon button in the app (a plain `suffix_icon` string has no
-      click/cursor behavior of its own, unlike a real `IconButton`); (2)
-      plain `input` fields gained the same opt-in `"qr": True` scan-button
-      support `select` fields already had (issue #52) - lives in the
-      `TextField`'s own `suffix_icon` slot (constrained the same way every
-      other scan/clear icon in the app is), and a scanned code is typed
-      straight into the field's value with no option-list resolution,
-      unlike `select.py`'s own scan handler. `InputForm.__init__` now
-      takes `page` as its first positional argument (needed to construct
-      `ScanInput`) - `form.py`'s `is_input` branch updated to
-      `InputForm(self.page, field)`. No screen currently sets `"qr": True`
-      on a plain input, so this is wired but not yet exercised by any real
-      field - verified only via a clean container restart with no import/
-      construction errors, not a live scan.
-    - **Table editable cells deliberately do NOT get the M3 active
-      indicator border above** (same-day follow-up, explicit user
-      request) — a table cell already has the grid's own row/column
-      borders to delineate it, so a second border inside the cell is
-      redundant; `components/table/rows.py::_build_editable_cell()`'s
-      `input`/`textarea`/`select`/`option`/`datepicker` cells all use
-      `border=ft.InputBorder.NONE` and `content_padding=ft.Padding.all(0)`
-      (zero padding, so the fill sits flush against the cell boundary —
-      a Google-Sheets-style seamless grid, not a form-field-looking box
-      floating inside the cell). They still get a constant
-      `bgcolor`/`fill_color=ft.Colors.SURFACE_CONTAINER_HIGHEST` (no
-      focus swap, matching the corrected standalone-field design) so an
-      editable cell reads as visually distinct from a plain read-only
-      text cell, which has no fill at all. The `select`/`option` Dropdown
-      cell no longer needs a wrapping `ft.Container` — that existed only
-      to route the earlier background-swap workaround, which no longer
-      exists now that the fill is constant, so the Dropdown carries
-      `fill_color` directly and `_build_editable_cell()` returns it as-is
-      (the now-unused `_wire_focus_bgcolor`/`_set_dropdown_cell_focus`
-      helpers were deleted, not left as dead code). The `datepicker` cell
-      still builds via the shared `DateForm` (styled for standalone form
-      use, border included) and then overrides `border`/
-      `content_padding`/`bgcolor`/`color` on the built control afterward
-      to match every other cell's flush look — `DateForm` itself is
-      unchanged, since the standalone form usage still wants its border.
-      Verified live: `stock_out/item_new`'s per-location Qty Issue/
-      Remarks columns render border-free and edge-to-edge with a light
-      gray fill, clearly distinct from the plain white read-only columns
-      next to them.
-    - **`content_padding=Padding.all(0)` alone was not actually enough**
-      (same-day follow-up, user-reported): the `"input"`/`"textarea"`
-      cells above still showed a visible top/bottom/left gap - the fill
-      rendered as a shorter, inset pill rather than truly filling the
-      cell. Root cause: Flutter's `InputDecorator` reserves its own
-      intrinsic minimum height/inset for a *filled* decoration regardless
-      of `content_padding` - a `TextField`'s own `filled`/`bgcolor` will
-      never genuinely fill arbitrary tight bounds. Fixed via a new
-      `TableRows._build_flush_textfield()` helper: the `TextField` itself
-      now uses `collapsed=True` (maps to Flutter's
-      `InputDecoration.collapsed` - drops the decoration entirely, no
-      fill, no minimum height, sized tightly to the text), and the actual
-      M3 fill color moved onto a plain wrapping `ft.Container` instead,
-      which - unlike `InputDecorator` - genuinely fills its exact given
-      bounds. Returns `(wrapper, field)`; `wrapper` goes in the
-      `DataCell`, `field` is the raw `ft.TextField`
-      `get_input_values()` reads `.value` from. Applied to the `"input"`/
-      `"textarea"` cell types only (not `select`/`option`/`datepicker` -
-      not reported, and `Dropdown`'s own intrinsic-height behavior may or
-      may not have the identical issue). Verified live: Qty Issue/
-      Remarks cells now render with the fill spanning the complete cell
-      edge-to-edge, text starting right at the top-left corner.
-    - **`collapsed=True` alone still left a visible bordered box**
-      (same-day follow-up, user-reported on `stock_out/item_new/2`):
-      Flet's `collapsed` property does not appear to map to Flutter's
-      dedicated `InputDecoration.collapsed()` factory constructor (which
-      forces `border: InputBorder.none`) - it behaves more like a bare
-      `isCollapsed` flag on an otherwise-regular decoration, so
-      `FormFieldControl.border`'s own default (`OUTLINE`) was still being
-      drawn as a small bordered pill inside the wrapping `Container`.
-      `_build_flush_textfield()` now sets `border=ft.InputBorder.NONE`,
-      `filled=False`, and `content_padding=ft.Padding.all(0)` explicitly
-      alongside `collapsed=True`, rather than relying on `collapsed` to
-      imply them - the lesson being that `collapsed`'s exact Flutter
-      mapping in this Flet version isn't trustworthy enough to lean on
-      alone; pair it with explicit suppression of every decoration
-      property. Verified live in a fresh tab: no border, no padding,
-      fill genuinely flush edge-to-edge.
+  - **Standalone form fields' fill/border styling (issue #53) was later
+    superseded by issue #79** — #53 gave every field a constant
+    `SURFACE_CONTAINER_HIGHEST` filled, borderless (then underlined)
+    look; #79 (2026-08-03) reverted standalone form fields
+    (`input`/`select`/`date`/`label`/`icon_picker`) to unfilled/outlined
+    (`filled=False`, `border=OUTLINE`, `FIELD_BORDER_RADIUS`) — see that
+    entry below for the current design. Full #53 investigation (spec
+    corrections, square-vs-rounded corners, `focused_bgcolor` unreliability)
+    is in CHANGE_HISTORY.md (2026-07-28).
+  - **Table's editable cells (`components/table/rows.py`) keep #53's
+    filled, borderless, flush-to-cell design** — not reverted by #79,
+    since a dense table cell has no floating label to recolor on focus,
+    so a visible fill is the only indication of which cell is editable.
+    `_build_editable_cell()`'s `input`/`textarea`/`select`/`option`/
+    `datepicker` cells all render with `border=ft.InputBorder.NONE`,
+    `content_padding=ft.Padding.all(0)`, and a constant
+    `bgcolor`/`fill_color=SURFACE_CONTAINER_HIGHEST` — a Google-Sheets-style
+    seamless grid, not a form-field-looking box floating inside the cell.
+    `TableRows._build_flush_textfield()` is the `input`/`textarea` helper:
+    Flutter's `InputDecorator` reserves an intrinsic minimum height/inset
+    for a *filled* decoration regardless of `content_padding`, so the fill
+    color lives on a plain wrapping `ft.Container` instead (which
+    genuinely fills its exact given bounds) around a `TextField` with
+    `collapsed=True` **plus** explicit `border=NONE`/`filled=False`/
+    `content_padding=Padding.all(0)` (Flet's `collapsed` alone doesn't
+    reliably suppress every decoration property in this Flet version).
+    `select`/`option` cells carry `fill_color` directly on the Dropdown
+    (no wrapping wrapper needed once the fill stopped needing to swap).
+    The `datepicker` cell builds via the shared `DateForm` (which keeps
+    its own border for standalone form use) and overrides `border`/
+    `content_padding`/`bgcolor`/`color` afterward to match every other
+    cell's flush look. Full investigation (several intermediate attempts
+    before landing on this) is in CHANGE_HISTORY.md (2026-07-28).
   - **Select filtering uses Flutter's native `enable_filter`, not a
     server-driven cap** (issue #26, 2026-07-17 — final design, after three
     failed attempts at a hard "cap to 5 + show more" list). Both `SelectForm`
@@ -4427,120 +3713,25 @@ is now fully verified working end-to-end under 0.86.4.
     without touching `options` while the field has focus and text is being
     typed — e.g. only re-capping on blur/selection, never on
     `on_text_change` — or it will very likely reintroduce this exact bug.
-  - **First-pick-via-text-region doesn't populate the display** (issue #71,
-    2026-07-29, user-reported): opening a select field by tapping its
-    text-input region (the field is clickable there, not just via the
-    trailing arrow, since `editable=True` makes it typable — see the
-    `enable_filter` entry above) and picking the very first option left the
-    displayed text empty; a second pick (same or different option) then
-    populated it correctly. Opening the same field via the trailing arrow
-    never showed the problem. Root cause (from reading `flet==0.86.4`'s own
-    `Dropdown` control source, not guesswork): `ft.Dropdown` exposes `value`
-    (the selected option's key) and `text` ("the text entered in the text
-    field") as two independent properties — Flutter's `DropdownMenu` widget
-    keeps its own internal text-field controller separate from the selected
-    value, and that internal sync isn't reliable on every interaction path
-    (a known rough-edge class for this relatively new Material 3 widget,
-    consistent with every other `DropdownMenu` quirk already documented in
-    this section). Fixed the same way this codebase has already fixed other
-    flaky Flet/Flutter client-side sync issues (`DataRow.color`,
-    `ListTile.bgcolor`) — don't trust the widget's own internal sync, drive
-    it explicitly from Python: both `SelectForm.build()`
-    (`components/form/select.py`) and `TableRows._build_editable_cell()`'s
-    `"select"`/`"option"` branch (`components/table/rows.py`, via a shared
-    module-level `_sync_dropdown_text()` helper) now wire an `on_select`
-    handler that resolves the matching `DropdownOption.text` from the
-    Dropdown's own `.value`/`.options` and explicitly sets `.text` +
-    `.update()` on every selection, regardless of how the menu was opened.
-    Verified only that both files import cleanly and a full container
-    rebuild succeeds with zero screen-preload errors — **not verified
-    live before shipping** (no browser automation tool was available that
-    session). **User confirmed live the same day that this fix does NOT
-    resolve the bug** — the symptom is unchanged: opening via the text
-    region still needs a second click, opening via the arrow is still
-    unaffected. This means at least one assumption behind the fix above
-    was wrong — most likely `on_select` either doesn't fire at all on that
-    first click when the menu was opened via the text region, or fires
-    with `.value` still holding the *previous* selection at that point
-    (a value-propagation race, not just a stale-display one) — in either
-    case, `_sync_dropdown_text()`'s `next((opt for opt in
-    dropdown.options if opt.key == dropdown.value), None)` lookup would
-    silently find no match (or the wrong one) and do nothing, which
-    matches the observed continuing failure. **Not re-attempted
-    speculatively** — one blind, unverified guess already failed; the
-    next attempt should either get real browser access to instrument
-    which handler actually fires and when, or research Flet's/Flutter's
-    own issue trackers for this exact `DropdownMenu` symptom before
-    writing more code. Issue #71 stays open, not closed, per explicit
-    user instruction.
-    **Investigation continued 2026-07-30, this time with real browser
-    automation (Claude in Chrome) available** — an important lesson in
-    itself: an initial round of live-automated reproduction attempts
-    (`master_material/new`'s Unit/Category selects, `stock_in/item_new`'s
-    QR-enabled Material select, a zero-wait rapid open-then-pick) all
-    populated correctly on the first click via CDP-driven synthetic
-    clicks, which at first looked like proof the `ca097e8` fix worked —
-    **the user immediately tested live in the same browser tab and
-    confirmed the bug was still 100% reproducible for them**, ruling out
-    both a stale-container explanation and a stale-browser-cache
-    explanation (hard refresh/incognito already tried). This meant a
-    synthetic CDP click was never equivalent to a real physical click for
-    this specific bug — automated reproduction attempts should not be
-    trusted as proof of a fix without independent live confirmation,
-    especially for input/focus-timing-sensitive widgets.
-    Two further fix attempts were built on real, non-speculative server-
-    log instrumentation gathered while the user reproduced the bug live:
-    an in-place `self.select.text=`/`.update()` patch, then the same
-    patch preceded by `asyncio.sleep()` to dodge a hypothesized timing
-    race. **Both confirmed NOT to work** via direct live user retesting.
-    That instrumentation seemed to show `on_select` firing correctly with
-    already-correct values on every real click — which pointed toward a
-    client-side repaint bug — so a third attempt rebuilt the Dropdown
-    control from scratch on every selection (matching this app's own
-    established "force a rebuild, don't trust an in-place patch"
-    precedent from `DataRow.color`/header-icon fixes). **This also failed
-    live.**
-    **The actual root cause, found only after re-running the log
-    instrumentation with a corrected command**: `podman logs -f` without
-    `--since`/`--tail 0` replays a container's **entire historical log**
-    on every new invocation (since `podman compose restart` keeps the same
-    container, only restarting the process inside it) — every prior
-    "successful" instrumentation round had actually been watching stale,
-    already-seen log lines from an earlier test, not fresh data. Re-running
-    with `podman logs -f --since 0s` and asking the user to reproduce the
-    bug one more time showed **zero log output at all** — `_on_select`
-    never fires on the failing click. No Python code in this handler,
-    however written, could ever have fixed this, because the callback is
-    never invoked in the first place; the click event is never dispatched
-    from the Flutter client to the server on this interaction path at all.
-    This matches a known class of real Flutter bug: when a
-    `DropdownMenu`-style widget's text field gains keyboard focus as part
-    of opening (exactly what `editable=True` does, needed for the
-    type-to-filter feature from issue #26), the very first tap afterward
-    is consumed by Flutter's own focus-settling handshake instead of
-    registering as a selection — the second tap works because focus has
-    already settled by then. Opening via the trailing arrow never gives
-    the text field focus, so it never hits this trap — consistent with
-    every report across this entire investigation.
-    **This is a genuine upstream Flutter/Flet limitation, not a bug in
-    this app's own Python code.** Given the user's explicit choice
-    (2026-07-30) among the presented options — drop `editable`/
-    `enable_filter` app-wide (fixes it reliably but removes type-to-filter
-    everywhere), keep investigating a client-side workaround, or document
-    and leave it — **the user chose to document and leave it as a known
-    limitation.** `components/form/select.py::SelectForm._on_select()` was
-    left in its rebuild-based form (still correct and arguably more robust
-    for every selection that DOES reach the server, e.g. the working
-    second pick) with an updated docstring recording this full root cause;
-    debug `print()` instrumentation was removed. Issue #71 stays open on
-    GitHub, not closed — it cannot be closed as "fixed" since the
-    underlying framework behavior is unchanged, only documented.
-    **Any future attempt at a real fix should start from this root cause,
-    not repeat the value/timing/repaint hypotheses already disproven
-    above** — the only concretely fixable-from-here lever is removing
-    `editable=True`/`enable_filter=True` (which trades away issue #26's
-    type-to-filter feature) or an actual upstream Flet/Flutter release
-    fixing the underlying `DropdownMenu` focus-handshake bug.
+  - **First-pick-via-text-region issue, resolved** (issue #71): opening a
+    select field by tapping its text-input region (not the trailing
+    arrow) and picking the very first option used to leave the field
+    empty until a second pick. Root cause (found only after an extensive,
+    multi-round investigation — several plausible-looking fixes each
+    failed live retesting before the real cause was isolated): `editable=
+    True` (needed for issue #26's type-to-filter) plus Flet's own default
+    `enable_search=True` both request focus/highlight on open, and the
+    first tap on an option was being consumed resolving that contention
+    instead of registering as a selection. Fixed by passing
+    `enable_search=False` at both Dropdown construction sites
+    (`components/form/select.py`, `components/table/rows.py`) and by
+    deleting `SelectForm`'s `_on_focus`/`_on_blur` handlers (which were
+    separately pushing a control patch mid-open, dropping the pending
+    tap). Confirmed working live with real physical clicks. Full
+    round-by-round investigation (including a red herring where `podman
+    logs -f` without `--since` replayed stale log output, masking the
+    real cause for several attempts) is in CHANGE_HISTORY.md
+    (2026-07-29/30, 2026-08-03).
   - `components/search_bar.py::SearchBar` (issue #63) — a shared search
     box, same root-level `components/` extraction precedent as
     `components/button.py::Button` (#21, immediately below). Replaces the
@@ -4701,323 +3892,73 @@ is now fully verified working end-to-end under 0.86.4.
     in sync with `Button`'s `size=32, radius=16` if that ever changes.
 
 - **`components/list/` reaches feature parity with `components/table/`**
-  (issue #55, 2026-07-28), reusing the exact same backend contract with
-  **no backend changes** — `List` is a card/tile view (`ft.ListTile` per
-  record, positional `leading`/`title`/`subtitle`/`trailing` fields via
-  `Layout`), unlike `Table`'s columnar `DataTable`, so it needed its own
-  UI affordances rather than a literal port of `Table`'s header-row
-  mechanics:
-  - **Pagination-mode footer**: `List` directly reuses
-    `components/table/footer.py::TableFooter` **unmodified** — it never
-    references anything Table-specific, only duck-types on
-    `parent.total_rows`/`total_pages`/`page_number`/`limit`/`data` plus
-    three `parent._handle_footer_{mode,page,limit}_change` callbacks, and
-    `List` already carried the exact same attribute names before this
-    issue, so importing `TableFooter` straight into `list.py` needed zero
-    forking. `List.load()` now patches the footer's own slot in the
-    control tree after every fetch (`self._footer_index`, recorded once
-    at `build()` time), same fix `Table.load()` already applies for the
-    identical "Record X of Y goes stale after a filter/sort/page change"
-    staleness bug. `_handle_scroll_end` gained the same `footer.mode !=
-    MODE_LAZY` guard `Table`'s own scroll handler has, so lazy-load only
-    fires in lazy mode.
-  - **Per-field search + real multi-column sort**: `components/list/filter.py::ListFilter`
-    is a new expandable panel (not a per-column header row — a card has
-    no columns to hang one on), toggled via a new
-    `ListToolbar.add_filter_button` (mirroring `TableToolbar`'s own).
-    Opt-in via `"filter": True` / `"sort": True` on a field — the
-    **reverse** of `TableFilter`'s opt-out-by-default — because `List`'s
-    `fields` are already a curated subset picked for specific card slots,
-    not a fixed column set the user always sees in full the way `Table`'s
-    are. Each filterable field's `TextField` gets the exact same
-    `prefix_icon=FILTER_ALT` / trailing `IconButton(CLEAR)` pair
-    `TableFilter._build_field()` uses (including
-    `suffix_icon_size_constraints`, same oversized-tap-target fix). Each
-    sortable field gets its **own** `ft.IconButton` beside its filter
-    field (same-day follow-up, superseding this section's original
-    single "Sort by" dropdown + one shared direction-toggle design),
-    cycling none/`UNFOLD_MORE` → ASC/`ARROW_UPWARD` → DESC/`ARROW_DOWNWARD`
-    → none — same icon set, colors (`ON_SURFACE_VARIANT` unsorted,
-    `PRIMARY` active), and cycling logic as
-    `TableColumns._build_sort_icon()`/`_on_header_click()`.
-    `ListFilter.sort_order` is a real ordered `[(field_name, direction)]`
-    list, same shape as `TableColumns.sort_order` — clicking a different
-    field while one is already active appends it as an additional sort
-    key rather than replacing it, **true multi-column sort, same as
-    Table**, no modifier key needed. Wire format matches `Table` exactly
-    so the backend needs no changes: `&{field}-filter=value` (same as
-    `TableFilter.serialize()`) and
-    `&sort-fields[{index}][{field}]={ASC|DESC}` per active sort column in
-    priority order (same as `TableColumns.serialize_sort()`). Hiding the
-    panel clears every filter/sort and re-fetches, same "don't leave
-    something silently applied server-side" rule `TableFilter.toggle()`
-    already follows. Verified live: clicking Description's then Date's
-    sort button on `stock_in/index` sent
-    `sort-fields[0][description]=ASC&sort-fields[1][date]=ASC` in that
-    exact priority order (confirmed via server logs), with each button's
-    icon visibly updating from the neutral unfold icon to a blue
-    up-arrow on click.
-  - Verified live by temporarily swapping `master_location/index.py`
-    from `Table` to `List` (with `code`/`name` marked
-    `filter`+`sort`) to exercise the feature against a real granted
-    module and its already-generic `table_query.py`-backed endpoint —
-    filter panel toggle, per-field search (`code-filter=A1` correctly
-    narrowed 2 records to 1, footer updated to "Record 1-1 of 1"), and
-    both sort directions (`sort-fields[0][name]=ASC`/`DESC`, confirmed
-    via server logs and visible row reordering) all worked correctly.
-    `master_location/index.py` was reverted back to `Table` immediately
-    after — it was purely a verification vehicle, not `List`'s real
-    first consumer (see below).
-  - **`stock_in/index` is `List`'s real first consumer** (same-day
-    follow-up, user-requested): `pages/modules/stock_in/index.py` now
-    builds a `List` instead of a `Table` — `date` in the `leading` slot,
-    `description` as the tile `title`, `supplier_name` as the
-    `subtitle`, all three marked `"sort": True, "filter": True`. Row
-    click still lands on `stock_in/edit/<id>` (`List`'s default
-    `next_page="edit"`, same default `Table` uses for `edit_screen`).
-    Wiring this up surfaced a real, previously-latent gap: `List`/`Tiles`
-    never applied a field's `"format"` (e.g. `"date"`) the way
-    `Table`'s `rows.py` does, so a formatted field rendered as a raw
-    ISO string instead of `"27 Jul 2026"`. Fixed by threading `"format"`
-    through `Layout`'s per-field `field_data` dict and applying the same
-    `_FORMATTERS` dispatch (`format_number`/`date`/`time`/`datetime`
-    from `utils/formatting.py`) `Table`'s own cells already use, in
-    `Tiles.load()` before building each tile's value `ft.Text`. Verified
-    live: dates render formatted, lazy-load fetched page 2 automatically
-    on scroll, the filter panel shows all three fields plus a working
-    sort control, and clicking a record correctly opens the full
-    header+items edit screen.
+  (issue #55) via the app's same backend contract, no backend changes —
+  `List` is a card/tile view (`ft.ListTile` per record, positional
+  `leading`/`title`/`subtitle`/`trailing` fields via `Layout`), so it
+  needed its own UI affordances rather than a literal port of `Table`'s
+  header-row mechanics:
+  - **Pagination-mode footer**: `List` reuses `components/table/footer.py
+    ::TableFooter` unmodified — it only duck-types on `parent`'s
+    `total_rows`/`total_pages`/`page_number`/`limit`/`data` attributes and
+    three `_handle_footer_{mode,page,limit}_change` callbacks, which
+    `List` already carried before this issue.
+  - **Per-field search + real multi-column sort**:
+    `components/list/filter.py::ListFilter` is an expandable panel (a
+    card has no columns to hang a per-column header row on), toggled via
+    `ListToolbar.add_filter_button`. Opt-in via `"filter": True`/
+    `"sort": True` per field — the reverse of `TableFilter`'s
+    opt-out-by-default, since `List`'s `fields` are already a curated
+    subset for specific card slots. Each sortable field gets its own
+    cycling icon button (none → ASC → DESC → none), and `ListFilter.
+    sort_order` is a real ordered list — true multi-column sort, same as
+    `Table`, with an identical wire format (`{field}-filter`,
+    `sort-fields[N][field]`) so the backend needs no changes.
+  - `stock_in/index` is `List`'s real first consumer (`date`/
+    `description`/`supplier_name` as leading/title/subtitle, row click to
+    `edit/<id>`) — wiring it up surfaced a latent gap (List/Tiles never
+    applied a field's `"format"`, e.g. `"date"`, the way Table's cells
+    do), fixed by threading `"format"` through `Layout` and reusing the
+    same `_FORMATTERS` dispatch.
   - **Download menu, full-width search bar, Table/List view toggle**
-    (issue #56, 2026-07-28): closed the three remaining gaps between
-    `List` and `Table`.
-    - **Download menu**: `components/list/menu.py::ListMenu` - the same 6
-      formats as `TableMenu`, against the same already-generic
-      `GET C_{module}/export_{name}` endpoint / `/download/{module}/{name}`
-      proxy, no backend changes. Not a literal reuse of `TableMenu` - that
-      class builds its query string from `table.columns.serialize_sort()`/
-      `table.custom_param`, neither of which `List` has; `ListMenu` instead
-      reads `parent.filter`/`parent.filter_row.serialize()` (issue #55's
-      own `ListFilter`, which already emits the same `sort-fields[...]`/
-      `{field}-filter` wire format). Upload is deliberately out of scope -
-      `List`'s tiles are read-only labels, no editable-cell field types
-      the way `Table` rows can have. `List.__init__` builds
-      `self.export_menu` (suppressed for `is_inside_form` lists, same as
-      `TableMenu`); `ListToolbar.build()` gained the same
-      `hasattr(self.parent, "export_menu")` hook `TableToolbar.build()`
-      already has, appending it to the toolbar's right side.
-    - **Full-width search bar**: `components/list/search_bar.py::ListSearchBar`
-      rebuilt on a plain `ft.TextField`, mirroring the exact fix
-      `components/table/search_bar.py::TableSearchBar` already received
-      under issue #19 - Flutter's own `ft.SearchBar` is a rigid ~56dp
-      Material widget that doesn't genuinely expand to fill a toolbar row.
-    - **Table/List view toggle**: new `components/module/view_toggle.py::ViewToggle` -
-      a screen passes it the SAME `fields` list it would pass to either
-      `List` or `Table` directly (each component only reads the keys it
-      understands - `List` reads `"position"`, `Table` ignores it;
-      `Table` reads `"col"`, `List` ignores it - so one field list already
-      works unmodified for both, confirmed by wiring `stock_in/index.py`'s
-      existing List-only fields straight into `Table` with no changes
-      needed). Only the initially active view (`mode=MODE_LIST` by
-      default) is constructed up front - the other is built lazily on
-      first switch, so toggling never causes a doubled initial fetch
-      (both `List`/`Table` call `get_data()` from `__init__` when not
-      `is_inside_form`). The toggle button and any `add_new_button` call
-      are wired onto a view's toolbar only the FIRST time that view is
-      built (a `newly_built` guard in `_build_active()`) - a real bug hit
-      during live verification: without this guard, toggling back to an
-      already-built view re-appended both buttons to that view's own
-      already-live toolbar every time, since only `List`/`Table.build()`
-      runs again on a re-render, never `__init__` - visibly produced two
-      "+" buttons and two toggle icons after one round trip. Fixed by only
-      calling `_apply_toggle_button()`/`_apply_new_button()` when a view
-      was actually just constructed. The toggle button itself uses a
-      constant `SWAP_HORIZ` icon/tooltip rather than "switch to X" -
-      `Table`/`ListToolbar.add_button()` has no way to hand back the built
-      control for a later icon mutation, and a neutral icon reads
-      correctly on both of the (up to two) buttons regardless of which is
-      currently visible, without needing extra bookkeeping.
-      **State carried across a switch**: free-text search only - both
-      components persist it through the same `storage.table_search` key
-      (`module`, `screen`, `name`), and `ViewToggle` always constructs
-      both with the same `name`. **State NOT carried across a switch**
-      (explicit, documented scope limit per the issue's own acceptance
-      criteria): sort order and pagination position - each component's
-      `sort_order`/`page_number` is per-instance state with no shared
-      persistence layer the way search text has; switching views always
-      resets to page 1 with whatever sort the freshly-built component
-      starts with (none). Wired onto `stock_in/index.py` (the same screen
-      that became `List`'s first real consumer under issue #55) via
-      `self.toggle = ViewToggle(...)` replacing the old direct
-      `self.table = List(...)`; `body()` now returns `self.toggle.build()`.
-      Verified live: toggling List -> Table -> List renders the same 30
-      rows in both views with no duplicate toolbar buttons after the fix
-      above; the download menu on the List view produced a real file (confirmed
-      via `podman logs sfsis-frontend` showing
-      `GET /download/stock_in/detail?format=csv&client_id=...` ->
-      `200 OK` and the matching backend `GET /C_stock_in/export_detail?format=csv`
-      -> `200 OK`); the search bar visibly fills its toolbar row width on
-      both List and Table.
-  - **ListToolbar container styling matched to TableToolbar** (issue #62,
-    2026-07-28): `ListToolbar.build()` still had its pre-issue-#21
-    styling - a solid filled `bgcolor=Colors.PRIMARY` bar, no fixed
-    height, `padding=Padding.all(10)` - never updated when
-    `TableToolbar.build()` was redesigned to a low-emphasis
-    `SURFACE_CONTAINER_LOW` bar (`height=48`,
-    `padding=Padding.symmetric(horizontal=16, vertical=8)`, a bottom
-    `OUTLINE_VARIANT` hairline). Most visible once issue #56 put a
-    Table/List view toggle on the same screen (`stock_in/index`) -
-    switching views visibly changed the toolbar's color/height, reading
-    as a bug rather than "just" a styling gap. Fixed by copying
-    `TableToolbar.build()`'s container properties onto
-    `ListToolbar.build()`'s `ft.Container` verbatim (layout structure -
-    the left/middle-search/right `Row` - unchanged, only the outer
-    container's height/padding/bgcolor/border changed) and changing
-    `ListToolbar.add_button()`'s default `icon_color` from
-    `Colors.ON_PRIMARY` to `Colors.ON_SURFACE_VARIANT`, matching
-    `TableToolbar.add_button()`'s standard M3 icon-button default. The
-    search bar itself was already fixed under issue #56 - this only
-    touched the surrounding toolbar container. Verified live (dark
-    theme, `stock_in/index`): the List toolbar now renders the same
-    low-emphasis dark bar with gray icons as every Table screen, and
-    toggling between List and Table view no longer produces any visible
-    color/height jump - a direct side-by-side screenshot comparison of
-    both views showed pixel-identical toolbar styling.
-    **Same-day follow-up, two more parity gaps found after this landed**:
-    (1) `ListToolbar.add_button()` never passed `size`/`radius` to
-    `Button(...)`, so every plain toolbar button (filter toggle, view
-    toggle, "Add New") fell back to Flet's default, unconstrained
-    `IconButton` (~48dp tap target) instead of the compact 32x32 box
-    `TableToolbar.add_button()` always builds - that default button
-    doesn't actually fit centered within the 48px-tall/8px-padded bar's
-    real ~32px content height the way the already-correctly-sized
-    `export_menu` hamburger does, which read as "some buttons not
-    vertically centered" next to it. Fixed by passing `size=32,
-    radius=16` through, matching `TableToolbar.add_button()` exactly.
-    (2) `List.build()`'s own default `padding` was still a bare `0` (an
-    int), while `Table.build()`'s default has been
-    `Padding.symmetric(horizontal=TABLE_OUTER_HORIZONTAL_PADDING)` since
-    issue #27 - so a List screen's content sat flush against the screen
-    edges while a Table screen always had 12px of breathing room. Fixed
-    by giving `List.build()` the identical default (imported from
-    `components/table/columns.py`, the same shared constant, not a
-    duplicated literal). Unlike `Table`, `List`'s tiles have no
-    fixed-pixel-column width budget to keep in sync with this padding
-    (`Columns.get_usable_width()`'s own issue #27 overflow bug doesn't
-    apply here - `List`'s positional leading/title/subtitle/trailing
-    layout is flexible, not pixel-column-based), so no matching
-    width-budget correction was needed the way Table's own fix required.
-    Verified live (dark theme, `stock_in/index`, both List and Table
-    view): all four toolbar icons (filter, view-toggle, "+", hamburger)
-    now render as uniformly-sized, vertically-centered 32px buttons, and
-    the list content shows the same left/right inset as Table's own.
-  - **Zebra-striped tiles + icon-instead-of-label fields** (issue #65,
-    2026-07-28): the user asked whether List can hide a field's label and
-    show an icon instead, pointing at senar's Flet port
-    (`C:\Users\IT\Git\senar\flet\senar`) as reference, plus zebra-striped
-    tile backgrounds. Checked `components/list/layout.py` against senar's
-    own directly - **already byte-for-byte identical** for the label/icon
-    logic (a field's `ft.Text(label)` is only built `if field_label is not
-    None`; an `"icon"` key is wrapped in `ft.Icon(...)`; both combine as
-    `ft.Row([icon, text])` when present together) - this capability
-    already existed in this codebase and needed no new code, it had just
-    never been exercised (every field on the one real `List` consumer,
-    `stock_in/index.py`, set an explicit `"label"`). Separately checked
-    senar's own real `List` consumers directly (`pm_data_cbu_inbound`,
-    `ri_receiving`, `tm_confirm_seal_mobile` - `pages/modules/*/index.py`)
-    and confirmed the actual convention: leading/trailing fields get an
-    icon instead of a label (`"icon": ft.Icons.DATE_RANGE`), title/subtitle
-    fields carry neither. Applied the leading-field half of that
-    convention to `stock_in/index.py`'s `"date"` field (`"icon":
-    ft.Icons.CALENDAR_TODAY` replacing `"label": "Date"`) - title/subtitle
-    labels (`supplier_name`/`description`) were deliberately left alone,
-    since this screen's fields are shared with the `Table` view via issue
-    #56's `ViewToggle`, and Table has no fallback identifier for a column
-    with neither label nor icon (a blank header), unlike List's title/
-    subtitle text which reads fine standing alone.
-    **Two real, previously-latent bugs found and fixed along the way**:
-    1. `ft.ListTile.bgcolor` does nothing in this Flet build - setting it
-       directly, and separately wrapping a `ListTile` in a padded
-       `ft.Container` with its own `bgcolor`, both produced zero visible
-       color even with an unmissable `ft.Colors.RED` test value. Fixed by
-       giving up on `ListTile.bgcolor` entirely and wrapping each tile in
-       a plain `ft.Container(bgcolor=...)` - once the *next* bug (below)
-       was also fixed, this reliably renders, same "don't trust the
-       control's own color property" lesson issue #60 already established
-       for `DataRow.color`.
-    2. The zebra position counter in `components/list/tiles.py::Tiles.load()`
-       was first named `row` - but that loop body already uses `row` as
-       the per-position row-GROUP index (`for row, row_data in
-       position_data.items()`, `Layout`'s own `"row": N` grouping within
-       one leading/title/subtitle/trailing slot), so the zebra counter was
-       silently shadowed and overwritten every iteration, staying at
-       whatever value the inner loop last left it - which is why the
-       Container-bgcolor fix above *also* initially looked broken (indistinguishable
-       from bug #1 until the counter's actual runtime value was traced).
-       Renamed to `tile_index` to remove the collision. `_TILE_COLOR_EVEN`/
-       `_TILE_COLOR_ODD` reuse the exact same `ft.Colors.SURFACE`/
-       `SURFACE_CONTAINER_LOW` tokens `components/table/rows.py` uses
-       (issue #57), continuing correctly across lazy-load append the same
-       way (`tile_index = len(self.tiles) if append else 0`).
-    3. **Bonus fix, found verifying Table still rendered correctly with
-       the new icon-only "date" field**: `TableColumns._build_data_columns()`
-       read a field's raw `"icon"` value (an `ft.Icons` enum member) and
-       appended it directly into a header `Row`'s `controls` list without
-       ever wrapping it in `ft.Icon(...)` - Flet silently renders nothing
-       for a non-`Control` item there rather than raising, so the Table
-       view's Date column header was completely blank, no error anywhere.
-       `components/list/layout.py`'s own icon handling already did this
-       wrapping correctly; `TableColumns` just never had a reason to
-       exercise this path before, since no field had ever set `"icon"`
-       without also setting `"label"`. Fixed with the same wrapping.
-    4. **Same-day follow-up - the icon bled into the first data row**:
-       reported live after the bonus fix above landed. Root cause: the
-       icon-wrapping code never gated on `interactive`, unlike every other
-       icon-bearing header element in this file (sort icons, remove/
-       checkbox headers) - `TableBody`'s hidden structural header row
-       (`interactive=False`, `heading_row_height=0`, column-width
-       alignment only) isn't fully clipped by Flutter when its content
-       includes a real icon, so the icon rendered there visibly bled into
-       the real first row underneath, the exact same documented bug class
-       already fixed for sort icons under issue #38's own history. Fixed
-       by only adding the icon to `row_children` when `interactive` is
-       `True` (the label `Text` is unaffected - plain text never had this
-       bleed problem). Also confirmed, no code change needed: when a
-       field sets both `"icon"` and `"label"`, they already render as
-       `[icon, text]` in a left-aligned tight `Row` - icon-leading-then-
-       label, consistent with every plain text-only header, exactly what
-       was asked for. Verified live: the calendar icon now renders
-       exactly once, in the header only.
-    Verified live (dark theme, `stock_in/index`): List tiles show a clear
-    alternating background with no double-adjacent-same-color tiles,
-    confirmed consistent while scrolling through all 30 records; the
-    leading position shows a calendar icon instead of the text "Date"; the
-    Table view (via the #56 view toggle) now correctly shows the same
-    calendar icon in its Date column header (previously blank) with no
-    other regressions to Supplier/Description.
-    **Same-day follow-up - labels become hover tooltips, not visible
-    captions**: the deliberate choice above to leave Supplier/Description's
-    `"label"` as visible text (to avoid blanking Table's column headers,
-    which have no fallback for a field with neither label nor icon) turned
-    out not to be what the user wanted - asked directly why those captions
-    still showed, suggesting a tooltip-on-hover instead. This actually
-    resolves the tension cleanly rather than trading it off: `Table` reads
-    a field's `"label"` directly off the shared `fields` list and was
-    never touched by this change at all; only `List`'s own rendering
-    stopped treating `"label"` as something to draw as a second visible
-    line. `components/list/layout.py::Layout.get()` no longer builds a
-    visible `ft.Text(label)` control - it hands the raw label string
-    through as `field_data["label_text"]` (and the built icon separately
-    as `field_data["icon_control"]`, replacing the old combined
-    `"label"` key entirely) . `components/list/tiles.py::Tiles.load()`
-    sets `tooltip=label_text` directly on the tile's value `ft.Text` -
-    `tooltip` is a plain property every Flet `Control` has, there is no
-    separate `ft.Tooltip(...)` wrapper class in this Flet version (an
-    incorrect first attempt using one raised `Tooltip.__init__() got an
-    unexpected keyword argument 'content'` - confirmed via `flet.controls.
-    control.Control`'s own base class, not a per-widget subclass). Verified
-    live: "Supplier"/"Description" no longer show as permanent captions;
-    hovering a value now surfaces its field's label as a native tooltip;
-    zebra striping and the leading calendar icon are both unaffected.
+    (issue #56): `components/list/menu.py::ListMenu` gives List the same
+    6 download formats as `TableMenu` (upload deliberately out of scope —
+    List's tiles are read-only). `components/list/search_bar.py::
+    ListSearchBar` was rebuilt on a plain `ft.TextField` (mirroring
+    `TableSearchBar`'s issue #19 fix — Flutter's own `ft.SearchBar` won't
+    genuinely expand to fill a toolbar row). `components/module/
+    view_toggle.py::ViewToggle` lets one screen pass the same `fields`
+    list to either `List` or `Table` (each component only reads the keys
+    it understands) and toggle between them — only the active view is
+    built up front, the other lazily on first switch; free-text search
+    persists across a switch (shared `storage.table_search` key), sort
+    order/pagination position do not (each is per-instance state, by
+    design). Wired onto `stock_in/index.py`.
+  - **`ListToolbar` container styling matched to `TableToolbar`** (issue
+    #62) — copied `TableToolbar.build()`'s container properties (fixed
+    height, low-emphasis `SURFACE_CONTAINER_LOW` bar, standard M3 icon
+    color) onto `ListToolbar`, plus matching button `size`/`radius` and
+    `List.build()`'s default outer padding to `Table`'s.
+  - **Zebra-striped tiles + icon-instead-of-label fields** (issue #65):
+    a field can set `"icon"` instead of (or alongside) `"label"` — this
+    capability already existed in `components/list/layout.py` but had
+    never been exercised until `stock_in/index.py`'s `"date"` field
+    adopted it. Tiles alternate background color the same way Table rows
+    do (issue #57's `_ROW_COLOR_EVEN`/`_ODD` tokens). A field's `"label"`
+    renders as a hover tooltip on the tile's value text, not a second
+    visible caption line (a later same-day refinement). Two real,
+    previously-latent bugs were found and fixed along the way:
+    `ft.ListTile.bgcolor` does nothing in this Flet build (tiles are now
+    wrapped in a plain `ft.Container(bgcolor=...)` instead), and the
+    zebra position counter was originally shadowed by an unrelated loop
+    variable also named `row` (renamed to `tile_index`). A related Table
+    bug was also found and fixed: `TableColumns._build_data_columns()`
+    rendered a raw `"icon"` header value without wrapping it in
+    `ft.Icon(...)`, leaving the header blank; the fix needed its own
+    `interactive`-only gate to avoid the icon bleeding into the first
+    data row (same bug class as issue #38's sort-icon bleed).
+  Full development narrative for #55/#56/#62/#65 (verification detail,
+  intermediate design attempts, exact bug traces) is in CHANGE_HISTORY.md
+  (2026-07-28).
 
 - **Repositories / state & persistence** (`src/repository/`): each repo
   wraps `page.data` (in-memory cache) plus an optional persistence `store`.
